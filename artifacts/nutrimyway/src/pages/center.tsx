@@ -60,6 +60,7 @@ function NumField({
 export function Center() {
   const queryClient = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [chartMetric, setChartMetric] = useState<"weight" | "body_fat" | "muscle">("weight");
   const [form, setForm] = useState<VitalsForm>({
     recorded_at: todayStr(),
     center_id: "",
@@ -78,10 +79,21 @@ export function Center() {
   const createRecord = useCreateHealthRecord();
 
   const latestRecord = records?.[0];
-  const chartData = [...(records || [])].reverse().slice(-6).map((r) => ({
+  const reversed = [...(records || [])].reverse().slice(-8);
+  const chartData = reversed.map((r) => ({
     date: format(new Date(r.recorded_at), "MMM d"),
     weight: r.weight_kg,
+    body_fat: r.body_fat_pct,
+    muscle: r.muscle_mass_kg,
   }));
+
+  const chartConfigs = {
+    weight:   { dataKey: "weight",   label: "Weight (kg)",    color: "hsl(var(--primary))",        unit: "kg" },
+    body_fat: { dataKey: "body_fat", label: "Body Fat (%)",   color: "hsl(var(--destructive))",    unit: "%" },
+    muscle:   { dataKey: "muscle",   label: "Muscle Mass (kg)", color: "hsl(160 60% 45%)",         unit: "kg" },
+  } as const;
+  const activeCfg = chartConfigs[chartMetric];
+  const hasChartData = chartData.some((d) => d[activeCfg.dataKey] != null);
 
   function set(field: keyof VitalsForm) {
     return (v: string) => setForm((f) => ({ ...f, [field]: v }));
@@ -179,32 +191,60 @@ export function Center() {
           </div>
         </div>
       </section>
-      {/* Weight trend chart */}
-      {chartData.filter((d) => d.weight != null).length > 0 && (
-        <section className="bg-card rounded-[12px] p-5 border border-border">
-          <h2 className="text-sm font-semibold uppercase tracking-wider mb-4">Weight Trend</h2>
-          <div className="h-48 w-full">
+      {/* Trend charts */}
+      <section className="bg-card rounded-[12px] p-5 border border-border">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider">Trends</h2>
+          <div className="flex gap-1 bg-muted rounded-full p-0.5">
+            {(["weight", "body_fat", "muscle"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setChartMetric(m)}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all ${
+                  chartMetric === m
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {m === "weight" ? "Weight" : m === "body_fat" ? "Body Fat" : "Muscle"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {hasChartData ? (
+          <div className="h-52 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                <XAxis type="number" domain={["dataMin - 2", "dataMax + 2"]} hide />
+              <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 4, bottom: 0, left: 0 }}>
+                <XAxis type="number" domain={["dataMin - 1", "dataMax + 1"]} hide />
                 <YAxis
                   dataKey="date"
                   type="category"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-                  width={45}
+                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  width={42}
                 />
                 <Tooltip
-                  cursor={{ fill: "transparent" }}
-                  contentStyle={{ borderRadius: "8px", border: "1px solid hsl(var(--border))" }}
+                  cursor={{ fill: "hsl(var(--muted) / 0.4)" }}
+                  contentStyle={{ borderRadius: "8px", border: "1px solid hsl(var(--border))", fontSize: 12 }}
+                  formatter={(v: number) => [`${v?.toFixed(1)} ${activeCfg.unit}`, activeCfg.label]}
                 />
-                <Bar dataKey="weight" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} barSize={16} />
+                <Bar
+                  dataKey={activeCfg.dataKey}
+                  fill={activeCfg.color}
+                  radius={[0, 4, 4, 0]}
+                  barSize={16}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </section>
-      )}
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            No {activeCfg.label.toLowerCase()} data yet.
+          </p>
+        )}
+      </section>
       {/* Visit history */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Progress History</h2>
