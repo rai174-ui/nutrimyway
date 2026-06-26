@@ -38,6 +38,9 @@ async function migrateColumns(): Promise<void> {
     "ALTER TABLE members ADD COLUMN IF NOT EXISTS email TEXT",
     "ALTER TABLE otps ADD COLUMN IF NOT EXISTS email TEXT",
     "ALTER TABLE user_auth ADD COLUMN IF NOT EXISTS email TEXT",
+    // Allow mobile to be NULL so email-only OTPs/registrations work
+    "ALTER TABLE otps ALTER COLUMN mobile DROP NOT NULL",
+    "ALTER TABLE user_auth ALTER COLUMN mobile DROP NOT NULL",
   ];
   for (const sql of newCols) {
     await pool.query(sql);
@@ -45,21 +48,6 @@ async function migrateColumns(): Promise<void> {
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS members_mobile_uidx ON members (mobile) WHERE mobile IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS members_email_uidx ON members (email) WHERE email IS NOT NULL;
-    CREATE TABLE IF NOT EXISTS otps (
-      id SERIAL PRIMARY KEY,
-      mobile TEXT,
-      email TEXT,
-      otp TEXT NOT NULL,
-      expires_at TIMESTAMPTZ NOT NULL,
-      used BOOLEAN NOT NULL DEFAULT FALSE
-    );
-    CREATE TABLE IF NOT EXISTS user_auth (
-      id SERIAL PRIMARY KEY,
-      mobile TEXT UNIQUE,
-      email TEXT UNIQUE,
-      member_id INTEGER REFERENCES members(id),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
     CREATE UNIQUE INDEX IF NOT EXISTS user_auth_email_uidx ON user_auth (email) WHERE email IS NOT NULL;
   `);
 }
@@ -143,6 +131,23 @@ async function createTables(): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS _seed_done (
       done INTEGER PRIMARY KEY
+    );
+
+    CREATE TABLE IF NOT EXISTS otps (
+      id SERIAL PRIMARY KEY,
+      mobile TEXT,
+      email TEXT,
+      otp TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_auth (
+      id SERIAL PRIMARY KEY,
+      mobile TEXT UNIQUE,
+      email TEXT UNIQUE,
+      member_id INTEGER REFERENCES members(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
 }
