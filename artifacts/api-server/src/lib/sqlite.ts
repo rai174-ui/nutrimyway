@@ -27,6 +27,19 @@ export async function queryOne<T = Record<string, unknown>>(
   return result.rows[0] ?? null;
 }
 
+async function migrateColumns(): Promise<void> {
+  const newCols = [
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS body_fat_pct REAL",
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS visceral_fat REAL",
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS bmr REAL",
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS metabolic_age INTEGER",
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS muscle_mass_kg REAL",
+  ];
+  for (const sql of newCols) {
+    await pool.query(sql);
+  }
+}
+
 async function createTables(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS centers (
@@ -53,7 +66,12 @@ async function createTables(): Promise<void> {
       center_id TEXT REFERENCES centers(id),
       recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       weight_kg REAL,
+      body_fat_pct REAL,
+      visceral_fat REAL,
+      bmr REAL,
       bmi REAL,
+      metabolic_age INTEGER,
+      muscle_mass_kg REAL,
       resting_hr INTEGER,
       notes TEXT
     );
@@ -280,5 +298,6 @@ async function seedFromXlsx(): Promise<void> {
 
 export async function initDb(): Promise<void> {
   await createTables();
+  await migrateColumns();
   await seedFromXlsx();
 }

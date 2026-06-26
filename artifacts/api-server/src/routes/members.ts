@@ -31,14 +31,27 @@ router.get("/members/:id/health-records", async (req, res) => {
 // POST /api/members/:id/health-records
 router.post("/members/:id/health-records", async (req, res) => {
   const memberId = Number(req.params.id);
-  const { center_id, weight_kg, bmi, resting_hr, notes } = req.body as {
-    center_id?: string | null; weight_kg?: number | null; bmi?: number | null;
-    resting_hr?: number | null; notes?: string | null;
+  const {
+    recorded_at, center_id, weight_kg, body_fat_pct, visceral_fat,
+    bmr, bmi, metabolic_age, muscle_mass_kg, resting_hr, notes,
+  } = req.body as {
+    recorded_at?: string | null; center_id?: string | null;
+    weight_kg?: number | null; body_fat_pct?: number | null; visceral_fat?: number | null;
+    bmr?: number | null; bmi?: number | null; metabolic_age?: number | null;
+    muscle_mass_kg?: number | null; resting_hr?: number | null; notes?: string | null;
   };
+  const recAt = recorded_at ? new Date(recorded_at) : new Date();
   const { rows } = await pool.query(
-    `INSERT INTO health_records (member_id, center_id, recorded_at, weight_kg, bmi, resting_hr, notes)
-     VALUES ($1,$2,NOW(),$3,$4,$5,$6) RETURNING *`,
-    [memberId, center_id ?? null, weight_kg ?? null, bmi ?? null, resting_hr ?? null, notes ?? null]
+    `INSERT INTO health_records
+       (member_id, center_id, recorded_at, weight_kg, body_fat_pct, visceral_fat,
+        bmr, bmi, metabolic_age, muscle_mass_kg, resting_hr, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [
+      memberId, center_id ?? null, recAt,
+      weight_kg ?? null, body_fat_pct ?? null, visceral_fat ?? null,
+      bmr ?? null, bmi ?? null, metabolic_age ?? null,
+      muscle_mass_kg ?? null, resting_hr ?? null, notes ?? null,
+    ]
   );
   res.status(201).json(rows[0]);
 });

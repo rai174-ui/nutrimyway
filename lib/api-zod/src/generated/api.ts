@@ -59,7 +59,12 @@ export const GetHealthRecordsResponseItem = zod.object({
   "center_id": zod.string().nullish(),
   "recorded_at": zod.string(),
   "weight_kg": zod.number().nullish(),
+  "body_fat_pct": zod.number().nullish(),
+  "visceral_fat": zod.number().nullish(),
+  "bmr": zod.number().nullish(),
   "bmi": zod.number().nullish(),
+  "metabolic_age": zod.number().nullish(),
+  "muscle_mass_kg": zod.number().nullish(),
   "resting_hr": zod.number().nullish(),
   "notes": zod.string().nullish()
 })
@@ -74,9 +79,15 @@ export const CreateHealthRecordParams = zod.object({
 })
 
 export const CreateHealthRecordBody = zod.object({
+  "recorded_at": zod.string().nullish().describe('ISO date or date-time string; defaults to now if omitted'),
   "center_id": zod.string().nullish(),
   "weight_kg": zod.number().nullish(),
+  "body_fat_pct": zod.number().nullish(),
+  "visceral_fat": zod.number().nullish(),
+  "bmr": zod.number().nullish(),
   "bmi": zod.number().nullish(),
+  "metabolic_age": zod.number().nullish(),
+  "muscle_mass_kg": zod.number().nullish(),
   "resting_hr": zod.number().nullish(),
   "notes": zod.string().nullish()
 })
@@ -87,7 +98,12 @@ export const CreateHealthRecordResponse = zod.object({
   "center_id": zod.string().nullish(),
   "recorded_at": zod.string(),
   "weight_kg": zod.number().nullish(),
+  "body_fat_pct": zod.number().nullish(),
+  "visceral_fat": zod.number().nullish(),
+  "bmr": zod.number().nullish(),
   "bmi": zod.number().nullish(),
+  "metabolic_age": zod.number().nullish(),
+  "muscle_mass_kg": zod.number().nullish(),
   "resting_hr": zod.number().nullish(),
   "notes": zod.string().nullish()
 })

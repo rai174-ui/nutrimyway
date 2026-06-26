@@ -296,7 +296,17 @@ components:
           type: string
         weight_kg:
           type: ["number", "null"]
+        body_fat_pct:
+          type: ["number", "null"]
+        visceral_fat:
+          type: ["number", "null"]
+        bmr:
+          type: ["number", "null"]
         bmi:
+          type: ["number", "null"]
+        metabolic_age:
+          type: ["integer", "null"]
+        muscle_mass_kg:
           type: ["number", "null"]
         resting_hr:
           type: ["integer", "null"]
@@ -310,11 +320,24 @@ components:
     HealthRecordInput:
       type: object
       properties:
+        recorded_at:
+          type: ["string", "null"]
+          description: ISO date or date-time string; defaults to now if omitted
         center_id:
           type: ["string", "null"]
         weight_kg:
           type: ["number", "null"]
+        body_fat_pct:
+          type: ["number", "null"]
+        visceral_fat:
+          type: ["number", "null"]
+        bmr:
+          type: ["number", "null"]
         bmi:
+          type: ["number", "null"]
+        metabolic_age:
+          type: ["integer", "null"]
+        muscle_mass_kg:
           type: ["number", "null"]
         resting_hr:
           type: ["integer", "null"]

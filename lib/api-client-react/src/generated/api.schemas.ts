@@ -32,7 +32,17 @@ export interface HealthRecord {
   /** @nullable */
   weight_kg?: number | null;
   /** @nullable */
+  body_fat_pct?: number | null;
+  /** @nullable */
+  visceral_fat?: number | null;
+  /** @nullable */
+  bmr?: number | null;
+  /** @nullable */
   bmi?: number | null;
+  /** @nullable */
+  metabolic_age?: number | null;
+  /** @nullable */
+  muscle_mass_kg?: number | null;
   /** @nullable */
   resting_hr?: number | null;
   /** @nullable */
@@ -40,12 +50,27 @@ export interface HealthRecord {
 }
 
 export interface HealthRecordInput {
+  /**
+     * ISO date or date-time string; defaults to now if omitted
+     * @nullable
+     */
+  recorded_at?: string | null;
   /** @nullable */
   center_id?: string | null;
   /** @nullable */
   weight_kg?: number | null;
   /** @nullable */
+  body_fat_pct?: number | null;
+  /** @nullable */
+  visceral_fat?: number | null;
+  /** @nullable */
+  bmr?: number | null;
+  /** @nullable */
   bmi?: number | null;
+  /** @nullable */
+  metabolic_age?: number | null;
+  /** @nullable */
+  muscle_mass_kg?: number | null;
   /** @nullable */
   resting_hr?: number | null;
   /** @nullable */

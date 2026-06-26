@@ -8,7 +8,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
-import { MapPin, Activity, Stethoscope, Plus, X } from "lucide-react";
+import { MapPin, Activity, Stethoscope, Plus, X, ChevronDown } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -19,16 +19,54 @@ import { Label } from "@/components/ui/label";
 const MEMBER_ID = 1;
 
 interface VitalsForm {
+  recorded_at: string;
+  center_id: string;
   weight_kg: string;
+  body_fat_pct: string;
+  visceral_fat: string;
+  bmr: string;
   bmi: string;
+  metabolic_age: string;
+  muscle_mass_kg: string;
   resting_hr: string;
   notes: string;
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function NumField({
+  id, label, placeholder, value, onChange,
+}: { id: string; label: string; placeholder: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        {label}
+      </Label>
+      <Input
+        id={id}
+        type="number"
+        inputMode="decimal"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-11"
+      />
+    </div>
+  );
 }
 
 export function Center() {
   const queryClient = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [form, setForm] = useState<VitalsForm>({ weight_kg: "", bmi: "", resting_hr: "", notes: "" });
+  const [form, setForm] = useState<VitalsForm>({
+    recorded_at: todayStr(),
+    center_id: "",
+    weight_kg: "", body_fat_pct: "", visceral_fat: "",
+    bmr: "", bmi: "", metabolic_age: "",
+    muscle_mass_kg: "", resting_hr: "", notes: "",
+  });
   const [saving, setSaving] = useState(false);
 
   const { data: records } = useGetHealthRecords(MEMBER_ID, {
@@ -45,8 +83,17 @@ export function Center() {
     weight: r.weight_kg,
   }));
 
+  function set(field: keyof VitalsForm) {
+    return (v: string) => setForm((f) => ({ ...f, [field]: v }));
+  }
+
   function resetForm() {
-    setForm({ weight_kg: "", bmi: "", resting_hr: "", notes: "" });
+    setForm({
+      recorded_at: todayStr(), center_id: "",
+      weight_kg: "", body_fat_pct: "", visceral_fat: "",
+      bmr: "", bmi: "", metabolic_age: "",
+      muscle_mass_kg: "", resting_hr: "", notes: "",
+    });
   }
 
   async function handleSave() {
@@ -55,8 +102,15 @@ export function Center() {
       await createRecord.mutateAsync({
         memberId: MEMBER_ID,
         data: {
+          recorded_at: form.recorded_at || null,
+          center_id: form.center_id || null,
           weight_kg: form.weight_kg ? Number(form.weight_kg) : null,
+          body_fat_pct: form.body_fat_pct ? Number(form.body_fat_pct) : null,
+          visceral_fat: form.visceral_fat ? Number(form.visceral_fat) : null,
+          bmr: form.bmr ? Number(form.bmr) : null,
           bmi: form.bmi ? Number(form.bmi) : null,
+          metabolic_age: form.metabolic_age ? Number(form.metabolic_age) : null,
+          muscle_mass_kg: form.muscle_mass_kg ? Number(form.muscle_mass_kg) : null,
           resting_hr: form.resting_hr ? Number(form.resting_hr) : null,
           notes: form.notes || null,
         },
@@ -69,7 +123,7 @@ export function Center() {
     }
   }
 
-  const canSave = form.weight_kg || form.bmi || form.resting_hr;
+  const canSave = !!(form.weight_kg || form.bmi || form.body_fat_pct || form.muscle_mass_kg);
 
   return (
     <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="p-4 space-y-6">
@@ -78,12 +132,13 @@ export function Center() {
         <button
           onClick={() => setSheetOpen(true)}
           className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-sm active:scale-95 transition-transform"
-          aria-label="Log vitals"
+          aria-label="Log progress"
         >
           <Plus className="w-4 h-4" />
         </button>
       </header>
 
+      {/* Center pills */}
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
         {centers?.map((c) => (
           <div
@@ -96,34 +151,39 @@ export function Center() {
         ))}
       </div>
 
+      {/* Latest vitals */}
       <section className="bg-card rounded-[12px] p-5 border border-border">
         <div className="flex items-center gap-2 mb-4">
           <Activity className="w-5 h-5 text-primary" />
-          <h2 className="text-sm font-semibold uppercase tracking-wider">Latest Vitals</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wider">Latest Progress</h2>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Weight</p>
-            <p className="text-lg font-semibold">{latestRecord?.weight_kg?.toFixed(1) || "--"} kg</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">BMI</p>
-            <p className="text-lg font-semibold">{latestRecord?.bmi?.toFixed(1) || "--"}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Resting HR</p>
-            <p className="text-lg font-semibold">{latestRecord?.resting_hr || "--"} bpm</p>
-          </div>
-          <div className="space-y-1">
+          {[
+            { label: "Weight", value: latestRecord?.weight_kg != null ? `${latestRecord.weight_kg.toFixed(1)} kg` : "--" },
+            { label: "BMI", value: latestRecord?.bmi != null ? latestRecord.bmi.toFixed(1) : "--" },
+            { label: "Body Fat", value: latestRecord?.body_fat_pct != null ? `${latestRecord.body_fat_pct.toFixed(1)}%` : "--" },
+            { label: "Muscle Mass", value: latestRecord?.muscle_mass_kg != null ? `${latestRecord.muscle_mass_kg.toFixed(1)} kg` : "--" },
+            { label: "Visceral Fat", value: latestRecord?.visceral_fat != null ? String(latestRecord.visceral_fat) : "--" },
+            { label: "BMR", value: latestRecord?.bmr != null ? `${Math.round(latestRecord.bmr)} kcal` : "--" },
+            { label: "Metabolic Age", value: latestRecord?.metabolic_age != null ? `${latestRecord.metabolic_age} yrs` : "--" },
+            { label: "Resting HR", value: latestRecord?.resting_hr != null ? `${latestRecord.resting_hr} bpm` : "--" },
+          ].map(({ label, value }) => (
+            <div key={label} className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="text-base font-semibold">{value}</p>
+            </div>
+          ))}
+          <div className="col-span-2 space-y-0.5 border-t border-border pt-3 mt-1">
             <p className="text-xs text-muted-foreground">Recorded</p>
-            <p className="text-sm font-medium pt-1">
+            <p className="text-sm font-medium">
               {latestRecord ? format(new Date(latestRecord.recorded_at), "MMM d, yyyy") : "--"}
             </p>
           </div>
         </div>
       </section>
 
-      {chartData.length > 0 && (
+      {/* Weight trend chart */}
+      {chartData.filter((d) => d.weight != null).length > 0 && (
         <section className="bg-card rounded-[12px] p-5 border border-border">
           <h2 className="text-sm font-semibold uppercase tracking-wider mb-4">Weight Trend</h2>
           <div className="h-48 w-full">
@@ -149,35 +209,59 @@ export function Center() {
         </section>
       )}
 
+      {/* Visit history */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Visit History</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Progress History</h2>
         <div className="space-y-2">
           {records?.map((r) => (
-            <div key={r.id} className="bg-card border border-border p-4 rounded-[12px] flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-primary shrink-0">
+            <div key={r.id} className="bg-card border border-border p-4 rounded-[12px] flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-primary shrink-0 mt-0.5">
                 <Stethoscope className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate">Center Visit</p>
-                <p className="text-xs text-muted-foreground">{format(new Date(r.recorded_at), "MMM d, yyyy")}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-bold">{r.weight_kg?.toFixed(1)} kg</p>
-                {r.resting_hr && <p className="text-xs text-muted-foreground">{r.resting_hr} bpm</p>}
+                <p className="text-sm font-semibold">
+                  {r.center_id || "Center Visit"}
+                </p>
+                <p className="text-xs text-muted-foreground mb-2">
+                  {format(new Date(r.recorded_at), "MMM d, yyyy")}
+                </p>
+                <div className="grid grid-cols-3 gap-x-3 gap-y-1">
+                  {r.weight_kg != null && (
+                    <span className="text-xs"><span className="text-muted-foreground">Wt </span>{r.weight_kg.toFixed(1)}kg</span>
+                  )}
+                  {r.bmi != null && (
+                    <span className="text-xs"><span className="text-muted-foreground">BMI </span>{r.bmi.toFixed(1)}</span>
+                  )}
+                  {r.body_fat_pct != null && (
+                    <span className="text-xs"><span className="text-muted-foreground">Fat </span>{r.body_fat_pct.toFixed(1)}%</span>
+                  )}
+                  {r.muscle_mass_kg != null && (
+                    <span className="text-xs"><span className="text-muted-foreground">Msl </span>{r.muscle_mass_kg.toFixed(1)}kg</span>
+                  )}
+                  {r.visceral_fat != null && (
+                    <span className="text-xs"><span className="text-muted-foreground">VF </span>{r.visceral_fat}</span>
+                  )}
+                  {r.bmr != null && (
+                    <span className="text-xs"><span className="text-muted-foreground">BMR </span>{Math.round(r.bmr)}</span>
+                  )}
+                </div>
               </div>
             </div>
           ))}
           {(!records || records.length === 0) && (
-            <p className="text-sm text-muted-foreground text-center py-4">No records yet. Tap + to log your first visit.</p>
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No records yet. Tap + to log your first visit.
+            </p>
           )}
         </div>
       </section>
 
+      {/* Log Progress sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="bottom" className="rounded-t-[20px] pb-8 px-5">
-          <SheetHeader className="mb-5">
+        <SheetContent side="bottom" className="rounded-t-[20px] pb-safe px-5 max-h-[90vh] overflow-y-auto">
+          <SheetHeader className="mb-5 sticky top-0 bg-background pt-2 pb-1 z-10">
             <div className="flex items-center justify-between">
-              <SheetTitle className="text-lg font-bold">Log Vitals</SheetTitle>
+              <SheetTitle className="text-lg font-bold">Record Progress</SheetTitle>
               <button
                 onClick={() => { setSheetOpen(false); resetForm(); }}
                 className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground"
@@ -187,53 +271,61 @@ export function Center() {
             </div>
           </SheetHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 pb-6">
+            {/* Date + Center row */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="weight" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Weight (kg)
+                <Label htmlFor="record_date" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Record Date
                 </Label>
                 <Input
-                  id="weight"
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="e.g. 72.5"
-                  value={form.weight_kg}
-                  onChange={(e) => setForm((f) => ({ ...f, weight_kg: e.target.value }))}
+                  id="record_date"
+                  type="date"
+                  value={form.recorded_at}
+                  onChange={(e) => set("recorded_at")(e.target.value)}
                   className="h-11"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="bmi" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  BMI
+                <Label htmlFor="center_id" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Center
                 </Label>
-                <Input
-                  id="bmi"
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="e.g. 24.1"
-                  value={form.bmi}
-                  onChange={(e) => setForm((f) => ({ ...f, bmi: e.target.value }))}
-                  className="h-11"
-                />
+                <div className="relative">
+                  <select
+                    id="center_id"
+                    value={form.center_id}
+                    onChange={(e) => set("center_id")(e.target.value)}
+                    className="w-full h-11 rounded-md border border-input bg-background px-3 pr-8 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="">— none —</option>
+                    {centers?.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-3 w-4 h-4 text-muted-foreground" />
+                </div>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="resting_hr" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Resting Heart Rate (bpm)
-              </Label>
-              <Input
-                id="resting_hr"
-                type="number"
-                inputMode="numeric"
-                placeholder="e.g. 68"
-                value={form.resting_hr}
-                onChange={(e) => setForm((f) => ({ ...f, resting_hr: e.target.value }))}
-                className="h-11"
-              />
+            {/* Body composition */}
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground pt-1">Body Composition</p>
+            <div className="grid grid-cols-2 gap-3">
+              <NumField id="weight_kg"     label="Weight (kg)"     placeholder="e.g. 72.5" value={form.weight_kg}     onChange={set("weight_kg")} />
+              <NumField id="body_fat_pct"  label="Body Fat (%)"    placeholder="e.g. 22.3" value={form.body_fat_pct}  onChange={set("body_fat_pct")} />
+              <NumField id="visceral_fat"  label="Visceral Fat"    placeholder="e.g. 8"    value={form.visceral_fat}  onChange={set("visceral_fat")} />
+              <NumField id="muscle_mass"   label="Muscle Mass (kg)" placeholder="e.g. 34.0" value={form.muscle_mass_kg} onChange={set("muscle_mass_kg")} />
             </div>
 
+            {/* Metabolic */}
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground pt-1">Metabolic</p>
+            <div className="grid grid-cols-2 gap-3">
+              <NumField id="bmr"          label="BMR (kcal)"      placeholder="e.g. 1650" value={form.bmr}          onChange={set("bmr")} />
+              <NumField id="bmi"          label="BMI"             placeholder="e.g. 24.1" value={form.bmi}          onChange={set("bmi")} />
+              <NumField id="metabolic_age" label="Metabolic Age"  placeholder="e.g. 32"   value={form.metabolic_age} onChange={set("metabolic_age")} />
+              <NumField id="resting_hr"   label="Resting HR (bpm)" placeholder="e.g. 68" value={form.resting_hr}   onChange={set("resting_hr")} />
+            </div>
+
+            {/* Notes */}
             <div className="space-y-1.5">
               <Label htmlFor="notes" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Notes (optional)
@@ -241,9 +333,9 @@ export function Center() {
               <Input
                 id="notes"
                 type="text"
-                placeholder="Any observations..."
+                placeholder="Any observations…"
                 value={form.notes}
-                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                onChange={(e) => set("notes")(e.target.value)}
                 className="h-11"
               />
             </div>
