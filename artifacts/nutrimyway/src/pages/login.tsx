@@ -121,8 +121,8 @@ export function Login() {
         <div className="absolute -top-10 -right-10 w-52 h-52 rounded-full bg-white/5" />
         <div className="absolute top-8 -left-12 w-44 h-44 rounded-full bg-white/5" />
         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-28 h-28 rounded-full bg-background" />
-        <div className="relative z-10 w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-lg mb-1">
-          <span className="text-teal-dark text-2xl font-black tracking-tight">N</span>
+        <div className="relative z-10 w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-lg mb-1 p-2">
+          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="NutriMyWay" className="w-full h-full object-contain" />
         </div>
       </div>
 
