@@ -118,6 +118,15 @@ export interface Dashboard {
   today_active_members: number;
 }
 
+export interface MemberLookup {
+  id: number;
+  name: string;
+  mobile: string | null;
+  email: string | null;
+  height_cm: number | null;
+  date_of_joining: string | null;
+}
+
 export interface CenterMember {
   id: number;
   name: string;

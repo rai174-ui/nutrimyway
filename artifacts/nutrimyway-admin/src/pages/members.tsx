@@ -1,40 +1,82 @@
 import { useEffect, useState } from "react";
-import { UserPlus, LogIn, LogOut, Trash2, Users, Clock } from "lucide-react";
+import { UserPlus, LogIn, LogOut, Trash2, Users, Clock, Search, Phone, Mail, UserCheck, UserX } from "lucide-react";
 import { Nav } from "@/components/nav";
-import { apiGet, apiPost, apiDelete, getAdminCenter, type CenterMember } from "@/lib/api";
+import { apiGet, apiPost, apiDelete, getAdminCenter, type CenterMember, type MemberLookup } from "@/lib/api";
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
+type LookupStep = "search" | "found" | "notfound" | "creating";
+
 function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () => void }) {
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<LookupStep>("search");
+  const [searchKind, setSearchKind] = useState<"mobile" | "email">("mobile");
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<MemberLookup | null>(null);
+  const [searching, setSearching] = useState(false);
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
   const [height, setHeight] = useState("");
   const [doj, setDoj] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleAdd() {
+  function reset() {
+    setStep("search"); setQuery(""); setFound(null); setError("");
+    setName(""); setEmail(""); setMobile(""); setHeight(""); setDoj("");
+  }
+
+  async function handleSearch() {
+    if (!query.trim()) return;
+    setSearching(true); setError("");
+    try {
+      const params = searchKind === "mobile"
+        ? `mobile=${encodeURIComponent(query.trim())}`
+        : `email=${encodeURIComponent(query.trim())}`;
+      const result = await apiGet<MemberLookup | null>(`/admin/members/lookup?${params}`);
+      if (result) {
+        setFound(result);
+        setStep("found");
+      } else {
+        // Pre-fill the create form with what they typed
+        if (searchKind === "mobile") setMobile(query.trim());
+        else setEmail(query.trim());
+        setStep("notfound");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Lookup failed");
+    } finally { setSearching(false); }
+  }
+
+  async function handleLink() {
+    if (!found) return;
+    setSaving(true); setError("");
+    try {
+      await apiPost(`/admin/centers/${centerId}/members/link`, { member_id: found.id });
+      setOpen(false); reset(); onAdded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to link member");
+    } finally { setSaving(false); }
+  }
+
+  async function handleCreate() {
     if (!name.trim()) { setError("Name is required"); return; }
-    setSaving(true);
-    setError("");
+    setSaving(true); setError("");
     try {
       await apiPost(`/admin/centers/${centerId}/members`, {
         name: name.trim(),
         mobile: mobile.trim() || null,
+        email: email.trim() || null,
         height_cm: height ? Number(height) : null,
         date_of_joining: doj || null,
       });
-      setName(""); setMobile(""); setHeight(""); setDoj("");
-      setOpen(false);
-      onAdded();
+      setOpen(false); reset(); onAdded();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add member");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   if (!open) {
@@ -51,62 +93,178 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 
   return (
     <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
-      <h3 className="font-semibold text-foreground">New Member</h3>
-      {error && <p className="text-sm text-red-500">{error}</p>}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Name *</label>
-          <input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="Full name"
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Mobile</label>
-          <input
-            value={mobile}
-            onChange={e => setMobile(e.target.value)}
-            placeholder="+91 ..."
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Height (cm)</label>
-          <input
-            type="number"
-            value={height}
-            onChange={e => setHeight(e.target.value)}
-            placeholder="e.g. 165"
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Date of Joining</label>
-          <input
-            type="date"
-            value={doj}
-            onChange={e => setDoj(e.target.value)}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-foreground">Onboard Member</h3>
+        <button onClick={() => { setOpen(false); reset(); }} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
       </div>
-      <div className="flex gap-2 justify-end">
-        <button
-          onClick={() => { setOpen(false); setError(""); }}
-          className="px-4 py-2 rounded-lg text-sm border border-border hover:bg-muted transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleAdd}
-          disabled={saving}
-          className="px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-        >
-          {saving ? "Adding..." : "Add Member"}
-        </button>
-      </div>
+
+      {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+
+      {/* Step 1: Search */}
+      {(step === "search" || step === "notfound") && step === "search" && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">Search for an existing member first to avoid duplicates.</p>
+          <div className="flex bg-muted rounded-lg p-1 gap-1">
+            <button
+              onClick={() => setSearchKind("mobile")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${searchKind === "mobile" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <Phone className="w-3 h-3" />Mobile
+            </button>
+            <button
+              onClick={() => setSearchKind("email")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${searchKind === "email" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <Mail className="w-3 h-3" />Email
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSearch()}
+              placeholder={searchKind === "mobile" ? "+91 98765 43210" : "member@email.com"}
+              type={searchKind === "email" ? "email" : "tel"}
+              className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <button
+              onClick={handleSearch}
+              disabled={!query.trim() || searching}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              <Search className="w-3.5 h-3.5" />
+              {searching ? "..." : "Search"}
+            </button>
+          </div>
+          <button
+            onClick={() => { setStep("notfound"); setError(""); }}
+            className="text-xs text-primary hover:underline underline-offset-2"
+          >
+            Skip search — create new member directly
+          </button>
+        </div>
+      )}
+
+      {/* Step 2a: Member found */}
+      {step === "found" && found && (
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
+            <UserCheck className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-green-800">Member found</p>
+              <p className="text-sm font-medium text-foreground mt-1">{found.name}</p>
+              {found.mobile && <p className="text-xs text-muted-foreground">{found.mobile}</p>}
+              {found.email && <p className="text-xs text-muted-foreground">{found.email}</p>}
+              {found.height_cm && <p className="text-xs text-muted-foreground">Height: {found.height_cm} cm</p>}
+            </div>
+          </div>
+          <div className="flex gap-2 justify-between">
+            <button
+              onClick={() => { setFound(null); setStep("search"); setError(""); }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              ← Search again
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (searchKind === "mobile") setMobile(query.trim());
+                  else setEmail(query.trim());
+                  setStep("notfound");
+                  setError("");
+                }}
+                className="px-3 py-2 rounded-lg text-xs border border-border hover:bg-muted transition-colors"
+              >
+                Create new instead
+              </button>
+              <button
+                onClick={handleLink}
+                disabled={saving}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                {saving ? "Linking..." : "Link to Center"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2b: Not found — create form */}
+      {step === "notfound" && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
+            <UserX className="w-3.5 h-3.5 flex-shrink-0" />
+            No existing member found — fill in details to create a new one.
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Name *</label>
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Full name"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Mobile</label>
+              <input
+                value={mobile}
+                onChange={e => setMobile(e.target.value)}
+                placeholder="+91 ..."
+                type="tel"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Email</label>
+              <input
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="member@email.com"
+                type="email"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Height (cm)</label>
+              <input
+                type="number"
+                value={height}
+                onChange={e => setHeight(e.target.value)}
+                placeholder="e.g. 165"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Date of Joining</label>
+              <input
+                type="date"
+                value={doj}
+                onChange={e => setDoj(e.target.value)}
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-between">
+            <button
+              onClick={() => { setStep("search"); setError(""); }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              ← Back to search
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              {saving ? "Creating..." : "Create & Add"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

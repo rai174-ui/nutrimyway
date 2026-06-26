@@ -405,6 +405,48 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
 // Member management (per-center)
 // ---------------------------------------------------------------------------
 
+// GET /api/admin/members/lookup?mobile=...&email=... — find existing member (admin auth required)
+router.get("/admin/members/lookup", requireAdmin, async (req, res) => {
+  const { mobile, email } = req.query as { mobile?: string; email?: string };
+  if (!mobile && !email) { res.status(400).json({ error: "mobile or email is required" }); return; }
+
+  let row: Record<string, unknown> | undefined;
+  if (mobile) {
+    const { rows } = await pool.query(
+      `SELECT id, name, mobile, email, height_cm, date_of_joining FROM members WHERE mobile = $1 LIMIT 1`,
+      [mobile.trim()]
+    );
+    row = rows[0];
+  }
+  if (!row && email) {
+    const { rows } = await pool.query(
+      `SELECT id, name, mobile, email, height_cm, date_of_joining FROM members WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email.trim()]
+    );
+    row = rows[0];
+  }
+  res.json(row ?? null);
+});
+
+// POST /api/admin/centers/:centerId/members/link — link an existing member to this center
+router.post("/admin/centers/:centerId/members/link", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { member_id } = req.body as { member_id?: number };
+  if (!member_id) { res.status(400).json({ error: "member_id is required" }); return; }
+
+  const { rows: member } = await pool.query("SELECT id, name FROM members WHERE id = $1", [member_id]);
+  if (!member[0]) { res.status(404).json({ error: "Member not found" }); return; }
+
+  await pool.query(
+    `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+    [member_id, centerId]
+  );
+  res.status(201).json(member[0]);
+});
+
 // GET /api/admin/centers/:centerId/members
 router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
   const { centerId } = req.params;
