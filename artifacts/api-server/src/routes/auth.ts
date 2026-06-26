@@ -31,6 +31,20 @@ function parseContact(body: Record<string, unknown>): ContactInfo | null {
   return null;
 }
 
+// Upsert a user_auth row. email uses a partial unique index (WHERE email IS NOT
+// NULL), so the ON CONFLICT target must include the matching predicate; mobile
+// has a full unique constraint and needs none.
+async function upsertUserAuth(contact: ContactInfo, memberId: number): Promise<void> {
+  const conflict = contact.kind === "email"
+    ? "ON CONFLICT (email) WHERE email IS NOT NULL"
+    : "ON CONFLICT (mobile)";
+  await pool.query(
+    `INSERT INTO user_auth (${contact.kind}, member_id) VALUES ($1,$2)
+     ${conflict} DO UPDATE SET member_id = $2`,
+    [contact.value, memberId]
+  );
+}
+
 // POST /api/auth/request-otp
 router.post("/auth/request-otp", async (req, res) => {
   const contact = parseContact(req.body as Record<string, unknown>);
@@ -88,11 +102,7 @@ router.post("/auth/verify-otp", async (req, res) => {
     `SELECT * FROM members WHERE ${col} = $1`, [contact.value]
   );
   if (memberRows[0]) {
-    await pool.query(
-      `INSERT INTO user_auth (${col}, member_id) VALUES ($1,$2)
-       ON CONFLICT (${col}) DO UPDATE SET member_id = $2`,
-      [contact.value, memberRows[0].id]
-    );
+    await upsertUserAuth(contact, memberRows[0].id);
     const token = signToken(memberRows[0].id, contact);
     res.json({ token, member_id: memberRows[0].id, is_new_user: false });
     return;
@@ -142,10 +152,15 @@ router.post("/auth/register", async (req, res) => {
     return;
   }
 
-  // Create member
+  // Create member. The members table uses an explicit INTEGER primary key
+  // (seeded from xlsx with fixed IDs), so compute the next available id.
+  const { rows: idRows } = await pool.query(
+    "SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM members"
+  );
+  const nextId = idRows[0].next_id as number;
   const { rows: memberRows } = await pool.query(
-    `INSERT INTO members (name, ${col}) VALUES ($1,$2) RETURNING *`,
-    [name.trim(), contact.value]
+    `INSERT INTO members (id, name, ${col}) VALUES ($1,$2,$3) RETURNING *`,
+    [nextId, name.trim(), contact.value]
   );
   const memberId = memberRows[0].id;
 
@@ -158,11 +173,7 @@ router.post("/auth/register", async (req, res) => {
     );
   }
 
-  await pool.query(
-    `INSERT INTO user_auth (${col}, member_id) VALUES ($1,$2)
-     ON CONFLICT (${col}) DO UPDATE SET member_id = $2`,
-    [contact.value, memberId]
-  );
+  await upsertUserAuth(contact, memberId);
 
   const fullToken = signToken(memberId, contact);
   res.status(201).json({ token: fullToken, member_id: memberId });
