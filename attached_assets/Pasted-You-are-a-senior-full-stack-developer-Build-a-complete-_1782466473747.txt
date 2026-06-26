@@ -1,0 +1,205 @@
+You are a senior full-stack developer. Build a complete mobile-first health and nutrition tracking web app called NutriMyWay on Replit.
+
+─────────────────────────────────────
+TECH STACK
+─────────────────────────────────────
+• Frontend: React (Vite), Tailwind CSS, React Router v6
+• Backend: Node.js + Express REST API
+• Database: SQLite via better-sqlite3 (single file, zero config)
+• File parsing: xlsx npm package (to read composition.xlsx on first boot)
+• State: React Context + useReducer (no Redux)
+• Icons: Lucide React
+
+─────────────────────────────────────
+DATA MODEL  (from composition.xlsx)
+─────────────────────────────────────
+Seed the SQLite database by parsing composition.xlsx on first server boot.
+
+Table: members
+  id INTEGER PRIMARY KEY
+  name TEXT
+  date_of_joining DATE
+  height_cm INTEGER
+
+Table: centers
+  id TEXT PRIMARY KEY   -- e.g. CI-1, CI-2, Home
+  name TEXT
+
+Table: member_center_mapping
+  member_id INTEGER REFERENCES members(id)
+  center_id TEXT REFERENCES centers(id)
+
+Table: health_records
+  id INTEGER PRIMARY KEY AUTOINCREMENT
+  member_id INTEGER REFERENCES members(id)
+  center_id TEXT REFERENCES centers(id)
+  recorded_at DATETIME
+  weight_kg REAL
+  bmi REAL
+  resting_hr INTEGER
+  notes TEXT
+
+Table: consumption_logs
+  id INTEGER PRIMARY KEY AUTOINCREMENT
+  member_id INTEGER REFERENCES members(id)
+  logged_at DATETIME
+  meal_slot TEXT   -- Breakfast | Lunch | Snack | Dinner
+  food_item TEXT
+  quantity_g REAL
+  calories_kcal REAL
+  protein_g REAL
+  carbs_g REAL
+  fat_g REAL
+
+Table: bom_items
+  id INTEGER PRIMARY KEY AUTOINCREMENT
+  plan_name TEXT
+  food_item TEXT
+  quantity_g REAL
+  calories_kcal REAL
+  protein_g REAL
+  carbs_g REAL
+  fat_g REAL
+
+Table: pack_sizes
+  id INTEGER PRIMARY KEY AUTOINCREMENT
+  item_name TEXT
+  pack_label TEXT
+  weight_g REAL
+  calories_kcal REAL
+
+Table: issuances
+  id INTEGER PRIMARY KEY AUTOINCREMENT
+  member_id INTEGER REFERENCES members(id)
+  center_id TEXT REFERENCES centers(id)
+  pack_label TEXT
+  issued_at DATETIME
+  status TEXT   -- Issued | Pending | Collected
+
+─────────────────────────────────────
+REST API ENDPOINTS (Express)
+─────────────────────────────────────
+GET    /api/members/:id                  -- member profile
+GET    /api/members/:id/centers          -- centers mapped to member
+GET    /api/members/:id/health-records   -- all health records
+POST   /api/members/:id/health-records   -- add health record (center visit)
+GET    /api/members/:id/consumption      -- logs, optional ?date=YYYY-MM-DD
+POST   /api/members/:id/consumption      -- add consumption log entry
+GET    /api/members/:id/summary?date=    -- daily kcal + macro totals
+GET    /api/bom?plan=                    -- BOM items for a plan
+GET    /api/pack-sizes                   -- all pack size reference data
+GET    /api/members/:id/issuances        -- pack issuance history
+
+─────────────────────────────────────
+SCREENS (React Router)
+─────────────────────────────────────
+Build a bottom-tab navigation with 4 screens. The layout must be mobile-first, max-width 400px centered, with a fixed bottom nav bar.
+
+1. /dashboard
+   - Greeting with member name and today's date
+   - Calorie progress ring (consumed / target)
+   - Protein, Carbs, Fat macro chips
+   - Next center visit card (deep teal dark card, upcoming issuance or scheduled visit)
+   - Today's meal log list (Breakfast, Lunch, Snack, Dinner slots)
+   - "Log a meal" CTA navigates to /log
+
+2. /log
+   - Meal slot tab selector (Breakfast | Lunch | Snack | Dinner)
+   - "From your plan" section: fetch BOM items for the active plan, show as tappable rows
+   - Tapping a BOM item pre-fills the log entry form
+   - Pack size reference card pulled from pack_sizes table
+   - Free-text custom food item search input
+   - Save button POSTs to /api/members/:id/consumption
+   - On save, navigate back to /dashboard and refresh summary
+
+3. /center
+   - Member's mapped centers shown as filter pills (CI-1, CI-2, Home)
+   - Latest health record card: weight, BMI, height, resting HR in 2x2 metric grid
+   - Weight trend bar chart (last 6 health records)
+   - Visit history list: icon, visit type, center ID, date, measurement, status pill
+
+4. /profile
+   - Avatar initials, name, member ID, height, join date
+   - Center mapping pills
+   - Active nutrition plan card with calorie + protein progress bars
+   - Issuance history list from /api/members/:id/issuances
+
+─────────────────────────────────────
+DESIGN SYSTEM
+─────────────────────────────────────
+Primary palette: deep teal
+  --teal-dark:   #04342C
+  --teal-mid:    #0F6E56
+  --teal-base:   #1D9E75
+  --teal-light:  #9FE1CB
+  --teal-pale:   #E1F5EE
+
+Backgrounds: #FFFFFF surface, #F5F5F3 page bg
+Text: #1A1A1A primary, #6B6B67 secondary, #A8A8A4 muted
+Border: 0.5px solid #E0E0DC
+
+Rules:
+  - No gradients, no drop shadows on cards
+  - Card border-radius: 12px, control border-radius: 8px
+  - Font: Inter (import from Google Fonts)
+  - Bottom nav height: 64px with safe-area padding
+  - All numbers displayed via toFixed(1) or toLocaleString()
+  - Center visit card uses --teal-dark background with light text
+
+─────────────────────────────────────
+SEED / BOOT LOGIC
+─────────────────────────────────────
+On server start:
+1. Check if SQLite DB file exists
+2. If not: run CREATE TABLE statements, then parse composition.xlsx using the xlsx package
+3. Map Excel rows from each sheet to the correct table and INSERT
+4. Sheet mapping:
+   - "Member-Center Mapping" → members + centers + member_center_mapping
+   - "Issuing " → issuances
+   - "Consumtion" → consumption_logs (historical seed data)
+   - "HealthRecord" → health_records
+   - "BOM" → bom_items
+   - "PackSize" → pack_sizes
+5. Log "Database seeded from composition.xlsx" to console
+
+─────────────────────────────────────
+REPLIT-SPECIFIC SETUP
+─────────────────────────────────────
+• Use a single Replit Nix repl with both frontend and backend
+• package.json scripts:
+    "dev": runs concurrently: vite dev (port 5173) + node server (port 3001)
+    "build": vite build
+    "start": node server (serves built /dist + API on port 3001)
+• Place composition.xlsx in /data/composition.xlsx
+• SQLite DB file: /data/nutriMyWay.db
+• Frontend .env: VITE_API_BASE=http://localhost:3001
+• Add a /health GET endpoint that returns { status: "ok" } for Replit's uptime check
+• CORS: allow localhost:5173 in development
+
+─────────────────────────────────────
+DELIVERABLES
+─────────────────────────────────────
+Generate all files needed to run immediately:
+  /server/index.js        Express app + all API routes
+  /server/db.js           SQLite setup + seed logic
+  /src/main.jsx           React entry
+  /src/App.jsx            Router + bottom nav shell
+  /src/screens/Dashboard.jsx
+  /src/screens/Log.jsx
+  /src/screens/Center.jsx
+  /src/screens/Profile.jsx
+  /src/components/ProgressRing.jsx
+  /src/components/MacroChip.jsx
+  /src/components/MealItem.jsx
+  /src/components/VisitCard.jsx
+  /src/api.js             Fetch helpers for all endpoints
+  /index.html
+  /vite.config.js
+  /package.json
+  /tailwind.config.js
+  /.replit                run = "npm run start"
+
+After generating all files, confirm the app will boot with:
+  npm install && npm run dev
+
+Do not use TypeScript. Do not use any paid APIs. Do not use Firebase or Supabase. Keep all data local to the Replit instance using SQLite.

@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "NutriMyWay"
+version = "1.0.0"
+id = "artifacts/nutrimyway"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23159
+
+[services.development]
+run = "pnpm --filter @workspace/nutrimyway run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/nutrimyway", "run", "build" ]
+publicDir = "artifacts/nutrimyway/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23159"
+BASE_PATH = "/"

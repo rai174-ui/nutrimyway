@@ -3,13 +3,19 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: NutriMyWay API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: members
+    description: Member operations
+  - name: bom
+    description: Bill of Materials
+  - name: pack-sizes
+    description: Pack size reference data
 paths:
   /healthz:
     get:
@@ -24,6 +30,223 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /members/{memberId}:
+    get:
+      operationId: getMember
+      tags: [members]
+      summary: Get member profile
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Member profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+
+  /members/{memberId}/centers:
+    get:
+      operationId: getMemberCenters
+      tags: [members]
+      summary: Get centers mapped to member
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of centers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Center"
+
+  /members/{memberId}/health-records:
+    get:
+      operationId: getHealthRecords
+      tags: [members]
+      summary: Get all health records for member
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of health records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HealthRecord"
+    post:
+      operationId: createHealthRecord
+      tags: [members]
+      summary: Add health record
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HealthRecordInput"
+      responses:
+        "201":
+          description: Health record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthRecord"
+
+  /members/{memberId}/consumption:
+    get:
+      operationId: getConsumptionLogs
+      tags: [members]
+      summary: Get consumption logs
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Date filter in YYYY-MM-DD format
+      responses:
+        "200":
+          description: List of consumption logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConsumptionLog"
+    post:
+      operationId: createConsumptionLog
+      tags: [members]
+      summary: Add consumption log entry
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsumptionLogInput"
+      responses:
+        "201":
+          description: Consumption log created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsumptionLog"
+
+  /members/{memberId}/summary:
+    get:
+      operationId: getDailySummary
+      tags: [members]
+      summary: Get daily calorie and macro totals
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Date in YYYY-MM-DD format
+      responses:
+        "200":
+          description: Daily summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailySummary"
+
+  /members/{memberId}/issuances:
+    get:
+      operationId: getMemberIssuances
+      tags: [members]
+      summary: Get pack issuance history for member
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of issuances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Issuance"
+
+  /bom:
+    get:
+      operationId: getBomItems
+      tags: [bom]
+      summary: Get BOM items for a plan
+      parameters:
+        - name: plan
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of BOM items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BomItem"
+
+  /pack-sizes:
+    get:
+      operationId: getPackSizes
+      tags: [pack-sizes]
+      summary: Get all pack size reference data
+      responses:
+        "200":
+          description: List of pack sizes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PackSize"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +257,204 @@ components:
       required:
         - status
 
+    Member:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        date_of_joining:
+          type: ["string", "null"]
+        height_cm:
+          type: ["integer", "null"]
+      required:
+        - id
+        - name
+
+    Center:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      required:
+        - id
+        - name
+
+    HealthRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        member_id:
+          type: integer
+        center_id:
+          type: ["string", "null"]
+        recorded_at:
+          type: string
+        weight_kg:
+          type: ["number", "null"]
+        bmi:
+          type: ["number", "null"]
+        resting_hr:
+          type: ["integer", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - member_id
+        - recorded_at
+
+    HealthRecordInput:
+      type: object
+      properties:
+        center_id:
+          type: ["string", "null"]
+        weight_kg:
+          type: ["number", "null"]
+        bmi:
+          type: ["number", "null"]
+        resting_hr:
+          type: ["integer", "null"]
+        notes:
+          type: ["string", "null"]
+
+    ConsumptionLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        member_id:
+          type: integer
+        logged_at:
+          type: string
+        meal_slot:
+          type: string
+        food_item:
+          type: string
+        quantity_g:
+          type: ["number", "null"]
+        calories_kcal:
+          type: ["number", "null"]
+        protein_g:
+          type: ["number", "null"]
+        carbs_g:
+          type: ["number", "null"]
+        fat_g:
+          type: ["number", "null"]
+      required:
+        - id
+        - member_id
+        - meal_slot
+        - food_item
+
+    ConsumptionLogInput:
+      type: object
+      properties:
+        meal_slot:
+          type: string
+        food_item:
+          type: string
+        quantity_g:
+          type: ["number", "null"]
+        calories_kcal:
+          type: ["number", "null"]
+        protein_g:
+          type: ["number", "null"]
+        carbs_g:
+          type: ["number", "null"]
+        fat_g:
+          type: ["number", "null"]
+      required:
+        - meal_slot
+        - food_item
+
+    DailySummary:
+      type: object
+      properties:
+        date:
+          type: string
+        total_calories:
+          type: number
+        total_protein:
+          type: number
+        total_carbs:
+          type: number
+        total_fat:
+          type: number
+        target_calories:
+          type: number
+        logs_by_slot:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/ConsumptionLog"
+      required:
+        - date
+        - total_calories
+        - total_protein
+        - total_carbs
+        - total_fat
+
+    BomItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        plan_name:
+          type: ["string", "null"]
+        food_item:
+          type: string
+        quantity_g:
+          type: ["number", "null"]
+        calories_kcal:
+          type: ["number", "null"]
+        protein_g:
+          type: ["number", "null"]
+        carbs_g:
+          type: ["number", "null"]
+        fat_g:
+          type: ["number", "null"]
+      required:
+        - id
+        - food_item
+
+    PackSize:
+      type: object
+      properties:
+        id:
+          type: integer
+        item_name:
+          type: string
+        pack_label:
+          type: ["string", "null"]
+        weight_g:
+          type: ["number", "null"]
+        calories_kcal:
+          type: ["number", "null"]
+      required:
+        - id
+        - item_name
+
+    Issuance:
+      type: object
+      properties:
+        id:
+          type: integer
+        member_id:
+          type: integer
+        center_id:
+          type: ["string", "null"]
+        pack_label:
+          type: ["string", "null"]
+        issued_at:
+          type: string
+        status:
+          type: ["string", "null"]
+      required:
+        - id
+        - member_id
+        - issued_at
