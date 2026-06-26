@@ -86,10 +86,16 @@ router.post("/members/:id/consumption", async (req, res) => {
   };
   if (!meal_slot || !food_item) { res.status(400).json({ error: "meal_slot and food_item are required" }); return; }
 
-  // Validate menu_item_id exists when provided (prevents orphan FK)
+  // Validate menu_item_id exists AND belongs to the member's own center (prevents cross-center IDOR)
   if (menu_item_id != null) {
-    const { rows: item } = await pool.query("SELECT id FROM menu_items WHERE id = $1", [menu_item_id]);
-    if (!item[0]) { res.status(400).json({ error: "menu_item_id does not exist" }); return; }
+    const { rows: item } = await pool.query(
+      `SELECT mi.id FROM menu_items mi
+       JOIN member_center_mapping mcm ON mcm.center_id = mi.center_id
+       WHERE mi.id = $1 AND mcm.member_id = $2
+       LIMIT 1`,
+      [menu_item_id, memberId]
+    );
+    if (!item[0]) { res.status(400).json({ error: "menu_item_id does not exist or does not belong to member's center" }); return; }
   }
 
   const { rows } = await pool.query(

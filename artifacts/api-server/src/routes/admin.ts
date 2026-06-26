@@ -243,20 +243,23 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
   const from = typeof req.query.from === "string" ? req.query.from : today;
   const to   = typeof req.query.to   === "string" ? req.query.to   : today;
 
-  // Resolve each log to a menu_item_id:
-  //   1. Prefer the stored FK (cl.menu_item_id) when the log was created against a menu item.
-  //   2. Fall back to a case-insensitive name match within the center for legacy/member logs.
-  // A unique index on menu_items(center_id, LOWER(name)) ensures the sub-select returns
-  // at most one row, so there is no fan-out from the fallback path.
+  // Resolve each log to a menu_item_id that belongs to THIS center:
+  //   1. Prefer the stored FK only if the referenced menu_item belongs to centerId.
+  //   2. Fall back to a case-insensitive name match within the center for legacy logs.
+  // Both paths enforce center ownership — cross-center menu_item_id is silently ignored.
   const { rows: byComponent } = await pool.query(
     `WITH resolved AS (
        SELECT
          cl.id,
          cl.member_id,
          COALESCE(
-           cl.menu_item_id,
+           -- FK path: only trust it if the item actually belongs to this center
+           (SELECT mi.id FROM menu_items mi
+            WHERE mi.id = cl.menu_item_id AND mi.center_id = $1
+            LIMIT 1),
+           -- Name-fallback for legacy logs
            (SELECT mi2.id FROM menu_items mi2
-            WHERE mi2.center_id = mcm.center_id
+            WHERE mi2.center_id = $1
               AND LOWER(mi2.name) = LOWER(cl.food_item)
             LIMIT 1)
          ) AS menu_item_id
@@ -279,13 +282,15 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
     [centerId, from, to]
   );
 
-  // Logs breakdown: only entries that resolved to a menu item (FK or name match)
+  // Logs breakdown: only entries that resolved to a THIS-center menu item
   const { rows: logs } = await pool.query(
     `SELECT cl.id, cl.member_id, m.name AS member_name, cl.logged_at, cl.meal_slot,
             cl.food_item, cl.quantity_g, cl.calories_kcal,
-            COALESCE(cl.menu_item_id,
+            COALESCE(
+              (SELECT mi.id FROM menu_items mi
+               WHERE mi.id = cl.menu_item_id AND mi.center_id = $1 LIMIT 1),
               (SELECT mi2.id FROM menu_items mi2
-               WHERE mi2.center_id = mcm.center_id
+               WHERE mi2.center_id = $1
                  AND LOWER(mi2.name) = LOWER(cl.food_item)
                LIMIT 1)
             ) AS resolved_menu_item_id
@@ -295,10 +300,10 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
      WHERE mcm.center_id = $1
        AND DATE(cl.logged_at) BETWEEN $2 AND $3
        AND (
-         cl.menu_item_id IS NOT NULL
+         EXISTS (SELECT 1 FROM menu_items mi WHERE mi.id = cl.menu_item_id AND mi.center_id = $1)
          OR EXISTS (
            SELECT 1 FROM menu_items mi3
-           WHERE mi3.center_id = mcm.center_id
+           WHERE mi3.center_id = $1
              AND LOWER(mi3.name) = LOWER(cl.food_item)
          )
        )
