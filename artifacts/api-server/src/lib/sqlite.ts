@@ -186,11 +186,18 @@ async function migrateAdminTables(): Promise<void> {
   `);
 }
 
+function generateCenterPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let pwd = "";
+  for (let i = 0; i < 12; i++) {
+    pwd += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return pwd;
+}
+
 async function seedCenterPasswords(): Promise<void> {
   const { default: bcrypt } = await import("bcryptjs");
   const { rows: centers } = await pool.query("SELECT id, name FROM centers");
-  const DEFAULT_PASSWORD = "admin123";
-  const hash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
   for (const center of centers) {
     const { rows } = await pool.query(
@@ -198,12 +205,15 @@ async function seedCenterPasswords(): Promise<void> {
       [center.id]
     );
     if (!rows[0]) {
+      const password = generateCenterPassword();
+      const hash = await bcrypt.hash(password, 10);
       await pool.query(
         "INSERT INTO center_auth (center_id, password_hash) VALUES ($1,$2) ON CONFLICT DO NOTHING",
         [center.id, hash]
       );
-      logger.info({ centerId: center.id, centerName: center.name, password: DEFAULT_PASSWORD },
-        "Admin credentials seeded for center");
+      // Log password once at startup — staff must retrieve it from server logs
+      logger.info({ centerId: center.id, centerName: center.name, initialPassword: password },
+        "Admin credentials seeded for center — save this password, it will not be shown again");
     }
   }
 }

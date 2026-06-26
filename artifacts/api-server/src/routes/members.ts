@@ -78,16 +78,26 @@ router.get("/members/:id/consumption", async (req, res) => {
 // POST /api/members/:id/consumption
 router.post("/members/:id/consumption", async (req, res) => {
   const memberId = Number(req.params.id);
-  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g } = req.body as {
+  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id } = req.body as {
     meal_slot: string; food_item: string;
     quantity_g?: number | null; calories_kcal?: number | null;
     protein_g?: number | null; carbs_g?: number | null; fat_g?: number | null;
+    menu_item_id?: number | null;
   };
   if (!meal_slot || !food_item) { res.status(400).json({ error: "meal_slot and food_item are required" }); return; }
+
+  // Validate menu_item_id exists when provided (prevents orphan FK)
+  if (menu_item_id != null) {
+    const { rows: item } = await pool.query("SELECT id FROM menu_items WHERE id = $1", [menu_item_id]);
+    if (!item[0]) { res.status(400).json({ error: "menu_item_id does not exist" }); return; }
+  }
+
   const { rows } = await pool.query(
-    `INSERT INTO consumption_logs (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g)
-     VALUES ($1,NOW(),$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [memberId, meal_slot, food_item, quantity_g ?? null, calories_kcal ?? null, protein_g ?? null, carbs_g ?? null, fat_g ?? null]
+    `INSERT INTO consumption_logs
+       (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id)
+     VALUES ($1,NOW(),$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [memberId, meal_slot, food_item, quantity_g ?? null, calories_kcal ?? null,
+     protein_g ?? null, carbs_g ?? null, fat_g ?? null, menu_item_id ?? null]
   );
   res.status(201).json(rows[0]);
 });

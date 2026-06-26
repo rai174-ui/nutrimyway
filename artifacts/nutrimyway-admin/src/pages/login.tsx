@@ -68,7 +68,7 @@ export default function LoginPage() {
               placeholder="Enter center password"
               className="w-full h-11 px-3 rounded-xl border border-input bg-background text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
             />
-            <p className="text-xs text-muted-foreground mt-0.5">Default password: <code className="bg-muted px-1 rounded">admin123</code></p>
+            <p className="text-xs text-muted-foreground mt-0.5">Contact your administrator for the center password.</p>
           </div>
 
           {error && (
