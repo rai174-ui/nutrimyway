@@ -13,9 +13,22 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = await res.json() as T & { error?: string };
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? "Request failed");
-  return data;
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`;
+    try { const d = await res.json() as { error?: string }; msg = d.error ?? msg; } catch { /* html body */ }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function apiFetch<T>(path: string): Promise<T> {
+  const res = await fetch(`/api${path}`);
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`;
+    try { const d = await res.json() as { error?: string }; msg = d.error ?? msg; } catch { /* html body */ }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
 }
 
 const EASE = [0.25, 0.46, 0.45, 0.94] as [number, number, number, number];
@@ -71,7 +84,7 @@ export function Login() {
       );
       if (d.is_new_user) {
         setRegToken(d.token);
-        const r = await fetch("/api/centers"); setCenters(await r.json());
+        const cs = await apiFetch<Center[]>("/centers"); setCenters(cs);
         setStep("register");
       } else { login(d.token, d.member_id!); }
     } catch (e) { setError(e instanceof Error ? e.message : "Invalid OTP"); }
