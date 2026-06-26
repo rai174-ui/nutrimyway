@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { Plus, Trash2, Edit2, ChevronDown, ChevronUp, Loader2, Check, X, UtensilsCrossed } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
-  apiGet, apiPost, apiPut, apiDelete, getAdminCenter,
+  apiGet, apiPost, apiPut, apiDelete, getAdminCenter, bomPutPath, bomDeletePath,
   type MenuItem, type BomComponent
 } from "@/lib/api";
 
-function BomRow({ bom, onUpdate, onDelete }: {
+function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
   bom: BomComponent;
+  menuItemId: number;
   onUpdate: (updated: BomComponent) => void;
   onDelete: (id: number) => void;
 }) {
@@ -20,7 +21,7 @@ function BomRow({ bom, onUpdate, onDelete }: {
   async function save() {
     setSaving(true);
     try {
-      const updated = await apiPut<BomComponent>(`/admin/bom/${bom.id}`, {
+      const updated = await apiPut<BomComponent>(bomPutPath(menuItemId, bom.id), {
         ingredient, quantity: Number(quantity), unit
       });
       onUpdate(updated);
@@ -125,7 +126,7 @@ function MenuItemCard({ item, onUpdate, onDelete }: {
   }
 
   async function deleteBom(bomId: number) {
-    await apiDelete(`/admin/bom/${bomId}`);
+    await apiDelete(bomDeletePath(item.id, bomId));
     setBom(prev => prev.filter(b => b.id !== bomId));
   }
 
@@ -186,6 +187,7 @@ function MenuItemCard({ item, onUpdate, onDelete }: {
             <BomRow
               key={b.id}
               bom={b}
+              menuItemId={item.id}
               onUpdate={updated => setBom(prev => prev.map(x => x.id === updated.id ? updated : x))}
               onDelete={deleteBom}
             />

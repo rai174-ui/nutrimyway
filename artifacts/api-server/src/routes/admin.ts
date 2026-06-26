@@ -156,6 +156,15 @@ router.delete("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
 // GET /api/admin/menu-items/:itemId/bom
 router.get("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
   const { itemId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  // Verify item belongs to the authenticated center (IDOR guard)
+  const { rows: item } = await pool.query(
+    "SELECT center_id FROM menu_items WHERE id = $1", [itemId]
+  );
+  if (!item[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (item[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
   const { rows } = await pool.query(
     "SELECT id, ingredient, quantity, unit FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
     [itemId]
@@ -182,15 +191,16 @@ router.post("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
-// PUT /api/admin/bom/:bomId
-router.put("/admin/bom/:bomId", requireAdmin, async (req, res) => {
-  const { bomId } = req.params;
+// PUT /api/admin/menu-items/:itemId/bom/:bomId
+router.put("/admin/menu-items/:itemId/bom/:bomId", requireAdmin, async (req, res) => {
+  const { itemId, bomId } = req.params;
   const adminReq = req as AdminRequest;
 
   const { rows: existing } = await pool.query(
     `SELECT mb.id, mi.center_id FROM menu_item_bom mb
-     JOIN menu_items mi ON mi.id = mb.menu_item_id WHERE mb.id = $1`,
-    [bomId]
+     JOIN menu_items mi ON mi.id = mb.menu_item_id
+     WHERE mb.id = $1 AND mb.menu_item_id = $2`,
+    [bomId, itemId]
   );
   if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
   if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
@@ -205,15 +215,16 @@ router.put("/admin/bom/:bomId", requireAdmin, async (req, res) => {
   res.json(rows[0]);
 });
 
-// DELETE /api/admin/bom/:bomId
-router.delete("/admin/bom/:bomId", requireAdmin, async (req, res) => {
-  const { bomId } = req.params;
+// DELETE /api/admin/menu-items/:itemId/bom/:bomId
+router.delete("/admin/menu-items/:itemId/bom/:bomId", requireAdmin, async (req, res) => {
+  const { itemId, bomId } = req.params;
   const adminReq = req as AdminRequest;
 
   const { rows: existing } = await pool.query(
     `SELECT mb.id, mi.center_id FROM menu_item_bom mb
-     JOIN menu_items mi ON mi.id = mb.menu_item_id WHERE mb.id = $1`,
-    [bomId]
+     JOIN menu_items mi ON mi.id = mb.menu_item_id
+     WHERE mb.id = $1 AND mb.menu_item_id = $2`,
+    [bomId, itemId]
   );
   if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
   if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
@@ -232,14 +243,18 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
   const from = typeof req.query.from === "string" ? req.query.from : today;
   const to   = typeof req.query.to   === "string" ? req.query.to   : today;
 
-  // Per-component totals via menu_item_bom matched by food_item name
+  // Per-component totals: for each log entry matching a named menu item, we add
+  // one full serving of that item's BOM to the total.
+  // SUM(mb.quantity) over the join gives: COUNT(matching_logs) × ingredient_qty_per_serving
+  // (because the join produces one row per log × bom_component pair, and mb.quantity
+  // is constant for that ingredient, so summing it across log rows accumulates correctly).
   const { rows: byComponent } = await pool.query(
     `SELECT
        mb.ingredient,
        mb.unit,
-       SUM(cl.quantity_g) AS total_quantity_g,
+       SUM(mb.quantity) AS total_quantity,
        COUNT(DISTINCT cl.member_id) AS member_count,
-       COUNT(*) AS log_count
+       COUNT(DISTINCT cl.id) AS log_count
      FROM consumption_logs cl
      JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      JOIN menu_items mi ON mi.center_id = mcm.center_id AND LOWER(mi.name) = LOWER(cl.food_item)
@@ -247,7 +262,7 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
      WHERE mcm.center_id = $1
        AND DATE(cl.logged_at) BETWEEN $2 AND $3
      GROUP BY mb.ingredient, mb.unit
-     ORDER BY total_quantity_g DESC`,
+     ORDER BY total_quantity DESC`,
     [centerId, from, to]
   );
 

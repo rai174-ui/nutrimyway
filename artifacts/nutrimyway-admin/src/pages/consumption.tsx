@@ -141,7 +141,7 @@ export default function ConsumptionPage() {
                     <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
                       <td className="px-5 py-3 text-sm font-medium text-foreground">{c.ingredient}</td>
                       <td className="px-5 py-3 text-sm text-right tabular-nums">
-                        {Number(c.total_quantity_g).toFixed(1)} <span className="text-muted-foreground">{c.unit}</span>
+                        {Number(c.total_quantity).toFixed(1)} <span className="text-muted-foreground">{c.unit}</span>
                       </td>
                       <td className="px-5 py-3 text-sm text-right text-muted-foreground tabular-nums">{c.member_count}</td>
                       <td className="px-5 py-3 text-sm text-right text-muted-foreground tabular-nums">{c.log_count}</td>

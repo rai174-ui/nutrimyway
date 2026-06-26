@@ -44,6 +44,14 @@ export function apiDelete(path: string): Promise<void> {
   return apiFetch<void>(path, { method: "DELETE" });
 }
 
+export function bomPutPath(menuItemId: number, bomId: number): string {
+  return `/admin/menu-items/${menuItemId}/bom/${bomId}`;
+}
+
+export function bomDeletePath(menuItemId: number, bomId: number): string {
+  return `/admin/menu-items/${menuItemId}/bom/${bomId}`;
+}
+
 export interface Center { id: string; name: string; }
 
 export interface MenuItem {
@@ -72,7 +80,7 @@ export interface Dashboard {
 export interface ConsumptionReport {
   from: string;
   to: string;
-  by_component: { ingredient: string; unit: string; total_quantity_g: number; member_count: number; log_count: number }[];
+  by_component: { ingredient: string; unit: string; total_quantity: number; member_count: number; log_count: number }[];
   logs: { id: number; member_id: number; member_name: string; logged_at: string; meal_slot: string; food_item: string; quantity_g: number; calories_kcal: number }[];
 }
 
