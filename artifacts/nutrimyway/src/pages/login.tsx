@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Check, ChevronLeft, Loader2 } from "lucide-react";
+import { ArrowRight, Check, ChevronLeft, Loader2, Mail, Phone } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 
-type Step = "phone" | "otp" | "register";
+type Step = "contact" | "otp" | "register";
+type ContactKind = "mobile" | "email";
 interface Center { id: string; name: string }
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
@@ -17,29 +18,42 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
+const EASE = [0.25, 0.46, 0.45, 0.94] as [number, number, number, number];
 const slide = {
   initial: { opacity: 0, x: 32 },
-  animate: { opacity: 1, x: 0, transition: { duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] } },
+  animate: { opacity: 1, x: 0, transition: { duration: 0.28, ease: EASE } },
   exit:    { opacity: 0, x: -32, transition: { duration: 0.2 } },
 };
 
+function isValidMobile(v: string) { return /^\d{7,15}$/.test(v.replace(/\s+/g, "")); }
+function isValidEmail(v: string)  { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); }
+
 export function Login() {
   const { login } = useAuth();
-  const [step, setStep]           = useState<Step>("phone");
-  const [mobile, setMobile]       = useState("");
-  const [otpValue, setOtpValue]   = useState("");
+  const [step, setStep]             = useState<Step>("contact");
+  const [kind, setKind]             = useState<ContactKind>("mobile");
+  const [contact, setContact]       = useState("");
+  const [otpValue, setOtpValue]     = useState("");
   const [otpPreview, setOtpPreview] = useState<string | null>(null);
-  const [regToken, setRegToken]   = useState("");
-  const [name, setName]           = useState("");
-  const [centers, setCenters]     = useState<Center[]>([]);
-  const [selected, setSelected]   = useState<Set<string>>(new Set());
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState<string | null>(null);
+  const [regToken, setRegToken]     = useState("");
+  const [name, setName]             = useState("");
+  const [centers, setCenters]       = useState<Center[]>([]);
+  const [selected, setSelected]     = useState<Set<string>>(new Set());
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+
+  const cleanContact = kind === "mobile" ? contact.replace(/\s+/g, "") : contact.trim().toLowerCase();
+  const contactValid = kind === "mobile" ? isValidMobile(contact) : isValidEmail(contact);
+
+  function switchKind(k: ContactKind) {
+    setKind(k); setContact(""); setError(null);
+  }
 
   async function requestOtp() {
     setError(null); setLoading(true);
     try {
-      const d = await apiPost<{ otp_preview?: string }>("/auth/request-otp", { mobile });
+      const body = kind === "mobile" ? { mobile: cleanContact } : { email: cleanContact };
+      const d = await apiPost<{ otp_preview?: string }>("/auth/request-otp", body);
       setOtpPreview(d.otp_preview ?? null);
       setStep("otp");
     } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
@@ -49,8 +63,11 @@ export function Login() {
   async function verifyOtp() {
     setError(null); setLoading(true);
     try {
+      const body = kind === "mobile"
+        ? { mobile: cleanContact, otp: otpValue }
+        : { email: cleanContact,  otp: otpValue };
       const d = await apiPost<{ token: string; member_id: number | null; is_new_user: boolean }>(
-        "/auth/verify-otp", { mobile, otp: otpValue }
+        "/auth/verify-otp", body
       );
       if (d.is_new_user) {
         setRegToken(d.token);
@@ -76,32 +93,35 @@ export function Login() {
     setSelected(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
 
-  const canSubmitPhone    = mobile.trim().length >= 7 && !loading;
+  const canSubmitContact  = contactValid && !loading;
   const canSubmitOtp      = otpValue.length === 6 && !loading;
   const canSubmitRegister = name.trim().length > 0 && selected.size > 0 && !loading;
+
+  const maskedContact = kind === "mobile"
+    ? `+${cleanContact.slice(0, 2)} ••••• ${cleanContact.slice(-4)}`
+    : `${contact.slice(0, 2)}•••@${contact.split("@")[1] ?? ""}`;
 
   return (
     <div className="min-h-screen bg-background flex flex-col overflow-hidden">
       {/* Top decorative band */}
       <div className="relative h-56 bg-teal-dark flex-shrink-0 flex flex-col items-center justify-end pb-8 overflow-hidden">
-        {/* Soft circles */}
         <div className="absolute -top-10 -right-10 w-52 h-52 rounded-full bg-white/5" />
         <div className="absolute top-8 -left-12 w-44 h-44 rounded-full bg-white/5" />
         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-28 h-28 rounded-full bg-background" />
-        {/* Logo mark */}
         <div className="relative z-10 w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-lg mb-1">
           <span className="text-teal-dark text-2xl font-black tracking-tight">N</span>
         </div>
       </div>
 
-      {/* Content card */}
       <div className="flex-1 flex flex-col max-w-sm w-full mx-auto px-6 pt-10 pb-8">
-        {/* Step back button */}
         <AnimatePresence>
-          {step !== "phone" && (
+          {step !== "contact" && (
             <motion.button
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => { if (step === "otp") { setStep("phone"); setOtpValue(""); setError(null); } else { setStep("otp"); setError(null); } }}
+              onClick={() => {
+                if (step === "otp")      { setStep("contact"); setOtpValue(""); setError(null); }
+                else if (step === "register") { setStep("otp"); setError(null); }
+              }}
               className="flex items-center gap-1 text-sm text-muted-foreground mb-4 -ml-1 hover:text-foreground transition-colors"
             >
               <ChevronLeft className="w-4 h-4" /> Back
@@ -110,35 +130,69 @@ export function Login() {
         </AnimatePresence>
 
         <AnimatePresence mode="wait">
-          {/* ── STEP 1: Phone ── */}
-          {step === "phone" && (
-            <motion.div key="phone" {...slide} className="flex flex-col gap-6">
+          {/* ── STEP 1: Contact ── */}
+          {step === "contact" && (
+            <motion.div key="contact" {...slide} className="flex flex-col gap-6">
               <div>
                 <h1 className="text-2xl font-bold">Welcome back</h1>
-                <p className="text-muted-foreground text-sm mt-1">Enter your mobile number to continue</p>
+                <p className="text-muted-foreground text-sm mt-1">Sign in or create your account</p>
               </div>
 
-              <div className="space-y-2">
-                <label htmlFor="mobile" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Mobile Number
-                </label>
-                <div className="relative">
-                  <input
-                    id="mobile"
-                    type="tel"
-                    inputMode="tel"
-                    placeholder="+91 98765 43210"
-                    value={mobile}
-                    onChange={e => setMobile(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && canSubmitPhone && requestOtp()}
-                    className="w-full h-13 px-4 py-3.5 rounded-[12px] border border-input bg-card text-base placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                  />
-                </div>
+              {/* Mobile / Email toggle */}
+              <div className="flex bg-muted rounded-[10px] p-1 gap-1">
+                <TabButton
+                  active={kind === "mobile"}
+                  onClick={() => switchKind("mobile")}
+                  icon={<Phone className="w-3.5 h-3.5" />}
+                  label="Mobile"
+                />
+                <TabButton
+                  active={kind === "email"}
+                  onClick={() => switchKind("email")}
+                  icon={<Mail className="w-3.5 h-3.5" />}
+                  label="Email"
+                />
               </div>
+
+              <AnimatePresence mode="wait">
+                {kind === "mobile" ? (
+                  <motion.div key="mobile-field" {...slide} className="space-y-2">
+                    <label htmlFor="contact-input" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Mobile Number
+                    </label>
+                    <input
+                      id="contact-input"
+                      type="tel"
+                      inputMode="tel"
+                      placeholder="+91 98765 43210"
+                      value={contact}
+                      onChange={e => setContact(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && canSubmitContact && requestOtp()}
+                      className="w-full h-13 px-4 py-3.5 rounded-[12px] border border-input bg-card text-base placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div key="email-field" {...slide} className="space-y-2">
+                    <label htmlFor="contact-input" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Email Address
+                    </label>
+                    <input
+                      id="contact-input"
+                      type="email"
+                      inputMode="email"
+                      placeholder="you@example.com"
+                      value={contact}
+                      onChange={e => setContact(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && canSubmitContact && requestOtp()}
+                      className="w-full h-13 px-4 py-3.5 rounded-[12px] border border-input bg-card text-base placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {error && <ErrorBanner msg={error} />}
 
-              <PrimaryButton onClick={requestOtp} disabled={!canSubmitPhone} loading={loading}>
+              <PrimaryButton onClick={requestOtp} disabled={!canSubmitContact} loading={loading}>
                 Send OTP <ArrowRight className="w-4 h-4 ml-1.5" />
               </PrimaryButton>
 
@@ -153,13 +207,13 @@ export function Login() {
           {step === "otp" && (
             <motion.div key="otp" {...slide} className="flex flex-col gap-6">
               <div>
-                <h1 className="text-2xl font-bold">Verify your number</h1>
+                <h1 className="text-2xl font-bold">Verify your {kind === "mobile" ? "number" : "email"}</h1>
                 <p className="text-muted-foreground text-sm mt-1">
-                  We sent a 6-digit code to <span className="font-medium text-foreground">{mobile}</span>
+                  We sent a 6-digit code to{" "}
+                  <span className="font-medium text-foreground">{maskedContact}</span>
                 </p>
               </div>
 
-              {/* Dev OTP preview */}
               {otpPreview && (
                 <div className="bg-amber-50 border border-amber-200 rounded-[12px] p-4">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mb-1.5">
@@ -271,6 +325,23 @@ export function Login() {
   );
 }
 
+function TabButton({
+  active, onClick, icon, label,
+}: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[7px] text-sm font-medium transition-all ${
+        active
+          ? "bg-card text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {icon}{label}
+    </button>
+  );
+}
+
 function PrimaryButton({
   children, onClick, disabled, loading,
 }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; loading?: boolean }) {
@@ -287,7 +358,7 @@ function PrimaryButton({
 
 function ErrorBanner({ msg }: { msg: string }) {
   return (
-    <div className="flex items-center gap-2 bg-destructive/8 border border-destructive/20 rounded-[10px] px-4 py-3">
+    <div className="bg-destructive/8 border border-destructive/20 rounded-[10px] px-4 py-3">
       <span className="text-sm text-destructive">{msg}</span>
     </div>
   );
