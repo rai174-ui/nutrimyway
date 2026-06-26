@@ -5,10 +5,10 @@ import {
   getGetMemberCentersQueryKey,
   useCreateHealthRecord,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
-import { MapPin, Activity, Stethoscope, Plus, X, ChevronDown } from "lucide-react";
+import { MapPin, Activity, Stethoscope, Plus, X, ChevronDown, LogIn, LogOut, Clock } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -16,6 +16,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
+
+interface CheckinLog {
+  id: number;
+  center_id: string;
+  center_name: string;
+  checked_in_at: string;
+  checked_out_at: string | null;
+  duration_min: number;
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDuration(min: number) {
+  if (min < 60) return `${Math.round(min)}m`;
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
 
 interface VitalsForm {
   recorded_at: string;
@@ -77,6 +97,16 @@ export function Center() {
     query: { enabled: !!MEMBER_ID, queryKey: getGetMemberCentersQueryKey(MEMBER_ID!) },
   });
   const createRecord = useCreateHealthRecord();
+
+  const { data: checkinLogs } = useQuery<CheckinLog[]>({
+    queryKey: ["checkin-logs", MEMBER_ID],
+    queryFn: async () => {
+      const res = await fetch(`/api/members/${MEMBER_ID}/checkin-logs`);
+      if (!res.ok) throw new Error("Failed to load visit history");
+      return res.json() as Promise<CheckinLog[]>;
+    },
+    enabled: !!MEMBER_ID,
+  });
 
   const latestRecord = records?.[0];
   const reversed = [...(records || [])].reverse().slice(-8);
@@ -291,6 +321,49 @@ export function Center() {
           )}
         </div>
       </section>
+      {/* Visit History (check-in log) */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Visit History</h2>
+        <div className="space-y-2">
+          {(!checkinLogs || checkinLogs.length === 0) && (
+            <p className="text-sm text-muted-foreground text-center py-4">No visits recorded yet.</p>
+          )}
+          {checkinLogs?.map(log => {
+            const active = !log.checked_out_at;
+            return (
+              <div key={log.id} className="bg-card border border-border rounded-[12px] px-4 py-3.5 flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${active ? "bg-green-100" : "bg-muted"}`}>
+                  {active
+                    ? <LogIn className="w-4 h-4 text-green-600" />
+                    : <LogOut className="w-4 h-4 text-muted-foreground" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium truncate">{log.center_name}</p>
+                    {active && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide bg-green-100 text-green-700 rounded-full px-2 py-0.5 flex-shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {format(new Date(log.checked_in_at), "MMM d, yyyy")}
+                    {" · "}
+                    {formatTime(log.checked_in_at)}
+                    {log.checked_out_at && ` → ${formatTime(log.checked_out_at)}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
+                  <Clock className="w-3.5 h-3.5" />
+                  {formatDuration(log.duration_min)}{active ? "*" : ""}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {/* Log Progress sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" className="rounded-t-[20px] pb-safe px-5 max-h-[90vh] overflow-y-auto">

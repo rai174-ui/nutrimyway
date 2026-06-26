@@ -229,4 +229,24 @@ router.post("/members/:id/checkout", async (req, res) => {
   res.json(rows[0]);
 });
 
+// GET /api/members/:id/checkin-logs — member's own visit history (last 30 entries)
+router.get("/members/:id/checkin-logs", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows } = await pool.query(
+    `SELECT ci.id,
+            ci.center_id,
+            c.name          AS center_name,
+            ci.checked_in_at,
+            ci.checked_out_at,
+            EXTRACT(EPOCH FROM (COALESCE(ci.checked_out_at, NOW()) - ci.checked_in_at)) / 60 AS duration_min
+     FROM member_check_ins ci
+     JOIN centers c ON c.id = ci.center_id
+     WHERE ci.member_id = $1
+     ORDER BY ci.checked_in_at DESC
+     LIMIT 30`,
+    [memberId]
+  );
+  res.json(rows);
+});
+
 export default router;

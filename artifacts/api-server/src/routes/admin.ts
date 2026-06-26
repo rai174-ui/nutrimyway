@@ -447,6 +447,31 @@ router.post("/admin/centers/:centerId/members/link", requireAdmin, async (req, r
   res.status(201).json(member[0]);
 });
 
+// GET /api/admin/centers/:centerId/checkin-logs?date=YYYY-MM-DD (default today)
+router.get("/admin/centers/:centerId/checkin-logs", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const date = (req.query.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
+  const { rows } = await pool.query(
+    `SELECT ci.id,
+            ci.member_id,
+            m.name         AS member_name,
+            m.mobile       AS member_mobile,
+            ci.checked_in_at,
+            ci.checked_out_at,
+            EXTRACT(EPOCH FROM (COALESCE(ci.checked_out_at, NOW()) - ci.checked_in_at)) / 60 AS duration_min
+     FROM member_check_ins ci
+     JOIN members m ON m.id = ci.member_id
+     WHERE ci.center_id = $1
+       AND DATE(ci.checked_in_at AT TIME ZONE 'Asia/Kolkata') = $2
+     ORDER BY ci.checked_in_at DESC`,
+    [centerId, date]
+  );
+  res.json(rows);
+});
+
 // GET /api/admin/centers/:centerId/members
 router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
   const { centerId } = req.params;
