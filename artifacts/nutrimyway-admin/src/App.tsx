@@ -5,6 +5,8 @@ import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
 import SetMenuPage from "@/pages/set-menu";
 import ConsumptionPage from "@/pages/consumption";
+import SettingsPage from "@/pages/settings";
+import SuperPage from "@/pages/super";
 import { isAuthenticated } from "@/lib/api";
 
 const queryClient = new QueryClient();
@@ -30,6 +32,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/super" component={SuperPage} />
       <Route path="/dashboard">
         <AuthGuard><DashboardPage /></AuthGuard>
       </Route>
@@ -38,6 +41,9 @@ function Router() {
       </Route>
       <Route path="/consumption">
         <AuthGuard><ConsumptionPage /></AuthGuard>
+      </Route>
+      <Route path="/settings">
+        <AuthGuard><SettingsPage /></AuthGuard>
       </Route>
       <Route component={CatchAll} />
     </Switch>

@@ -1,11 +1,12 @@
 import { useLocation } from "wouter";
-import { LayoutDashboard, UtensilsCrossed, BarChart3, LogOut } from "lucide-react";
+import { LayoutDashboard, UtensilsCrossed, BarChart3, Settings, LogOut } from "lucide-react";
 import { clearAuth, getAdminCenter } from "@/lib/api";
 
 const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/set-menu", label: "Set Menu", icon: UtensilsCrossed },
   { path: "/consumption", label: "Consumption", icon: BarChart3 },
+  { path: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Nav() {

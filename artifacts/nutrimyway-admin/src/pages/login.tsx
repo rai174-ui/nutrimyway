@@ -86,7 +86,10 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-muted-foreground mt-6">Nutrition My Way · Admin Portal</p>
+        <p className="text-center text-xs text-muted-foreground mt-6">
+          Nutrition My Way · Admin Portal ·{" "}
+          <a href="/admin/super" className="hover:underline text-muted-foreground">Super Admin</a>
+        </p>
       </div>
     </div>
   );

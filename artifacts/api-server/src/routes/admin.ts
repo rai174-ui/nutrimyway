@@ -11,12 +11,20 @@ interface AdminJwt {
   role: "admin";
 }
 
+interface SuperAdminJwt {
+  role: "superadmin";
+}
+
 interface AdminRequest extends Request {
   adminCenterId: string;
 }
 
 function signAdminToken(centerId: string): string {
   return jwt.sign({ centerId, role: "admin" }, JWT_SECRET, { expiresIn: "12h" });
+}
+
+function signSuperAdminToken(): string {
+  return jwt.sign({ role: "superadmin" }, JWT_SECRET, { expiresIn: "12h" });
 }
 
 function requireAdmin(req: Request, res: Response, next: NextFunction): void {
@@ -32,6 +40,18 @@ function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   }
 }
 
+function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as SuperAdminJwt;
+    if (payload.role !== "superadmin") throw new Error("not superadmin");
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid or expired super admin token" });
+  }
+}
+
 // POST /api/admin/login
 router.post("/admin/login", async (req, res) => {
   const { center_id, password } = req.body as { center_id?: string; password?: string };
@@ -40,19 +60,81 @@ router.post("/admin/login", async (req, res) => {
     return;
   }
   const { rows } = await pool.query(
-    "SELECT ca.password_hash, c.name FROM center_auth ca JOIN centers c ON c.id = ca.center_id WHERE ca.center_id = $1",
+    `SELECT ca.password_hash, c.name, c.is_active
+     FROM center_auth ca JOIN centers c ON c.id = ca.center_id WHERE ca.center_id = $1`,
     [center_id]
   );
   if (!rows[0]) { res.status(401).json({ error: "Invalid center or password" }); return; }
+  if (!rows[0].is_active) { res.status(403).json({ error: "This center has been deactivated. Contact the super admin." }); return; }
   const ok = await bcrypt.compare(password, rows[0].password_hash as string);
   if (!ok) { res.status(401).json({ error: "Invalid center or password" }); return; }
   const token = signAdminToken(center_id);
   res.json({ token, center_id, center_name: rows[0].name });
 });
 
-// GET /api/admin/centers — list all centers (public, needed on login page)
+// POST /api/admin/super/login
+router.post("/admin/super/login", async (req, res) => {
+  const { password } = req.body as { password?: string };
+  if (!password) { res.status(400).json({ error: "password is required" }); return; }
+  const { rows } = await pool.query("SELECT password_hash FROM super_admin_auth WHERE id = 'superadmin'");
+  if (!rows[0]) { res.status(401).json({ error: "Invalid password" }); return; }
+  const ok = await bcrypt.compare(password, rows[0].password_hash as string);
+  if (!ok) { res.status(401).json({ error: "Invalid password" }); return; }
+  res.json({ token: signSuperAdminToken() });
+});
+
+// GET /api/admin/super/centers — all centers with active status (super admin only)
+router.get("/admin/super/centers", requireSuperAdmin, async (_req, res) => {
+  const { rows } = await pool.query("SELECT id, name, is_active FROM centers ORDER BY name");
+  res.json(rows);
+});
+
+// PATCH /api/admin/super/centers/:centerId/activate
+router.patch("/admin/super/centers/:centerId/activate", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { rows } = await pool.query(
+    "UPDATE centers SET is_active = TRUE WHERE id = $1 RETURNING id, name, is_active",
+    [centerId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
+  res.json(rows[0]);
+});
+
+// PATCH /api/admin/super/centers/:centerId/deactivate
+router.patch("/admin/super/centers/:centerId/deactivate", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { rows } = await pool.query(
+    "UPDATE centers SET is_active = FALSE WHERE id = $1 RETURNING id, name, is_active",
+    [centerId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
+  res.json(rows[0]);
+});
+
+// POST /api/admin/centers/:centerId/change-password
+router.post("/admin/centers/:centerId/change-password", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { current_password, new_password } = req.body as { current_password?: string; new_password?: string };
+  if (!current_password || !new_password) {
+    res.status(400).json({ error: "current_password and new_password are required" }); return;
+  }
+  if (new_password.length < 8) {
+    res.status(400).json({ error: "New password must be at least 8 characters" }); return;
+  }
+  const { rows } = await pool.query("SELECT password_hash FROM center_auth WHERE center_id = $1", [centerId]);
+  if (!rows[0]) { res.status(404).json({ error: "Center auth not found" }); return; }
+  const ok = await bcrypt.compare(current_password, rows[0].password_hash as string);
+  if (!ok) { res.status(401).json({ error: "Current password is incorrect" }); return; }
+  const hash = await bcrypt.hash(new_password, 10);
+  await pool.query("UPDATE center_auth SET password_hash = $1 WHERE center_id = $2", [hash, centerId]);
+  res.json({ success: true });
+});
+
+// GET /api/admin/centers — list active centers only (public, needed on login page)
 router.get("/admin/centers", async (_req, res) => {
-  const { rows } = await pool.query("SELECT id, name FROM centers ORDER BY name");
+  const { rows } = await pool.query("SELECT id, name FROM centers WHERE is_active = TRUE ORDER BY name");
   res.json(rows);
 });
 

@@ -40,6 +40,10 @@ export function apiPut<T>(path: string, body: unknown): Promise<T> {
   return apiFetch<T>(path, { method: "PUT", body: JSON.stringify(body) });
 }
 
+export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  return apiFetch<T>(path, { method: "PATCH", body: body != null ? JSON.stringify(body) : undefined });
+}
+
 export function apiDelete(path: string): Promise<void> {
   return apiFetch<void>(path, { method: "DELETE" });
 }
@@ -53,6 +57,43 @@ export function bomDeletePath(menuItemId: number, bomId: number): string {
 }
 
 export interface Center { id: string; name: string; }
+export interface CenterWithStatus { id: string; name: string; is_active: boolean; }
+
+export function saveSuperAuth(token: string) {
+  localStorage.setItem("nmw_super_token", token);
+}
+export function getSuperToken(): string | null {
+  return localStorage.getItem("nmw_super_token");
+}
+export function clearSuperAuth() {
+  localStorage.removeItem("nmw_super_token");
+}
+export function isSuperAuthenticated(): boolean {
+  return !!getSuperToken();
+}
+
+export function superAuthHeaders(): Record<string, string> {
+  const t = getSuperToken();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+export async function superFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...superAuthHeaders(),
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = `Request failed (${res.status})`;
+    try { msg = (JSON.parse(text) as { error: string }).error ?? msg; } catch { /* */ }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
+}
 
 export interface MenuItem {
   id: number;

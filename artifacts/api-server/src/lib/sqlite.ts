@@ -186,6 +186,36 @@ async function migrateAdminTables(): Promise<void> {
   `);
 }
 
+async function migrateAdminTables2(): Promise<void> {
+  // Add is_active flag to centers so super admin can enable/disable them
+  await pool.query(`
+    ALTER TABLE centers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+  `);
+  // Super admin credentials (single row, id = 'superadmin')
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS super_admin_auth (
+      id TEXT PRIMARY KEY DEFAULT 'superadmin',
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+}
+
+async function seedSuperAdmin(): Promise<void> {
+  const { default: bcrypt } = await import("bcryptjs");
+  const { rows } = await pool.query("SELECT id FROM super_admin_auth WHERE id = 'superadmin'");
+  if (!rows[0]) {
+    const password = generateCenterPassword();
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query(
+      "INSERT INTO super_admin_auth (id, password_hash) VALUES ('superadmin', $1) ON CONFLICT DO NOTHING",
+      [hash]
+    );
+    logger.info({ initialPassword: password },
+      "Super admin credentials seeded — save this password, it will not be shown again");
+  }
+}
+
 function generateCenterPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
   let pwd = "";
@@ -396,5 +426,7 @@ export async function initDb(): Promise<void> {
   await migrateColumns();
   await seedFromXlsx();
   await migrateAdminTables();
+  await migrateAdminTables2();
   await seedCenterPasswords();
+  await seedSuperAdmin();
 }
