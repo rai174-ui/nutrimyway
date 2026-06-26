@@ -1,0 +1,1 @@
+- [Check-in system](check-in-system.md) — member_check_ins table added via migrateAdminTables3; members.id is now auto-increment via sequence

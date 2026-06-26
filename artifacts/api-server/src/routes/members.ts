@@ -147,4 +147,86 @@ router.get("/members/:id/issuances", async (req, res) => {
   res.json(rows);
 });
 
+// GET /api/members/:id/checkin/active — current active check-in with center info
+router.get("/members/:id/checkin/active", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows } = await pool.query(
+    `SELECT mci.id, mci.member_id, mci.center_id, mci.checked_in_at, mci.checked_out_at,
+            c.name AS center_name
+     FROM member_check_ins mci
+     JOIN centers c ON c.id = mci.center_id
+     WHERE mci.member_id = $1 AND mci.checked_out_at IS NULL
+     ORDER BY mci.checked_in_at DESC LIMIT 1`,
+    [memberId]
+  );
+  res.json(rows[0] ?? null);
+});
+
+// GET /api/members/:id/center-menu — menu items for the member's active check-in center
+router.get("/members/:id/center-menu", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows: checkin } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
+    [memberId]
+  );
+  if (!checkin[0]) { res.json([]); return; }
+
+  const centerId = checkin[0].center_id as string;
+  const { rows } = await pool.query(
+    `SELECT mi.id, mi.name, mi.description,
+       COALESCE(
+         json_agg(
+           json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit)
+           ORDER BY mib.id
+         ) FILTER (WHERE mib.id IS NOT NULL),
+         '[]'::json
+       ) AS bom
+     FROM menu_items mi
+     LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
+     WHERE mi.center_id = $1
+     GROUP BY mi.id, mi.name, mi.description, mi.created_at
+     ORDER BY mi.created_at`,
+    [centerId]
+  );
+  res.json(rows);
+});
+
+// POST /api/members/:id/checkin — self check-in (body: { center_id })
+router.post("/members/:id/checkin", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { center_id } = req.body as { center_id?: string };
+  if (!center_id) { res.status(400).json({ error: "center_id is required" }); return; }
+
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [memberId, center_id]
+  );
+  if (!membership[0]) { res.status(403).json({ error: "Not a member of this center" }); return; }
+
+  const { rows: existing } = await pool.query(
+    `SELECT id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL`,
+    [memberId]
+  );
+  if (existing[0]) { res.status(409).json({ error: "Already checked in" }); return; }
+
+  const { rows } = await pool.query(
+    `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
+    [memberId, center_id]
+  );
+  res.status(201).json(rows[0]);
+});
+
+// POST /api/members/:id/checkout — self check-out
+router.post("/members/:id/checkout", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows } = await pool.query(
+    `UPDATE member_check_ins SET checked_out_at = NOW()
+     WHERE member_id = $1 AND checked_out_at IS NULL
+     RETURNING *`,
+    [memberId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "No active check-in found" }); return; }
+  res.json(rows[0]);
+});
+
 export default router;

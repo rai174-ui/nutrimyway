@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Sunrise, Sun, Apple, Moon } from "lucide-react";
-import { useGetBomItems, getGetBomItemsQueryKey, useCreateConsumptionLog, useGetDailySummary, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
+import { Sunrise, Sun, Apple, Moon, MapPin } from "lucide-react";
+import { useCreateConsumptionLog, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 
 const TODAY = new Date().toISOString().split('T')[0];
+const BASE = "/api";
 
 const slots = [
   { id: "Breakfast", icon: Sunrise },
@@ -16,6 +17,27 @@ const slots = [
   { id: "Dinner", icon: Moon },
 ];
 
+interface ActiveCheckin {
+  id: number;
+  center_id: string;
+  center_name: string;
+  checked_in_at: string;
+}
+
+interface BomComponent {
+  id: number;
+  ingredient: string;
+  quantity: number;
+  unit: string;
+}
+
+interface CenterMenuItem {
+  id: number;
+  name: string;
+  description: string | null;
+  bom: BomComponent[];
+}
+
 export function Log() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -23,16 +45,27 @@ export function Log() {
   const { memberId: MEMBER_ID } = useAuth();
   const [activeSlot, setActiveSlot] = useState("Breakfast");
   const [foodItem, setFoodItem] = useState("");
+  const [checkin, setCheckin] = useState<ActiveCheckin | null>(null);
+  const [centerMenu, setCenterMenu] = useState<CenterMenuItem[]>([]);
 
-  const { data: bomItems } = useGetBomItems({}, {
-    query: { queryKey: getGetBomItemsQueryKey({}) }
-  });
+  useEffect(() => {
+    if (!MEMBER_ID) return;
+    fetch(`${BASE}/members/${MEMBER_ID}/checkin/active`)
+      .then(r => r.json())
+      .then(async (data: ActiveCheckin | null) => {
+        setCheckin(data);
+        if (data) {
+          const menu = await fetch(`${BASE}/members/${MEMBER_ID}/center-menu`).then(r => r.json());
+          setCenterMenu(menu as CenterMenuItem[]);
+        }
+      })
+      .catch(() => {});
+  }, [MEMBER_ID]);
 
   const createLog = useCreateConsumptionLog();
 
   const handleSave = () => {
     if (!foodItem.trim()) return;
-
     createLog.mutate(
       {
         memberId: MEMBER_ID!,
@@ -42,7 +75,7 @@ export function Log() {
           calories_kcal: 250,
           protein_g: 10,
           carbs_g: 30,
-          fat_g: 5
+          fat_g: 5,
         }
       },
       {
@@ -55,24 +88,25 @@ export function Log() {
     );
   };
 
-  const selectBom = (item: any) => {
+  const selectMenuItem = (item: CenterMenuItem) => {
     createLog.mutate(
       {
         memberId: MEMBER_ID!,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: {
           meal_slot: activeSlot,
-          food_item: item.food_item,
-          quantity_g: item.quantity_g,
-          calories_kcal: item.calories_kcal,
-          protein_g: item.protein_g,
-          carbs_g: item.carbs_g,
-          fat_g: item.fat_g
-        }
+          food_item: item.name,
+          menu_item_id: item.id,
+          calories_kcal: null,
+          protein_g: null,
+          carbs_g: null,
+          fat_g: null,
+        } as any
       },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) });
-          toast({ title: "Plan item logged!" });
+          toast({ title: "Set menu item logged!" });
           setLocation("/dashboard");
         }
       }
@@ -83,6 +117,12 @@ export function Log() {
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="p-4 space-y-6">
       <header className="pt-4 pb-2">
         <h1 className="text-2xl font-bold text-foreground">Log Meal</h1>
+        {checkin && (
+          <p className="text-sm text-primary flex items-center gap-1 mt-1">
+            <MapPin className="w-3.5 h-3.5" />
+            Checked in at {checkin.center_name}
+          </p>
+        )}
       </header>
 
       {/* Slot selector */}
@@ -104,29 +144,43 @@ export function Log() {
         })}
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">From your plan</h2>
-        <div className="bg-card border border-border rounded-[12px] overflow-hidden">
-          {bomItems?.map((item, i) => (
-            <button
-              key={item.id}
-              onClick={() => selectBom(item)}
-              className={`w-full text-left px-4 py-3 flex justify-between items-center hover:bg-muted/50 transition-colors ${
-                i !== bomItems.length - 1 ? "border-b border-border" : ""
-              }`}
-            >
-              <div>
-                <p className="font-medium text-sm">{item.food_item}</p>
-                <p className="text-xs text-muted-foreground">{item.quantity_g}g</p>
-              </div>
-              <span className="text-sm font-semibold text-primary">{item.calories_kcal?.toFixed(0)} kcal</span>
-            </button>
-          ))}
-          {(!bomItems || bomItems.length === 0) && (
-            <p className="p-4 text-sm text-muted-foreground text-center">No plan items available</p>
-          )}
-        </div>
-      </section>
+      {/* Center set menu — shown only when checked in */}
+      {checkin && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            {checkin.center_name} Set Menu
+          </h2>
+          <div className="bg-card border border-border rounded-[12px] overflow-hidden">
+            {centerMenu.length > 0 ? centerMenu.map((item, i) => (
+              <button
+                key={item.id}
+                onClick={() => selectMenuItem(item)}
+                disabled={createLog.isPending}
+                className={`w-full text-left px-4 py-3 flex justify-between items-start hover:bg-muted/50 transition-colors disabled:opacity-50 ${
+                  i !== centerMenu.length - 1 ? "border-b border-border" : ""
+                }`}
+              >
+                <div className="flex-1">
+                  <p className="font-medium text-sm">{item.name}</p>
+                  {item.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                  )}
+                  {item.bom.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {item.bom.map(b => `${b.ingredient} ${b.quantity}${b.unit}`).join(" · ")}
+                    </p>
+                  )}
+                </div>
+                <span className="text-xs font-medium text-primary ml-3 flex-shrink-0 mt-0.5">
+                  {item.bom.length} ingredients
+                </span>
+              </button>
+            )) : (
+              <p className="p-4 text-sm text-muted-foreground text-center">No menu items at this center yet</p>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Custom Entry</h2>

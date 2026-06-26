@@ -118,6 +118,18 @@ export interface Dashboard {
   today_active_members: number;
 }
 
+export interface CenterMember {
+  id: number;
+  name: string;
+  date_of_joining: string | null;
+  height_cm: number | null;
+  mobile: string | null;
+  email: string | null;
+  checkin_id: number | null;
+  checked_in_at: string | null;
+  checked_out_at: string | null;
+}
+
 export interface ConsumptionReport {
   from: string;
   to: string;

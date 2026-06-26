@@ -7,6 +7,7 @@ import SetMenuPage from "@/pages/set-menu";
 import ConsumptionPage from "@/pages/consumption";
 import SettingsPage from "@/pages/settings";
 import SuperPage from "@/pages/super";
+import MembersPage from "@/pages/members";
 import { isAuthenticated } from "@/lib/api";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,9 @@ function Router() {
       </Route>
       <Route path="/settings">
         <AuthGuard><SettingsPage /></AuthGuard>
+      </Route>
+      <Route path="/members">
+        <AuthGuard><MembersPage /></AuthGuard>
       </Route>
       <Route component={CatchAll} />
     </Switch>

@@ -401,4 +401,110 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
   res.json({ from, to, by_component: byComponent, logs });
 });
 
+// ---------------------------------------------------------------------------
+// Member management (per-center)
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/centers/:centerId/members
+router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    `SELECT
+       m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email,
+       ci.id          AS checkin_id,
+       ci.checked_in_at,
+       ci.checked_out_at
+     FROM members m
+     JOIN member_center_mapping mcm ON mcm.member_id = m.id
+     LEFT JOIN member_check_ins ci
+       ON ci.member_id = m.id AND ci.center_id = $1 AND ci.checked_out_at IS NULL
+     WHERE mcm.center_id = $1
+     ORDER BY m.name`,
+    [centerId]
+  );
+  res.json(rows);
+});
+
+// POST /api/admin/centers/:centerId/members — create & onboard new member
+router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { name, height_cm, date_of_joining, mobile, email } = req.body as {
+    name?: string; height_cm?: number | null; date_of_joining?: string | null;
+    mobile?: string | null; email?: string | null;
+  };
+  if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+
+  const { rows: memberRows } = await pool.query(
+    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile ?? null, email ?? null]
+  );
+  const member = memberRows[0];
+  await pool.query(
+    `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+    [member.id, centerId]
+  );
+  res.status(201).json(member);
+});
+
+// DELETE /api/admin/centers/:centerId/members/:memberId — unlink member from center
+router.delete("/admin/centers/:centerId/members/:memberId", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  await pool.query(
+    `DELETE FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  res.status(204).send();
+});
+
+// POST /api/admin/centers/:centerId/members/:memberId/checkin
+router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
+
+  const { rows: existing } = await pool.query(
+    `SELECT id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL`,
+    [Number(memberId)]
+  );
+  if (existing[0]) { res.status(409).json({ error: "Member is already checked in" }); return; }
+
+  const { rows } = await pool.query(
+    `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
+    [Number(memberId), centerId]
+  );
+  res.status(201).json(rows[0]);
+});
+
+// POST /api/admin/centers/:centerId/members/:memberId/checkout
+router.post("/admin/centers/:centerId/members/:memberId/checkout", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    `UPDATE member_check_ins SET checked_out_at = NOW()
+     WHERE member_id = $1 AND center_id = $2 AND checked_out_at IS NULL
+     RETURNING *`,
+    [Number(memberId), centerId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "No active check-in found" }); return; }
+  res.json(rows[0]);
+});
+
 export default router;

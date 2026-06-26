@@ -186,6 +186,29 @@ async function migrateAdminTables(): Promise<void> {
   `);
 }
 
+async function migrateAdminTables3(): Promise<void> {
+  // Check-in / check-out log
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_check_ins (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER NOT NULL REFERENCES members(id),
+      center_id TEXT NOT NULL REFERENCES centers(id),
+      checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      checked_out_at TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS member_check_ins_active_idx
+    ON member_check_ins (member_id) WHERE checked_out_at IS NULL
+  `);
+  // Make members.id auto-increment so admin can onboard new members
+  await pool.query(`CREATE SEQUENCE IF NOT EXISTS members_id_seq`);
+  const { rows } = await pool.query(`SELECT MAX(id) as max FROM members`);
+  const maxId = Number(rows[0]?.max ?? 0);
+  await pool.query(`SELECT setval('members_id_seq', $1)`, [Math.max(maxId, 1)]);
+  await pool.query(`ALTER TABLE members ALTER COLUMN id SET DEFAULT nextval('members_id_seq')`);
+}
+
 async function migrateAdminTables2(): Promise<void> {
   // Add is_active flag to centers so super admin can enable/disable them
   await pool.query(`
@@ -427,6 +450,7 @@ export async function initDb(): Promise<void> {
   await seedFromXlsx();
   await migrateAdminTables();
   await migrateAdminTables2();
+  await migrateAdminTables3();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
