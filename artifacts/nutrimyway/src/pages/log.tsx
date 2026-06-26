@@ -35,11 +35,11 @@ export function Log() {
 
     createLog.mutate(
       {
-        memberId: MEMBER_ID,
+        memberId: MEMBER_ID!,
         data: {
           meal_slot: activeSlot,
           food_item: foodItem,
-          calories_kcal: 250, // dummy value for custom text
+          calories_kcal: 250,
           protein_g: 10,
           carbs_g: 30,
           fat_g: 5
@@ -47,7 +47,7 @@ export function Log() {
       },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID, { date: TODAY }) });
+          queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) });
           toast({ title: "Meal logged successfully!" });
           setLocation("/dashboard");
         }
@@ -58,7 +58,7 @@ export function Log() {
   const selectBom = (item: any) => {
     createLog.mutate(
       {
-        memberId: MEMBER_ID,
+        memberId: MEMBER_ID!,
         data: {
           meal_slot: activeSlot,
           food_item: item.food_item,
@@ -71,7 +71,7 @@ export function Log() {
       },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID, { date: TODAY }) });
+          queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) });
           toast({ title: "Plan item logged!" });
           setLocation("/dashboard");
         }

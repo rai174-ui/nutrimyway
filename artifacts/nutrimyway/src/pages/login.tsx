@@ -1,13 +1,9 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Phone, ShieldCheck, Building2, Check, ArrowRight, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowRight, Check, ChevronLeft, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 
 type Step = "phone" | "otp" | "register";
-
 interface Center { id: string; name: string }
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
@@ -21,238 +17,278 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
-async function fetchCenters(): Promise<Center[]> {
-  const res = await fetch("/api/centers");
-  return res.json() as Promise<Center[]>;
-}
+const slide = {
+  initial: { opacity: 0, x: 32 },
+  animate: { opacity: 1, x: 0, transition: { duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] } },
+  exit:    { opacity: 0, x: -32, transition: { duration: 0.2 } },
+};
 
 export function Login() {
   const { login } = useAuth();
-  const [step, setStep] = useState<Step>("phone");
-  const [mobile, setMobile] = useState("");
-  const [otpValue, setOtpValue] = useState("");
+  const [step, setStep]           = useState<Step>("phone");
+  const [mobile, setMobile]       = useState("");
+  const [otpValue, setOtpValue]   = useState("");
   const [otpPreview, setOtpPreview] = useState<string | null>(null);
-  const [regToken, setRegToken] = useState("");
-  const [name, setName] = useState("");
-  const [centers, setCenters] = useState<Center[]>([]);
-  const [selectedCenters, setSelectedCenters] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [regToken, setRegToken]   = useState("");
+  const [name, setName]           = useState("");
+  const [centers, setCenters]     = useState<Center[]>([]);
+  const [selected, setSelected]   = useState<Set<string>>(new Set());
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState<string | null>(null);
 
-  async function handleRequestOtp() {
-    setError(null);
-    setLoading(true);
+  async function requestOtp() {
+    setError(null); setLoading(true);
     try {
-      const data = await apiPost<{ otp_preview?: string }>("/auth/request-otp", { mobile });
-      setOtpPreview(data.otp_preview ?? null);
+      const d = await apiPost<{ otp_preview?: string }>("/auth/request-otp", { mobile });
+      setOtpPreview(d.otp_preview ?? null);
       setStep("otp");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send OTP");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
+    finally { setLoading(false); }
   }
 
-  async function handleVerifyOtp() {
-    setError(null);
-    setLoading(true);
+  async function verifyOtp() {
+    setError(null); setLoading(true);
     try {
-      const data = await apiPost<{ token: string; member_id: number | null; is_new_user: boolean }>(
+      const d = await apiPost<{ token: string; member_id: number | null; is_new_user: boolean }>(
         "/auth/verify-otp", { mobile, otp: otpValue }
       );
-      if (data.is_new_user) {
-        setRegToken(data.token);
-        const list = await fetchCenters();
-        setCenters(list);
+      if (d.is_new_user) {
+        setRegToken(d.token);
+        const r = await fetch("/api/centers"); setCenters(await r.json());
         setStep("register");
-      } else {
-        login(data.token, data.member_id!);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid OTP");
-    } finally {
-      setLoading(false);
-    }
+      } else { login(d.token, d.member_id!); }
+    } catch (e) { setError(e instanceof Error ? e.message : "Invalid OTP"); }
+    finally { setLoading(false); }
   }
 
-  async function handleRegister() {
-    if (!name.trim() || selectedCenters.size === 0) return;
-    setError(null);
-    setLoading(true);
+  async function register() {
+    setError(null); setLoading(true);
     try {
-      const data = await apiPost<{ token: string; member_id: number }>(
-        "/auth/register",
-        { token: regToken, name: name.trim(), center_ids: [...selectedCenters] }
+      const d = await apiPost<{ token: string; member_id: number }>(
+        "/auth/register", { token: regToken, name: name.trim(), center_ids: [...selected] }
       );
-      login(data.token, data.member_id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Registration failed");
-    } finally {
-      setLoading(false);
-    }
+      login(d.token, d.member_id);
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
+    finally { setLoading(false); }
   }
 
   function toggleCenter(id: string) {
-    setSelectedCenters((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+    setSelected(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
 
-  const stepVariants = {
-    initial: { opacity: 0, x: 40 },
-    animate: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: -40 },
-  };
+  const canSubmitPhone    = mobile.trim().length >= 7 && !loading;
+  const canSubmitOtp      = otpValue.length === 6 && !loading;
+  const canSubmitRegister = name.trim().length > 0 && selected.size > 0 && !loading;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-5">
-      {/* Logo / branding */}
-      <div className="mb-10 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto mb-4 shadow-lg">
-          <span className="text-primary-foreground text-2xl font-black">N</span>
+    <div className="min-h-screen bg-background flex flex-col overflow-hidden">
+      {/* Top decorative band */}
+      <div className="relative h-56 bg-teal-dark flex-shrink-0 flex flex-col items-center justify-end pb-8 overflow-hidden">
+        {/* Soft circles */}
+        <div className="absolute -top-10 -right-10 w-52 h-52 rounded-full bg-white/5" />
+        <div className="absolute top-8 -left-12 w-44 h-44 rounded-full bg-white/5" />
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-28 h-28 rounded-full bg-background" />
+        {/* Logo mark */}
+        <div className="relative z-10 w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-lg mb-1">
+          <span className="text-teal-dark text-2xl font-black tracking-tight">N</span>
         </div>
-        <h1 className="text-2xl font-bold">NutriMyWay</h1>
-        <p className="text-muted-foreground text-sm mt-1">Your personal wellness companion</p>
       </div>
 
-      <div className="w-full max-w-sm">
+      {/* Content card */}
+      <div className="flex-1 flex flex-col max-w-sm w-full mx-auto px-6 pt-10 pb-8">
+        {/* Step back button */}
+        <AnimatePresence>
+          {step !== "phone" && (
+            <motion.button
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => { if (step === "otp") { setStep("phone"); setOtpValue(""); setError(null); } else { setStep("otp"); setError(null); } }}
+              className="flex items-center gap-1 text-sm text-muted-foreground mb-4 -ml-1 hover:text-foreground transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" /> Back
+            </motion.button>
+          )}
+        </AnimatePresence>
+
         <AnimatePresence mode="wait">
+          {/* ── STEP 1: Phone ── */}
           {step === "phone" && (
-            <motion.div key="phone" variants={stepVariants} initial="initial" animate="animate" exit="exit"
-              transition={{ duration: 0.25 }} className="space-y-5">
-              <div className="text-center">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                  <Phone className="w-5 h-5 text-primary" />
+            <motion.div key="phone" {...slide} className="flex flex-col gap-6">
+              <div>
+                <h1 className="text-2xl font-bold">Welcome back</h1>
+                <p className="text-muted-foreground text-sm mt-1">Enter your mobile number to continue</p>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="mobile" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Mobile Number
+                </label>
+                <div className="relative">
+                  <input
+                    id="mobile"
+                    type="tel"
+                    inputMode="tel"
+                    placeholder="+91 98765 43210"
+                    value={mobile}
+                    onChange={e => setMobile(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && canSubmitPhone && requestOtp()}
+                    className="w-full h-13 px-4 py-3.5 rounded-[12px] border border-input bg-card text-base placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                  />
                 </div>
-                <h2 className="text-lg font-bold">Enter your mobile number</h2>
-                <p className="text-sm text-muted-foreground mt-1">We'll send you a one-time passcode</p>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="mobile">Mobile Number</Label>
-                <Input
-                  id="mobile"
-                  type="tel"
-                  inputMode="tel"
-                  placeholder="+91 98765 43210"
-                  value={mobile}
-                  onChange={(e) => setMobile(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleRequestOtp()}
-                  className="h-12 text-base"
-                />
-              </div>
-              {error && <p className="text-sm text-destructive text-center">{error}</p>}
-              <Button onClick={handleRequestOtp} disabled={!mobile.trim() || loading}
-                className="w-full h-12 text-base font-semibold">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Send OTP <ArrowRight className="w-4 h-4 ml-1" /></>}
-              </Button>
+
+              {error && <ErrorBanner msg={error} />}
+
+              <PrimaryButton onClick={requestOtp} disabled={!canSubmitPhone} loading={loading}>
+                Send OTP <ArrowRight className="w-4 h-4 ml-1.5" />
+              </PrimaryButton>
+
+              <p className="text-center text-xs text-muted-foreground leading-relaxed">
+                By continuing you agree to our{" "}
+                <span className="text-primary underline underline-offset-2 cursor-pointer">Terms of Service</span>
+              </p>
             </motion.div>
           )}
 
+          {/* ── STEP 2: OTP ── */}
           {step === "otp" && (
-            <motion.div key="otp" variants={stepVariants} initial="initial" animate="animate" exit="exit"
-              transition={{ duration: 0.25 }} className="space-y-5">
-              <div className="text-center">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                  <ShieldCheck className="w-5 h-5 text-primary" />
-                </div>
-                <h2 className="text-lg font-bold">Enter the OTP</h2>
-                <p className="text-sm text-muted-foreground mt-1">Sent to {mobile}</p>
+            <motion.div key="otp" {...slide} className="flex flex-col gap-6">
+              <div>
+                <h1 className="text-2xl font-bold">Verify your number</h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  We sent a 6-digit code to <span className="font-medium text-foreground">{mobile}</span>
+                </p>
               </div>
 
+              {/* Dev OTP preview */}
               {otpPreview && (
-                <div className="bg-amber-50 border border-amber-200 rounded-[10px] p-3 text-center">
-                  <p className="text-xs text-amber-700 font-medium uppercase tracking-wider mb-1">Dev Mode — OTP</p>
-                  <p className="text-2xl font-mono font-bold text-amber-800 tracking-widest">{otpPreview}</p>
+                <div className="bg-amber-50 border border-amber-200 rounded-[12px] p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mb-1.5">
+                    Dev mode · Your OTP
+                  </p>
+                  <p className="text-3xl font-mono font-bold text-amber-800 tracking-[0.25em]">
+                    {otpPreview}
+                  </p>
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="otp">6-digit code</Label>
-                <Input
+              <div className="space-y-2">
+                <label htmlFor="otp" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  One-Time Passcode
+                </label>
+                <input
                   id="otp"
                   type="text"
                   inputMode="numeric"
                   maxLength={6}
-                  placeholder="123456"
+                  placeholder="• • • • • •"
                   value={otpValue}
-                  onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ""))}
-                  onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
-                  className="h-12 text-base tracking-widest text-center font-mono"
+                  onChange={e => setOtpValue(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={e => e.key === "Enter" && canSubmitOtp && verifyOtp()}
+                  className="w-full h-13 px-4 py-3.5 rounded-[12px] border border-input bg-card text-xl text-center font-mono tracking-[0.5em] placeholder:tracking-widest placeholder:text-muted-foreground/30 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                 />
               </div>
-              {error && <p className="text-sm text-destructive text-center">{error}</p>}
-              <Button onClick={handleVerifyOtp} disabled={otpValue.length < 6 || loading}
-                className="w-full h-12 text-base font-semibold">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify"}
-              </Button>
-              <button onClick={() => { setStep("phone"); setOtpValue(""); setError(null); }}
-                className="w-full text-center text-sm text-muted-foreground underline-offset-2 hover:underline">
-                Change number
+
+              {error && <ErrorBanner msg={error} />}
+
+              <PrimaryButton onClick={verifyOtp} disabled={!canSubmitOtp} loading={loading}>
+                Verify
+              </PrimaryButton>
+
+              <button
+                onClick={requestOtp}
+                disabled={loading}
+                className="text-center text-sm text-primary font-medium hover:underline underline-offset-2 disabled:opacity-50"
+              >
+                Resend code
               </button>
             </motion.div>
           )}
 
+          {/* ── STEP 3: Register ── */}
           {step === "register" && (
-            <motion.div key="register" variants={stepVariants} initial="initial" animate="animate" exit="exit"
-              transition={{ duration: 0.25 }} className="space-y-5">
-              <div className="text-center">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                  <Building2 className="w-5 h-5 text-primary" />
-                </div>
-                <h2 className="text-lg font-bold">Complete your profile</h2>
-                <p className="text-sm text-muted-foreground mt-1">Tell us your name and home center</p>
+            <motion.div key="register" {...slide} className="flex flex-col gap-6">
+              <div>
+                <h1 className="text-2xl font-bold">Create your profile</h1>
+                <p className="text-muted-foreground text-sm mt-1">Almost there — just a few details</p>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="name">Full Name</Label>
-                <Input
+              <div className="space-y-2">
+                <label htmlFor="name" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Full Name
+                </label>
+                <input
                   id="name"
                   type="text"
                   placeholder="e.g. Priya Sharma"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="h-12 text-base"
+                  onChange={e => setName(e.target.value)}
+                  className="w-full h-13 px-4 py-3.5 rounded-[12px] border border-input bg-card text-base placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">
-                  Select center(s) <span className="text-muted-foreground font-normal">(at least one)</span>
-                </Label>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Your Center(s)
+                  </label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Select at least one</p>
+                </div>
                 <div className="space-y-2">
-                  {centers.map((c) => {
-                    const selected = selectedCenters.has(c.id);
+                  {centers.length === 0 && (
+                    <p className="text-sm text-muted-foreground py-2 text-center">Loading…</p>
+                  )}
+                  {centers.map(c => {
+                    const on = selected.has(c.id);
                     return (
                       <button key={c.id} onClick={() => toggleCenter(c.id)}
-                        className={`w-full flex items-center justify-between px-4 py-3 rounded-[10px] border text-sm font-medium transition-all ${
-                          selected
-                            ? "bg-primary/10 border-primary text-primary"
-                            : "bg-card border-border text-foreground"
+                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-[12px] border text-sm font-medium transition-all ${
+                          on
+                            ? "bg-primary/8 border-primary text-primary"
+                            : "bg-card border-border text-foreground hover:border-primary/40"
                         }`}>
                         <span>{c.name}</span>
-                        {selected && <Check className="w-4 h-4" />}
+                        <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                          on ? "bg-primary border-primary" : "border-muted-foreground/30"
+                        }`}>
+                          {on && <Check className="w-3 h-3 text-primary-foreground" />}
+                        </span>
                       </button>
                     );
                   })}
-                  {centers.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-2">Loading centers…</p>
-                  )}
                 </div>
               </div>
 
-              {error && <p className="text-sm text-destructive text-center">{error}</p>}
-              <Button
-                onClick={handleRegister}
-                disabled={!name.trim() || selectedCenters.size === 0 || loading}
-                className="w-full h-12 text-base font-semibold">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Get Started"}
-              </Button>
+              {error && <ErrorBanner msg={error} />}
+
+              <PrimaryButton onClick={register} disabled={!canSubmitRegister} loading={loading}>
+                Get Started <ArrowRight className="w-4 h-4 ml-1.5" />
+              </PrimaryButton>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+    </div>
+  );
+}
+
+function PrimaryButton({
+  children, onClick, disabled, loading,
+}: { children: React.ReactNode; onClick: () => void; disabled?: boolean; loading?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full h-13 flex items-center justify-center gap-1 rounded-[12px] bg-primary text-primary-foreground text-[15px] font-semibold shadow-sm active:scale-[0.98] transition-all disabled:opacity-40 disabled:pointer-events-none"
+    >
+      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : children}
+    </button>
+  );
+}
+
+function ErrorBanner({ msg }: { msg: string }) {
+  return (
+    <div className="flex items-center gap-2 bg-destructive/8 border border-destructive/20 rounded-[10px] px-4 py-3">
+      <span className="text-sm text-destructive">{msg}</span>
     </div>
   );
 }

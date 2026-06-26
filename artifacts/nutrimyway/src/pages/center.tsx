@@ -57,6 +57,7 @@ function NumField({
 }
 
 export function Center() {
+  const { memberId: MEMBER_ID } = useAuth();
   const queryClient = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [chartMetric, setChartMetric] = useState<"weight" | "body_fat" | "muscle">("weight");
@@ -69,11 +70,11 @@ export function Center() {
   });
   const [saving, setSaving] = useState(false);
 
-  const { data: records } = useGetHealthRecords(MEMBER_ID, {
-    query: { enabled: !!MEMBER_ID, queryKey: getGetHealthRecordsQueryKey(MEMBER_ID) },
+  const { data: records } = useGetHealthRecords(MEMBER_ID!, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetHealthRecordsQueryKey(MEMBER_ID!) },
   });
-  const { data: centers } = useGetMemberCenters(MEMBER_ID, {
-    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberCentersQueryKey(MEMBER_ID) },
+  const { data: centers } = useGetMemberCenters(MEMBER_ID!, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberCentersQueryKey(MEMBER_ID!) },
   });
   const createRecord = useCreateHealthRecord();
 
@@ -111,7 +112,7 @@ export function Center() {
     setSaving(true);
     try {
       await createRecord.mutateAsync({
-        memberId: MEMBER_ID,
+        memberId: MEMBER_ID!,
         data: {
           recorded_at: form.recorded_at || null,
           center_id: form.center_id || null,
@@ -126,7 +127,7 @@ export function Center() {
           notes: form.notes || null,
         },
       });
-      await queryClient.invalidateQueries({ queryKey: getGetHealthRecordsQueryKey(MEMBER_ID) });
+      await queryClient.invalidateQueries({ queryKey: getGetHealthRecordsQueryKey(MEMBER_ID!) });
       resetForm();
       setSheetOpen(false);
     } finally {
