@@ -40,7 +40,7 @@ export default function LoginPage() {
           <div className="w-16 h-16 rounded-2xl bg-teal-dark flex items-center justify-center shadow-lg mb-3 p-2.5">
             <img src="/admin/logo.png" alt="NutriMyWay" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Admin Portal</h1>
+          <h1 className="text-2xl font-bold text-foreground">Center Admin Panel</h1>
           <p className="text-muted-foreground text-sm mt-1">Sign in to manage your center</p>
         </div>
 
@@ -86,10 +86,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-muted-foreground mt-6">
-          Nutrition My Way · Admin Portal ·{" "}
-          <a href="/admin/super" className="hover:underline text-muted-foreground">Super Admin</a>
-        </p>
+        <p className="text-center text-xs text-muted-foreground mt-6">Nutrition My Way · Center Admin Panel</p>
       </div>
     </div>
   );
