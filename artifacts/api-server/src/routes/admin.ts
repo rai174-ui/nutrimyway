@@ -243,38 +243,65 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
   const from = typeof req.query.from === "string" ? req.query.from : today;
   const to   = typeof req.query.to   === "string" ? req.query.to   : today;
 
-  // Per-component totals: for each log entry matching a named menu item, we add
-  // one full serving of that item's BOM to the total.
-  // SUM(mb.quantity) over the join gives: COUNT(matching_logs) × ingredient_qty_per_serving
-  // (because the join produces one row per log × bom_component pair, and mb.quantity
-  // is constant for that ingredient, so summing it across log rows accumulates correctly).
+  // Resolve each log to a menu_item_id:
+  //   1. Prefer the stored FK (cl.menu_item_id) when the log was created against a menu item.
+  //   2. Fall back to a case-insensitive name match within the center for legacy/member logs.
+  // A unique index on menu_items(center_id, LOWER(name)) ensures the sub-select returns
+  // at most one row, so there is no fan-out from the fallback path.
   const { rows: byComponent } = await pool.query(
-    `SELECT
+    `WITH resolved AS (
+       SELECT
+         cl.id,
+         cl.member_id,
+         COALESCE(
+           cl.menu_item_id,
+           (SELECT mi2.id FROM menu_items mi2
+            WHERE mi2.center_id = mcm.center_id
+              AND LOWER(mi2.name) = LOWER(cl.food_item)
+            LIMIT 1)
+         ) AS menu_item_id
+       FROM consumption_logs cl
+       JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+       WHERE mcm.center_id = $1
+         AND DATE(cl.logged_at) BETWEEN $2 AND $3
+     )
+     SELECT
        mb.ingredient,
        mb.unit,
-       SUM(mb.quantity) AS total_quantity,
-       COUNT(DISTINCT cl.member_id) AS member_count,
-       COUNT(DISTINCT cl.id) AS log_count
-     FROM consumption_logs cl
-     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-     JOIN menu_items mi ON mi.center_id = mcm.center_id AND LOWER(mi.name) = LOWER(cl.food_item)
-     JOIN menu_item_bom mb ON mb.menu_item_id = mi.id
-     WHERE mcm.center_id = $1
-       AND DATE(cl.logged_at) BETWEEN $2 AND $3
+       SUM(mb.quantity)         AS total_quantity,
+       COUNT(DISTINCT r.member_id) AS member_count,
+       COUNT(DISTINCT r.id)     AS log_count
+     FROM resolved r
+     JOIN menu_item_bom mb ON mb.menu_item_id = r.menu_item_id
+     WHERE r.menu_item_id IS NOT NULL
      GROUP BY mb.ingredient, mb.unit
      ORDER BY total_quantity DESC`,
     [centerId, from, to]
   );
 
-  // All consumption logs for the center in range (for the member breakdown)
+  // Logs breakdown: only entries that resolved to a menu item (FK or name match)
   const { rows: logs } = await pool.query(
-    `SELECT cl.id, cl.member_id, m.name as member_name, cl.logged_at, cl.meal_slot,
-            cl.food_item, cl.quantity_g, cl.calories_kcal
+    `SELECT cl.id, cl.member_id, m.name AS member_name, cl.logged_at, cl.meal_slot,
+            cl.food_item, cl.quantity_g, cl.calories_kcal,
+            COALESCE(cl.menu_item_id,
+              (SELECT mi2.id FROM menu_items mi2
+               WHERE mi2.center_id = mcm.center_id
+                 AND LOWER(mi2.name) = LOWER(cl.food_item)
+               LIMIT 1)
+            ) AS resolved_menu_item_id
      FROM consumption_logs cl
      JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      JOIN members m ON m.id = cl.member_id
      WHERE mcm.center_id = $1
        AND DATE(cl.logged_at) BETWEEN $2 AND $3
+       AND (
+         cl.menu_item_id IS NOT NULL
+         OR EXISTS (
+           SELECT 1 FROM menu_items mi3
+           WHERE mi3.center_id = mcm.center_id
+             AND LOWER(mi3.name) = LOWER(cl.food_item)
+         )
+       )
      ORDER BY cl.logged_at DESC`,
     [centerId, from, to]
   );

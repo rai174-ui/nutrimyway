@@ -179,6 +179,11 @@ async function migrateAdminTables(): Promise<void> {
   await pool.query(`
     ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS menu_item_id INTEGER REFERENCES menu_items(id);
   `);
+  // Unique constraint prevents duplicate menu item names per center (protects name-fallback match)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS menu_items_center_name_uidx
+    ON menu_items (center_id, LOWER(name));
+  `);
 }
 
 async function seedCenterPasswords(): Promise<void> {
