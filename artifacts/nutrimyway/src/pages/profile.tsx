@@ -1,17 +1,18 @@
 import { useGetMember, getGetMemberQueryKey, useGetMemberIssuances, getGetMemberIssuancesQueryKey } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
-import { Package, Calendar } from "lucide-react";
-
-const MEMBER_ID = 1;
+import { Package, Calendar, LogOut } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 export function Profile() {
-  const { data: member } = useGetMember(MEMBER_ID, {
-    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberQueryKey(MEMBER_ID) }
+  const { memberId: MEMBER_ID, logout } = useAuth();
+
+  const { data: member } = useGetMember(MEMBER_ID!, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberQueryKey(MEMBER_ID!) }
   });
 
-  const { data: issuances } = useGetMemberIssuances(MEMBER_ID, {
-    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberIssuancesQueryKey(MEMBER_ID) }
+  const { data: issuances } = useGetMemberIssuances(MEMBER_ID!, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberIssuancesQueryKey(MEMBER_ID!) }
   });
 
   const getInitials = (name?: string) => {
@@ -27,7 +28,15 @@ export function Profile() {
 
   return (
     <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="p-4 space-y-6">
-      <header className="pt-8 pb-4 flex flex-col items-center text-center space-y-3">
+      <header className="pt-8 pb-4 flex flex-col items-center text-center space-y-3 relative">
+        <button
+          onClick={logout}
+          className="absolute top-4 right-0 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Log out"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Log out
+        </button>
         <div className="w-24 h-24 rounded-full bg-teal-pale border border-teal-light flex items-center justify-center text-teal-dark text-3xl font-bold">
           {getInitials(member?.name)}
         </div>

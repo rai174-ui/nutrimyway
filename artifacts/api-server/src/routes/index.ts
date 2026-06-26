@@ -3,9 +3,13 @@ import healthRouter from "./health";
 import membersRouter from "./members";
 import bomRouter from "./bom";
 import packsRouter from "./packs";
+import authRouter from "./auth";
+import centersRouter from "./centers";
 
 const router: IRouter = Router();
 
+router.use(authRouter);
+router.use(centersRouter);
 router.use(healthRouter);
 router.use(membersRouter);
 router.use(bomRouter);

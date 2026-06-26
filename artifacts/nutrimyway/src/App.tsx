@@ -8,10 +8,18 @@ import { Dashboard } from "@/pages/dashboard";
 import { Log } from "@/pages/log";
 import { Center } from "@/pages/center";
 import { Profile } from "@/pages/profile";
+import { Login } from "@/pages/login";
+import { AuthProvider, useAuth } from "@/contexts/auth-context";
 
 const queryClient = new QueryClient();
 
-function Router() {
+function ProtectedRouter() {
+  const { isAuthenticated } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
   return (
     <Layout>
       <Switch>
@@ -30,9 +38,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
+        <AuthProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <ProtectedRouter />
+          </WouterRouter>
+        </AuthProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

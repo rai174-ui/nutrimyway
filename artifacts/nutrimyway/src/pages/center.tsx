@@ -15,8 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-const MEMBER_ID = 1;
+import { useAuth } from "@/contexts/auth-context";
 
 interface VitalsForm {
   recorded_at: string;

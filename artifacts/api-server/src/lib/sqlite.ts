@@ -34,10 +34,28 @@ async function migrateColumns(): Promise<void> {
     "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS bmr REAL",
     "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS metabolic_age INTEGER",
     "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS muscle_mass_kg REAL",
+    "ALTER TABLE members ADD COLUMN IF NOT EXISTS mobile TEXT",
   ];
   for (const sql of newCols) {
     await pool.query(sql);
   }
+  // unique index on mobile (ignore if already exists)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS members_mobile_uidx ON members (mobile) WHERE mobile IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS otps (
+      id SERIAL PRIMARY KEY,
+      mobile TEXT NOT NULL,
+      otp TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE
+    );
+    CREATE TABLE IF NOT EXISTS user_auth (
+      id SERIAL PRIMARY KEY,
+      mobile TEXT UNIQUE NOT NULL,
+      member_id INTEGER REFERENCES members(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
 }
 
 async function createTables(): Promise<void> {

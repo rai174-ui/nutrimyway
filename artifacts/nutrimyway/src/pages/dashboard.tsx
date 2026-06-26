@@ -3,17 +3,19 @@ import { format } from "date-fns";
 import { Link } from "wouter";
 import { Plus } from "lucide-react";
 import { motion } from "framer-motion";
+import { useAuth } from "@/contexts/auth-context";
 
-const MEMBER_ID = 1;
 const TODAY = new Date().toISOString().split('T')[0];
 
 export function Dashboard() {
-  const { data: member, isLoading: loadingMember } = useGetMember(MEMBER_ID, {
-    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberQueryKey(MEMBER_ID) }
+  const { memberId: MEMBER_ID } = useAuth();
+
+  const { data: member, isLoading: loadingMember } = useGetMember(MEMBER_ID!, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberQueryKey(MEMBER_ID!) }
   });
 
-  const { data: summary, isLoading: loadingSummary } = useGetDailySummary(MEMBER_ID, { date: TODAY }, {
-    query: { enabled: !!MEMBER_ID, queryKey: getGetDailySummaryQueryKey(MEMBER_ID, { date: TODAY }) }
+  const { data: summary, isLoading: loadingSummary } = useGetDailySummary(MEMBER_ID!, { date: TODAY }, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) }
   });
 
   if (loadingMember || loadingSummary) {

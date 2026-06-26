@@ -5,8 +5,8 @@ import { Sunrise, Sun, Apple, Moon } from "lucide-react";
 import { useGetBomItems, getGetBomItemsQueryKey, useCreateConsumptionLog, useGetDailySummary, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
 
-const MEMBER_ID = 1;
 const TODAY = new Date().toISOString().split('T')[0];
 
 const slots = [
@@ -20,6 +20,7 @@ export function Log() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { memberId: MEMBER_ID } = useAuth();
   const [activeSlot, setActiveSlot] = useState("Breakfast");
   const [foodItem, setFoodItem] = useState("");
 
