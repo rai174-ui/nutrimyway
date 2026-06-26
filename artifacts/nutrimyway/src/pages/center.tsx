@@ -128,7 +128,7 @@ export function Center() {
   return (
     <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="p-4 space-y-6">
       <header className="pt-4 pb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Health Center</h1>
+        <h1 className="text-2xl font-bold text-foreground">My Health Record</h1>
         <button
           onClick={() => setSheetOpen(true)}
           className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-sm active:scale-95 transition-transform"
@@ -137,7 +137,6 @@ export function Center() {
           <Plus className="w-4 h-4" />
         </button>
       </header>
-
       {/* Center pills */}
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
         {centers?.map((c) => (
@@ -150,7 +149,6 @@ export function Center() {
           </div>
         ))}
       </div>
-
       {/* Latest vitals */}
       <section className="bg-card rounded-[12px] p-5 border border-border">
         <div className="flex items-center gap-2 mb-4">
@@ -181,7 +179,6 @@ export function Center() {
           </div>
         </div>
       </section>
-
       {/* Weight trend chart */}
       {chartData.filter((d) => d.weight != null).length > 0 && (
         <section className="bg-card rounded-[12px] p-5 border border-border">
@@ -208,7 +205,6 @@ export function Center() {
           </div>
         </section>
       )}
-
       {/* Visit history */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Progress History</h2>
@@ -255,7 +251,6 @@ export function Center() {
           )}
         </div>
       </section>
-
       {/* Log Progress sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" className="rounded-t-[20px] pb-safe px-5 max-h-[90vh] overflow-y-auto">
