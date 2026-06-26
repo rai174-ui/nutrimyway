@@ -1,0 +1,270 @@
+import { Router, type Request, type Response, type NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import { pool } from "../lib/sqlite";
+
+const router = Router();
+const JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
+
+interface AdminJwt {
+  centerId: string;
+  role: "admin";
+}
+
+interface AdminRequest extends Request {
+  adminCenterId: string;
+}
+
+function signAdminToken(centerId: string): string {
+  return jwt.sign({ centerId, role: "admin" }, JWT_SECRET, { expiresIn: "12h" });
+}
+
+function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as AdminJwt;
+    if (payload.role !== "admin") throw new Error("not admin");
+    (req as AdminRequest).adminCenterId = payload.centerId;
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid or expired admin token" });
+  }
+}
+
+// POST /api/admin/login
+router.post("/admin/login", async (req, res) => {
+  const { center_id, password } = req.body as { center_id?: string; password?: string };
+  if (!center_id || !password) {
+    res.status(400).json({ error: "center_id and password are required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT ca.password_hash, c.name FROM center_auth ca JOIN centers c ON c.id = ca.center_id WHERE ca.center_id = $1",
+    [center_id]
+  );
+  if (!rows[0]) { res.status(401).json({ error: "Invalid center or password" }); return; }
+  const ok = await bcrypt.compare(password, rows[0].password_hash as string);
+  if (!ok) { res.status(401).json({ error: "Invalid center or password" }); return; }
+  const token = signAdminToken(center_id);
+  res.json({ token, center_id, center_name: rows[0].name });
+});
+
+// GET /api/admin/centers — list all centers (public, needed on login page)
+router.get("/admin/centers", async (_req, res) => {
+  const { rows } = await pool.query("SELECT id, name FROM centers ORDER BY name");
+  res.json(rows);
+});
+
+// GET /api/admin/centers/:centerId/dashboard
+router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [memberRes, menuRes, consumptionRes] = await Promise.all([
+    pool.query("SELECT COUNT(*) as count FROM member_center_mapping WHERE center_id = $1", [centerId]),
+    pool.query("SELECT COUNT(*) as count FROM menu_items WHERE center_id = $1", [centerId]),
+    pool.query(
+      `SELECT COALESCE(SUM(cl.calories_kcal), 0) as total_calories, COUNT(DISTINCT cl.member_id) as active_members
+       FROM consumption_logs cl
+       JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+       WHERE mcm.center_id = $1 AND DATE(cl.logged_at) = $2`,
+      [centerId, today]
+    ),
+  ]);
+
+  res.json({
+    member_count: Number(memberRes.rows[0].count),
+    menu_item_count: Number(menuRes.rows[0].count),
+    today_calories: Number(consumptionRes.rows[0].total_calories),
+    today_active_members: Number(consumptionRes.rows[0].active_members),
+  });
+});
+
+// GET /api/admin/centers/:centerId/menu-items
+router.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows: items } = await pool.query(
+    "SELECT id, center_id, name, description, created_at FROM menu_items WHERE center_id = $1 ORDER BY created_at",
+    [centerId]
+  );
+  // Attach BOM for each item
+  const result = await Promise.all(items.map(async (item) => {
+    const { rows: bom } = await pool.query(
+      "SELECT id, ingredient, quantity, unit FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
+      [item.id]
+    );
+    return { ...item, bom };
+  }));
+  res.json(result);
+});
+
+// POST /api/admin/centers/:centerId/menu-items
+router.post("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { name, description } = req.body as { name?: string; description?: string };
+  if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+
+  const { rows } = await pool.query(
+    "INSERT INTO menu_items (center_id, name, description) VALUES ($1,$2,$3) RETURNING *",
+    [centerId, name.trim(), description?.trim() ?? null]
+  );
+  res.status(201).json({ ...rows[0], bom: [] });
+});
+
+// PUT /api/admin/menu-items/:itemId
+router.put("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: existing } = await pool.query("SELECT center_id FROM menu_items WHERE id = $1", [itemId]);
+  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { name, description } = req.body as { name?: string; description?: string };
+  if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+
+  const { rows } = await pool.query(
+    "UPDATE menu_items SET name=$1, description=$2 WHERE id=$3 RETURNING *",
+    [name.trim(), description?.trim() ?? null, itemId]
+  );
+  res.json(rows[0]);
+});
+
+// DELETE /api/admin/menu-items/:itemId
+router.delete("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: existing } = await pool.query("SELECT center_id FROM menu_items WHERE id = $1", [itemId]);
+  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  await pool.query("DELETE FROM menu_items WHERE id = $1", [itemId]);
+  res.status(204).send();
+});
+
+// GET /api/admin/menu-items/:itemId/bom
+router.get("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const { rows } = await pool.query(
+    "SELECT id, ingredient, quantity, unit FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
+    [itemId]
+  );
+  res.json(rows);
+});
+
+// POST /api/admin/menu-items/:itemId/bom
+router.post("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: item } = await pool.query("SELECT center_id FROM menu_items WHERE id = $1", [itemId]);
+  if (!item[0]) { res.status(404).json({ error: "Menu item not found" }); return; }
+  if (item[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { ingredient, quantity, unit } = req.body as { ingredient?: string; quantity?: number; unit?: string };
+  if (!ingredient?.trim()) { res.status(400).json({ error: "ingredient is required" }); return; }
+
+  const { rows } = await pool.query(
+    "INSERT INTO menu_item_bom (menu_item_id, ingredient, quantity, unit) VALUES ($1,$2,$3,$4) RETURNING *",
+    [itemId, ingredient.trim(), quantity ?? 0, unit?.trim() ?? "g"]
+  );
+  res.status(201).json(rows[0]);
+});
+
+// PUT /api/admin/bom/:bomId
+router.put("/admin/bom/:bomId", requireAdmin, async (req, res) => {
+  const { bomId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: existing } = await pool.query(
+    `SELECT mb.id, mi.center_id FROM menu_item_bom mb
+     JOIN menu_items mi ON mi.id = mb.menu_item_id WHERE mb.id = $1`,
+    [bomId]
+  );
+  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { ingredient, quantity, unit } = req.body as { ingredient?: string; quantity?: number; unit?: string };
+  if (!ingredient?.trim()) { res.status(400).json({ error: "ingredient is required" }); return; }
+
+  const { rows } = await pool.query(
+    "UPDATE menu_item_bom SET ingredient=$1, quantity=$2, unit=$3 WHERE id=$4 RETURNING *",
+    [ingredient.trim(), quantity ?? 0, unit?.trim() ?? "g", bomId]
+  );
+  res.json(rows[0]);
+});
+
+// DELETE /api/admin/bom/:bomId
+router.delete("/admin/bom/:bomId", requireAdmin, async (req, res) => {
+  const { bomId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: existing } = await pool.query(
+    `SELECT mb.id, mi.center_id FROM menu_item_bom mb
+     JOIN menu_items mi ON mi.id = mb.menu_item_id WHERE mb.id = $1`,
+    [bomId]
+  );
+  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  await pool.query("DELETE FROM menu_item_bom WHERE id = $1", [bomId]);
+  res.status(204).send();
+});
+
+// GET /api/admin/centers/:centerId/consumption?from=YYYY-MM-DD&to=YYYY-MM-DD
+router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const from = typeof req.query.from === "string" ? req.query.from : today;
+  const to   = typeof req.query.to   === "string" ? req.query.to   : today;
+
+  // Per-component totals via menu_item_bom matched by food_item name
+  const { rows: byComponent } = await pool.query(
+    `SELECT
+       mb.ingredient,
+       mb.unit,
+       SUM(cl.quantity_g) AS total_quantity_g,
+       COUNT(DISTINCT cl.member_id) AS member_count,
+       COUNT(*) AS log_count
+     FROM consumption_logs cl
+     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+     JOIN menu_items mi ON mi.center_id = mcm.center_id AND LOWER(mi.name) = LOWER(cl.food_item)
+     JOIN menu_item_bom mb ON mb.menu_item_id = mi.id
+     WHERE mcm.center_id = $1
+       AND DATE(cl.logged_at) BETWEEN $2 AND $3
+     GROUP BY mb.ingredient, mb.unit
+     ORDER BY total_quantity_g DESC`,
+    [centerId, from, to]
+  );
+
+  // All consumption logs for the center in range (for the member breakdown)
+  const { rows: logs } = await pool.query(
+    `SELECT cl.id, cl.member_id, m.name as member_name, cl.logged_at, cl.meal_slot,
+            cl.food_item, cl.quantity_g, cl.calories_kcal
+     FROM consumption_logs cl
+     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+     JOIN members m ON m.id = cl.member_id
+     WHERE mcm.center_id = $1
+       AND DATE(cl.logged_at) BETWEEN $2 AND $3
+     ORDER BY cl.logged_at DESC`,
+    [centerId, from, to]
+  );
+
+  res.json({ from, to, by_component: byComponent, logs });
+});
+
+export default router;

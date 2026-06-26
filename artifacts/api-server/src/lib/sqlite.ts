@@ -149,7 +149,58 @@ async function createTables(): Promise<void> {
       member_id INTEGER REFERENCES members(id),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS center_auth (
+      center_id TEXT PRIMARY KEY REFERENCES centers(id),
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS menu_items (
+      id SERIAL PRIMARY KEY,
+      center_id TEXT NOT NULL REFERENCES centers(id),
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS menu_item_bom (
+      id SERIAL PRIMARY KEY,
+      menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+      ingredient TEXT NOT NULL,
+      quantity REAL NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'g',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
+}
+
+async function migrateAdminTables(): Promise<void> {
+  await pool.query(`
+    ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS menu_item_id INTEGER REFERENCES menu_items(id);
+  `);
+}
+
+async function seedCenterPasswords(): Promise<void> {
+  const { default: bcrypt } = await import("bcryptjs");
+  const { rows: centers } = await pool.query("SELECT id, name FROM centers");
+  const DEFAULT_PASSWORD = "admin123";
+  const hash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+
+  for (const center of centers) {
+    const { rows } = await pool.query(
+      "SELECT center_id FROM center_auth WHERE center_id = $1",
+      [center.id]
+    );
+    if (!rows[0]) {
+      await pool.query(
+        "INSERT INTO center_auth (center_id, password_hash) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+        [center.id, hash]
+      );
+      logger.info({ centerId: center.id, centerName: center.name, password: DEFAULT_PASSWORD },
+        "Admin credentials seeded for center");
+    }
+  }
 }
 
 function toDateStr(val: unknown): string | null {
@@ -329,4 +380,6 @@ export async function initDb(): Promise<void> {
   await createTables();
   await migrateColumns();
   await seedFromXlsx();
+  await migrateAdminTables();
+  await seedCenterPasswords();
 }
