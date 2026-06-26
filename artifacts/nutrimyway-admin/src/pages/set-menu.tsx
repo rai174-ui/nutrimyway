@@ -6,6 +6,23 @@ import {
   type MenuItem, type BomComponent
 } from "@/lib/api";
 
+const UNITS = ["g", "ml", "mg", "kg", "L", "tsp", "tbsp", "cup", "oz", "pcs", "serving", "scoop"] as const;
+type Unit = typeof UNITS[number];
+
+function UnitSelect({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
+  const isKnown = UNITS.includes(value as Unit);
+  return (
+    <select
+      value={isKnown ? value : "__other__"}
+      onChange={e => onChange(e.target.value === "__other__" ? value : e.target.value)}
+      className={className}
+    >
+      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+      {!isKnown && value && <option value="__other__">{value}</option>}
+    </select>
+  );
+}
+
 function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
   bom: BomComponent;
   menuItemId: number;
@@ -32,15 +49,26 @@ function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
   if (editing) {
     return (
       <div className="flex items-center gap-2 py-2 border-t border-border/50">
-        <input value={ingredient} onChange={e => setIngredient(e.target.value)}
+        <input
+          value={ingredient}
+          onChange={e => setIngredient(e.target.value)}
           className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="Ingredient" />
-        <input value={quantity} onChange={e => setQuantity(e.target.value)} type="number"
+          placeholder="Ingredient"
+        />
+        <input
+          value={quantity}
+          onChange={e => setQuantity(e.target.value)}
+          type="number"
+          min="0"
+          step="any"
           className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="Qty" />
-        <input value={unit} onChange={e => setUnit(e.target.value)}
-          className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="Unit" />
+          placeholder="Qty"
+        />
+        <UnitSelect
+          value={unit}
+          onChange={setUnit}
+          className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+        />
         <button onClick={save} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
         </button>
@@ -68,7 +96,7 @@ function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
 function AddBomForm({ menuItemId, onAdded }: { menuItemId: number; onAdded: (b: BomComponent) => void }) {
   const [ingredient, setIngredient] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [unit, setUnit] = useState("g");
+  const [unit, setUnit] = useState<string>("g");
   const [saving, setSaving] = useState(false);
 
   async function add() {
@@ -85,18 +113,32 @@ function AddBomForm({ menuItemId, onAdded }: { menuItemId: number; onAdded: (b: 
 
   return (
     <div className="flex items-center gap-2 pt-2 border-t border-dashed border-border">
-      <input value={ingredient} onChange={e => setIngredient(e.target.value)}
+      <input
+        value={ingredient}
+        onChange={e => setIngredient(e.target.value)}
         className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
         placeholder="Add ingredient…"
-        onKeyDown={e => e.key === "Enter" && add()} />
-      <input value={quantity} onChange={e => setQuantity(e.target.value)} type="number"
+        onKeyDown={e => e.key === "Enter" && void add()}
+      />
+      <input
+        value={quantity}
+        onChange={e => setQuantity(e.target.value)}
+        type="number"
+        min="0"
+        step="any"
         className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-        placeholder="Qty" />
-      <input value={unit} onChange={e => setUnit(e.target.value)}
-        className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-        placeholder="Unit" />
-      <button onClick={add} disabled={!ingredient.trim() || saving}
-        className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40">
+        placeholder="Qty"
+      />
+      <UnitSelect
+        value={unit}
+        onChange={setUnit}
+        className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+      />
+      <button
+        onClick={() => void add()}
+        disabled={!ingredient.trim() || saving}
+        className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+      >
         {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
       </button>
     </div>
@@ -177,7 +219,7 @@ function MenuItemCard({ item, onUpdate, onDelete }: {
           <div className="flex items-center gap-2 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <span className="flex-1">Ingredient</span>
             <span className="w-20">Quantity</span>
-            <span className="w-16">Unit</span>
+            <span className="w-24">Unit</span>
             <span className="w-12" />
           </div>
           {bom.length === 0 && (
@@ -297,4 +339,3 @@ export default function SetMenuPage() {
     </div>
   );
 }
-
