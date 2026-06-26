@@ -334,6 +334,10 @@ export function Login() {
           )}
         </AnimatePresence>
       </div>
+
+      <p className="text-center text-xs text-muted-foreground/50 pb-6 tracking-wide">
+        Nutrition My Way
+      </p>
     </div>
   );
 }
