@@ -234,6 +234,8 @@ router.delete("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
   if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
   if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
+  // Null out FK references in consumption_logs before deleting to avoid constraint violation
+  await pool.query("UPDATE consumption_logs SET menu_item_id = NULL WHERE menu_item_id = $1", [itemId]);
   await pool.query("DELETE FROM menu_items WHERE id = $1", [itemId]);
   res.status(204).send();
 });
