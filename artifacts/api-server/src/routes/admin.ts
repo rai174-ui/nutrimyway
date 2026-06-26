@@ -111,25 +111,28 @@ router.patch("/admin/super/centers/:centerId/deactivate", requireSuperAdmin, asy
   res.json(rows[0]);
 });
 
-// POST /api/admin/centers/:centerId/change-password
-router.post("/admin/centers/:centerId/change-password", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req as AdminRequest;
-  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+// POST /api/admin/me/password — change password for the authenticated center
+router.post("/admin/me/password", requireAdmin, async (req, res) => {
   const { current_password, new_password } = req.body as { current_password?: string; new_password?: string };
   if (!current_password || !new_password) {
-    res.status(400).json({ error: "current_password and new_password are required" }); return;
+    res.status(400).json({ error: "current_password and new_password are required" });
+    return;
   }
   if (new_password.length < 8) {
-    res.status(400).json({ error: "New password must be at least 8 characters" }); return;
+    res.status(400).json({ error: "New password must be at least 8 characters" });
+    return;
   }
-  const { rows } = await pool.query("SELECT password_hash FROM center_auth WHERE center_id = $1", [centerId]);
-  if (!rows[0]) { res.status(404).json({ error: "Center auth not found" }); return; }
+  const centerId = (req as AdminRequest).adminCenterId;
+  const { rows } = await pool.query(
+    "SELECT password_hash FROM center_auth WHERE center_id = $1",
+    [centerId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
   const ok = await bcrypt.compare(current_password, rows[0].password_hash as string);
   if (!ok) { res.status(401).json({ error: "Current password is incorrect" }); return; }
-  const hash = await bcrypt.hash(new_password, 10);
-  await pool.query("UPDATE center_auth SET password_hash = $1 WHERE center_id = $2", [hash, centerId]);
-  res.json({ success: true });
+  const newHash = await bcrypt.hash(new_password, 10);
+  await pool.query("UPDATE center_auth SET password_hash = $1 WHERE center_id = $2", [newHash, centerId]);
+  res.status(204).end();
 });
 
 // GET /api/admin/centers — list active centers only (public, needed on login page)
