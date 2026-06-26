@@ -125,7 +125,6 @@ export function Login() {
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="NutriMyWay" className="w-full h-full object-contain" />
         </div>
       </div>
-
       <div className="flex-1 flex flex-col max-w-sm w-full mx-auto px-6 pt-10 pb-8">
         <AnimatePresence>
           {step !== "contact" && (
@@ -334,8 +333,7 @@ export function Login() {
           )}
         </AnimatePresence>
       </div>
-
-      <p className="text-center text-xs text-muted-foreground/50 pb-6 tracking-wide">
+      <p className="text-center pb-6 tracking-wide text-[18px] text-ring">
         Nutrition My Way
       </p>
     </div>
