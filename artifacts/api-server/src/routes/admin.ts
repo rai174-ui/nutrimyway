@@ -447,13 +447,15 @@ router.post("/admin/centers/:centerId/members/link", requireAdmin, async (req, r
   res.status(201).json(member[0]);
 });
 
-// GET /api/admin/centers/:centerId/checkin-logs?date=YYYY-MM-DD (default today)
+// GET /api/admin/centers/:centerId/checkin-logs?from=YYYY-MM-DD&to=YYYY-MM-DD (default: today)
 router.get("/admin/centers/:centerId/checkin-logs", requireAdmin, async (req, res) => {
   const { centerId } = req.params;
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const date = (req.query.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const from = (req.query.from as string | undefined) ?? today;
+  const to   = (req.query.to   as string | undefined) ?? today;
   const { rows } = await pool.query(
     `SELECT ci.id,
             ci.member_id,
@@ -465,9 +467,9 @@ router.get("/admin/centers/:centerId/checkin-logs", requireAdmin, async (req, re
      FROM member_check_ins ci
      JOIN members m ON m.id = ci.member_id
      WHERE ci.center_id = $1
-       AND DATE(ci.checked_in_at AT TIME ZONE 'Asia/Kolkata') = $2
+       AND DATE(ci.checked_in_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
      ORDER BY ci.checked_in_at DESC`,
-    [centerId, date]
+    [centerId, from, to]
   );
   res.json(rows);
 });
