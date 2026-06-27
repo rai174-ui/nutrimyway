@@ -36,6 +36,7 @@ async function migrateColumns(): Promise<void> {
     "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS muscle_mass_kg REAL",
     "ALTER TABLE members ADD COLUMN IF NOT EXISTS mobile TEXT",
     "ALTER TABLE members ADD COLUMN IF NOT EXISTS email TEXT",
+    "ALTER TABLE members ADD COLUMN IF NOT EXISTS membership_no TEXT",
     "ALTER TABLE otps ADD COLUMN IF NOT EXISTS email TEXT",
     "ALTER TABLE user_auth ADD COLUMN IF NOT EXISTS email TEXT",
     // Allow mobile to be NULL so email-only OTPs/registrations work
@@ -48,6 +49,7 @@ async function migrateColumns(): Promise<void> {
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS members_mobile_uidx ON members (mobile) WHERE mobile IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS members_email_uidx ON members (email) WHERE email IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS members_membership_no_uidx ON members (membership_no) WHERE membership_no IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS user_auth_email_uidx ON user_auth (email) WHERE email IS NOT NULL;
   `);
 }

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   UserPlus, LogIn, LogOut, Trash2, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
-  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus,
+  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus, Hash,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
@@ -22,12 +22,12 @@ function minutesSince(iso: string) {
 
 // ── Add Member Form (unchanged) ─────────────────────────────────────────────
 
-type LookupStep = "search" | "found" | "notfound" | "creating";
+type LookupStep = "search" | "found" | "notfound" | "creating" | "healthrecord";
 
 function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () => void }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<LookupStep>("search");
-  const [searchKind, setSearchKind] = useState<"mobile" | "email">("mobile");
+  const [searchKind, setSearchKind] = useState<"mobile" | "email" | "membership_no">("mobile");
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<MemberLookup | null>(null);
   const [searching, setSearching] = useState(false);
@@ -36,12 +36,29 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   const [mobile, setMobile] = useState("");
   const [height, setHeight] = useState("");
   const [doj, setDoj] = useState("");
+  const [membershipNo, setMembershipNo] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Health record step
+  const [linkedMemberId, setLinkedMemberId] = useState<number | null>(null);
+  const [hrDate, setHrDate] = useState(new Date().toISOString().slice(0, 10));
+  const [hrWeight, setHrWeight] = useState("");
+  const [hrBmi, setHrBmi] = useState("");
+  const [hrBodyFat, setHrBodyFat] = useState("");
+  const [hrVisceralFat, setHrVisceralFat] = useState("");
+  const [hrMuscleMass, setHrMuscleMass] = useState("");
+  const [hrMetabolicAge, setHrMetabolicAge] = useState("");
+  const [hrBmr, setHrBmr] = useState("");
+  const [hrRestingHr, setHrRestingHr] = useState("");
+  const [hrNotes, setHrNotes] = useState("");
 
   function reset() {
     setStep("search"); setQuery(""); setFound(null); setError("");
-    setName(""); setEmail(""); setMobile(""); setHeight(""); setDoj("");
+    setName(""); setEmail(""); setMobile(""); setHeight(""); setDoj(""); setMembershipNo("");
+    setLinkedMemberId(null);
+    setHrDate(new Date().toISOString().slice(0, 10));
+    setHrWeight(""); setHrBmi(""); setHrBodyFat(""); setHrVisceralFat("");
+    setHrMuscleMass(""); setHrMetabolicAge(""); setHrBmr(""); setHrRestingHr(""); setHrNotes("");
   }
 
   async function handleSearch() {
@@ -50,12 +67,15 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
     try {
       const params = searchKind === "mobile"
         ? `mobile=${encodeURIComponent(query.trim())}`
-        : `email=${encodeURIComponent(query.trim())}`;
+        : searchKind === "email"
+        ? `email=${encodeURIComponent(query.trim())}`
+        : `membership_no=${encodeURIComponent(query.trim())}`;
       const result = await apiGet<MemberLookup | null>(`/admin/members/lookup?${params}`);
       if (result) { setFound(result); setStep("found"); }
       else {
         if (searchKind === "mobile") setMobile(query.trim());
-        else setEmail(query.trim());
+        else if (searchKind === "email") setEmail(query.trim());
+        else setMembershipNo(query.trim());
         setStep("notfound");
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Lookup failed"); }
@@ -67,21 +87,47 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
     setSaving(true); setError("");
     try {
       await apiPost(`/admin/centers/${centerId}/members/link`, { member_id: found.id });
-      setOpen(false); reset(); onAdded();
+      setLinkedMemberId(found.id);
+      setStep("healthrecord");
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to link member"); }
     finally { setSaving(false); }
   }
 
   async function handleCreate() {
     if (!name.trim()) { setError("Name is required"); return; }
+    if (!mobile.trim() && !email.trim()) { setError("Mobile number or email is required"); return; }
     setSaving(true); setError("");
     try {
-      await apiPost(`/admin/centers/${centerId}/members`, {
+      const member = await apiPost<{ id: number }>(`/admin/centers/${centerId}/members`, {
         name: name.trim(), mobile: mobile.trim() || null, email: email.trim() || null,
         height_cm: height ? Number(height) : null, date_of_joining: doj || null,
+        membership_no: membershipNo.trim() || null,
+      });
+      setLinkedMemberId(member.id);
+      setStep("healthrecord");
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed to add member"); }
+    finally { setSaving(false); }
+  }
+
+  async function handleHealthRecord(e: React.FormEvent) {
+    e.preventDefault();
+    if (!hrWeight || Number(hrWeight) <= 0) { setError("Weight is required"); return; }
+    setSaving(true); setError("");
+    try {
+      await apiPost(`/admin/centers/${centerId}/members/${linkedMemberId}/health-records`, {
+        recorded_at: hrDate,
+        weight_kg: Number(hrWeight),
+        bmi: hrBmi ? Number(hrBmi) : undefined,
+        body_fat_pct: hrBodyFat ? Number(hrBodyFat) : undefined,
+        visceral_fat: hrVisceralFat ? Number(hrVisceralFat) : undefined,
+        muscle_mass_kg: hrMuscleMass ? Number(hrMuscleMass) : undefined,
+        metabolic_age: hrMetabolicAge ? Number(hrMetabolicAge) : undefined,
+        bmr: hrBmr ? Number(hrBmr) : undefined,
+        resting_hr: hrRestingHr ? Number(hrRestingHr) : undefined,
+        notes: hrNotes.trim() || undefined,
       });
       setOpen(false); reset(); onAdded();
-    } catch (e) { setError(e instanceof Error ? e.message : "Failed to add member"); }
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed to save health record"); }
     finally { setSaving(false); }
   }
 
@@ -94,6 +140,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
     );
   }
 
+  const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary";
+  const hrFieldCls = "w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50";
+  const hrLabelCls = "block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1";
+
   return (
     <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
       <div className="flex items-center justify-between">
@@ -101,23 +151,30 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
         <button onClick={() => { setOpen(false); reset(); }} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
       </div>
       {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+
       {step === "search" && (
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">Search for an existing member first to avoid duplicates.</p>
           <div className="flex bg-muted rounded-lg p-1 gap-1">
-            {(["mobile", "email"] as const).map(k => (
-              <button key={k} onClick={() => setSearchKind(k)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${searchKind === k ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-                {k === "mobile" ? <><Phone className="w-3 h-3" />Mobile</> : <><Mail className="w-3 h-3" />Email</>}
-              </button>
-            ))}
+            <button onClick={() => { setSearchKind("mobile"); setQuery(""); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${searchKind === "mobile" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              <Phone className="w-3 h-3" />Mobile
+            </button>
+            <button onClick={() => { setSearchKind("email"); setQuery(""); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${searchKind === "email" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              <Mail className="w-3 h-3" />Email
+            </button>
+            <button onClick={() => { setSearchKind("membership_no"); setQuery(""); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${searchKind === "membership_no" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              <Hash className="w-3 h-3" />Member ID
+            </button>
           </div>
           <div className="flex gap-2">
-            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()}
-              placeholder={searchKind === "mobile" ? "+91 98765 43210" : "member@email.com"}
-              type={searchKind === "email" ? "email" : "tel"}
+            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && void handleSearch()}
+              placeholder={searchKind === "mobile" ? "+91 98765 43210" : searchKind === "email" ? "member@email.com" : "MEM-001"}
+              type={searchKind === "email" ? "email" : "text"}
               className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary" />
-            <button onClick={handleSearch} disabled={!query.trim() || searching}
+            <button onClick={() => void handleSearch()} disabled={!query.trim() || searching}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 transition-colors">
               <Search className="w-3.5 h-3.5" />{searching ? "..." : "Search"}
             </button>
@@ -127,6 +184,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
           </button>
         </div>
       )}
+
       {step === "found" && found && (
         <div className="space-y-4">
           <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
@@ -136,17 +194,19 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
               <p className="text-sm font-medium text-foreground mt-1">{found.name}</p>
               {found.mobile && <p className="text-xs text-muted-foreground">{found.mobile}</p>}
               {found.email && <p className="text-xs text-muted-foreground">{found.email}</p>}
+              {found.membership_no && <p className="text-xs text-muted-foreground">ID: {found.membership_no}</p>}
             </div>
           </div>
           <div className="flex gap-2 justify-between">
             <button onClick={() => { setFound(null); setStep("search"); setError(""); }} className="text-xs text-muted-foreground hover:text-foreground">← Search again</button>
-            <button onClick={handleLink} disabled={saving}
+            <button onClick={() => void handleLink()} disabled={saving}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
               <UserCheck className="w-3.5 h-3.5" />{saving ? "Linking..." : "Link to Center"}
             </button>
           </div>
         </div>
       )}
+
       {step === "notfound" && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
@@ -155,38 +215,97 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-muted-foreground mb-1">Name *</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary" />
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Mobile</label>
-              <input value={mobile} onChange={e => setMobile(e.target.value)} placeholder="+91 ..." type="tel"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary" />
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Mobile *</label>
+              <input value={mobile} onChange={e => setMobile(e.target.value)} placeholder="+91 ..." type="tel" className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Email</label>
-              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="member@email.com" type="email"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary" />
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Email *</label>
+              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="member@email.com" type="email" className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Member ID</label>
+              <input value={membershipNo} onChange={e => setMembershipNo(e.target.value)} placeholder="MEM-001" className={inputCls} />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Height (cm)</label>
-              <input type="number" value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 165"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary" />
+              <input type="number" value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 165" className={inputCls} />
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-muted-foreground mb-1">Date of Joining</label>
-              <input type="date" value={doj} onChange={e => setDoj(e.target.value)}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary" />
+              <input type="date" value={doj} onChange={e => setDoj(e.target.value)} className={inputCls} />
             </div>
           </div>
+          <p className="text-[10px] text-amber-600">* Mobile or email is required (at least one)</p>
           <div className="flex gap-2 justify-between">
             <button onClick={() => { setStep("search"); setError(""); }} className="text-xs text-muted-foreground hover:text-foreground">← Back to search</button>
-            <button onClick={handleCreate} disabled={saving}
+            <button onClick={() => void handleCreate()} disabled={saving}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
-              <UserPlus className="w-3.5 h-3.5" />{saving ? "Creating..." : "Create & Add"}
+              <UserPlus className="w-3.5 h-3.5" />{saving ? "Creating..." : "Create & Continue →"}
             </button>
           </div>
         </div>
+      )}
+
+      {step === "healthrecord" && (
+        <form onSubmit={e => void handleHealthRecord(e)} className="space-y-3">
+          <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+            <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+            Record initial health measurements to complete registration.
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div>
+              <label className={hrLabelCls}>Date</label>
+              <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+            </div>
+            <div>
+              <label className={hrLabelCls}>Weight (kg) *</label>
+              <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => setHrWeight(e.target.value)} className={hrFieldCls} placeholder="72.5" required />
+            </div>
+            <div>
+              <label className={hrLabelCls}>BMI</label>
+              <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+            </div>
+            <div>
+              <label className={hrLabelCls}>Body Fat %</label>
+              <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+            </div>
+            <div>
+              <label className={hrLabelCls}>Visceral Fat</label>
+              <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+            </div>
+            <div>
+              <label className={hrLabelCls}>Muscle Mass (kg)</label>
+              <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+            </div>
+            <div>
+              <label className={hrLabelCls}>Metabolic Age</label>
+              <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+            </div>
+            <div>
+              <label className={hrLabelCls}>BMR (kcal)</label>
+              <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+            </div>
+            <div>
+              <label className={hrLabelCls}>Resting HR (bpm)</label>
+              <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+            </div>
+          </div>
+          <div>
+            <label className={hrLabelCls}>Notes</label>
+            <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+              className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-sky-600 text-white font-medium hover:bg-sky-700 disabled:opacity-50 transition-colors">
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              Save & Complete Registration
+            </button>
+          </div>
+        </form>
       )}
     </div>
   );

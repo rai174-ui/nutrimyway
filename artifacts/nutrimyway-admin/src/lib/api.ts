@@ -160,6 +160,7 @@ export interface MemberLookup {
   name: string;
   mobile: string | null;
   email: string | null;
+  membership_no: string | null;
   height_cm: number | null;
   date_of_joining: string | null;
 }
@@ -171,6 +172,7 @@ export interface CenterMember {
   height_cm: number | null;
   mobile: string | null;
   email: string | null;
+  membership_no: string | null;
   checkin_id: number | null;
   checked_in_at: string | null;
   checked_out_at: string | null;

@@ -509,24 +509,23 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
 // Member management (per-center)
 // ---------------------------------------------------------------------------
 
-// GET /api/admin/members/lookup?mobile=...&email=... — find existing member (admin auth required)
+// GET /api/admin/members/lookup?mobile=...&email=...&membership_no=...
 router.get("/admin/members/lookup", requireAdmin, async (req, res) => {
-  const { mobile, email } = req.query as { mobile?: string; email?: string };
-  if (!mobile && !email) { res.status(400).json({ error: "mobile or email is required" }); return; }
+  const { mobile, email, membership_no } = req.query as { mobile?: string; email?: string; membership_no?: string };
+  if (!mobile && !email && !membership_no) { res.status(400).json({ error: "mobile, email or membership_no is required" }); return; }
 
+  const cols = "id, name, mobile, email, membership_no, height_cm, date_of_joining";
   let row: Record<string, unknown> | undefined;
   if (mobile) {
-    const { rows } = await pool.query(
-      `SELECT id, name, mobile, email, height_cm, date_of_joining FROM members WHERE mobile = $1 LIMIT 1`,
-      [mobile.trim()]
-    );
+    const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE mobile = $1 LIMIT 1`, [mobile.trim()]);
     row = rows[0];
   }
   if (!row && email) {
-    const { rows } = await pool.query(
-      `SELECT id, name, mobile, email, height_cm, date_of_joining FROM members WHERE LOWER(email) = LOWER($1) LIMIT 1`,
-      [email.trim()]
-    );
+    const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email.trim()]);
+    row = rows[0];
+  }
+  if (!row && membership_no) {
+    const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE membership_no = $1 LIMIT 1`, [membership_no.trim()]);
     row = rows[0];
   }
   res.json(row ?? null);
@@ -589,7 +588,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
 
   const { rows } = await pool.query(
     `SELECT
-       m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email,
+       m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
        ci.id          AS checkin_id,
        ci.checked_in_at,
        ci.checked_out_at,
@@ -616,16 +615,17 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, height_cm, date_of_joining, mobile, email } = req.body as {
+  const { name, height_cm, date_of_joining, mobile, email, membership_no } = req.body as {
     name?: string; height_cm?: number | null; date_of_joining?: string | null;
-    mobile?: string | null; email?: string | null;
+    mobile?: string | null; email?: string | null; membership_no?: string | null;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+  if (!mobile?.trim() && !email?.trim()) { res.status(400).json({ error: "mobile or email is required" }); return; }
 
   const { rows: memberRows } = await pool.query(
-    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile ?? null, email ?? null]
+    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null]
   );
   const member = memberRows[0];
   await pool.query(
