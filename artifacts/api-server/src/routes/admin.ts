@@ -55,7 +55,7 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction): voi
 const AUTO_CHECKOUT_MINUTES = 180;
 
 // Shared helper: book consumption for all selections and mark check-in as checked out
-async function bookAndCheckout(checkinId: number, memberId: number): Promise<void> {
+async function bookAndCheckout(checkinId: number, memberId: number, centerId: string): Promise<void> {
   // Fetch all selections (mandatory + optional) for this visit
   const { rows: selections } = await pool.query(
     `SELECT vms.menu_item_id, mi.name
@@ -64,13 +64,34 @@ async function bookAndCheckout(checkinId: number, memberId: number): Promise<voi
      WHERE vms.checkin_id = $1`,
     [checkinId]
   );
-  // Book each selection as a consumption log entry
+  // Book each selection as a consumption log entry + deduct from ingredient batches
   for (const sel of selections) {
     await pool.query(
       `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, logged_at)
        VALUES ($1, 'center_visit', $2, $3, NOW())`,
       [memberId, sel.name as string, sel.menu_item_id as number]
     );
+    // Deduct BOM quantities from the open ingredient batch (oldest open batch first)
+    const { rows: bom } = await pool.query(
+      `SELECT mb.ingredient_id, mb.quantity FROM menu_item_bom mb
+       WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL`,
+      [sel.menu_item_id as number]
+    );
+    for (const b of bom) {
+      const { rows: batches } = await pool.query(
+        `SELECT id FROM ingredient_batches
+         WHERE ingredient_id = $1 AND center_id = $2 AND status = 'open'
+         ORDER BY opened_at ASC LIMIT 1`,
+        [b.ingredient_id as number, centerId]
+      );
+      if (batches[0]) {
+        await pool.query(
+          `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
+           VALUES ($1, $2, 'auto: member visit', NOW())`,
+          [(batches[0] as { id: number }).id, b.quantity as number]
+        );
+      }
+    }
   }
   // Mark check-in as checked out
   await pool.query(
@@ -88,7 +109,7 @@ async function autoCheckoutExpired(centerId: string): Promise<void> {
     [centerId, AUTO_CHECKOUT_MINUTES]
   );
   for (const ci of expired) {
-    await bookAndCheckout(ci.id as number, ci.member_id as number);
+    await bookAndCheckout(ci.id as number, ci.member_id as number, centerId);
   }
 }
 
@@ -702,7 +723,7 @@ router.post("/admin/centers/:centerId/members/:memberId/checkout", requireAdmin,
   );
   if (!rows[0]) { res.status(404).json({ error: "No active check-in found" }); return; }
   const checkinId = (rows[0] as { id: number }).id;
-  await bookAndCheckout(checkinId, Number(memberId));
+  await bookAndCheckout(checkinId, Number(memberId), centerId);
   res.json({ checked_out: true, checkin_id: checkinId });
 });
 

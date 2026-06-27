@@ -317,14 +317,26 @@ function VisitPanel({
                 Mandatory (always included)
               </p>
               <div className="flex flex-wrap gap-2">
-                {mandatory.map(item => (
-                  <div key={item.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-teal-100 text-teal-800 border border-teal-200">
-                    <Lock className="w-3 h-3" />
-                    {item.name}
-                    <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
-                  </div>
-                ))}
+                {mandatory.map(item => {
+                  const unavailable = !item.is_available;
+                  return (
+                    <div key={item.id}
+                      title={unavailable ? "No open batch for this item's ingredients — inventory will not be deducted at checkout" : undefined}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                        unavailable
+                          ? "bg-amber-50 text-amber-800 border-amber-300"
+                          : "bg-teal-100 text-teal-800 border-teal-200"
+                      }`}
+                    >
+                      <Lock className="w-3 h-3" />
+                      {item.name}
+                      {unavailable
+                        ? <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                        : <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+                      }
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
