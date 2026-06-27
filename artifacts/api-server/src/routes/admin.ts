@@ -94,16 +94,27 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
     );
     for (const b of bom) {
       const { rows: batches } = await pool.query(
-        `SELECT id FROM ingredient_batches
+        `SELECT id, pack_size FROM ingredient_batches
          WHERE ingredient_id = $1 AND center_id = $2 AND status = 'open'
          ORDER BY opened_at ASC LIMIT 1`,
         [b.ingredient_id as number, centerId]
       );
       if (batches[0]) {
+        const batchRow = batches[0] as { id: number; pack_size: number };
         await pool.query(
           `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
            VALUES ($1, $2, 'auto: member visit', NOW())`,
-          [(batches[0] as { id: number }).id, b.quantity as number]
+          [batchRow.id, b.quantity as number]
+        );
+        // Auto-close the batch if the running total has reached or exceeded pack size
+        await pool.query(
+          `UPDATE ingredient_batches
+           SET status = 'consumed', consumed_at = NOW()
+           WHERE id = $1 AND status = 'open'
+             AND (
+               SELECT COALESCE(SUM(quantity), 0) FROM batch_consumption_logs WHERE batch_id = $1
+             ) >= pack_size`,
+          [batchRow.id]
         );
       }
     }
