@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import * as XLSX from "xlsx";
 import { Nav } from "@/components/nav";
 import {
   apiGet, apiPost, apiDelete, apiPatch,
@@ -7,10 +8,28 @@ import {
   type BatchConsumptionLog, type IngredientRequirement,
 } from "@/lib/api";
 import {
-  Plus, X, Loader2, Trash2,
+  Plus, X, Loader2, Trash2, FileDown,
   PackageOpen, PackageCheck, ChevronDown, ChevronRight,
   ClipboardList, MinusCircle, AlertTriangle, PackagePlus,
 } from "lucide-react";
+
+function exportInventoryXlsx(batches: IngredientBatch[]) {
+  const rows = batches.map(b => ({
+    Ingredient: b.ingredient_name,
+    "Batch #": b.batch_number,
+    Status: b.status,
+    "Pack Size": b.pack_size,
+    Unit: b.pack_unit,
+    "Consumed Qty": Number(b.consumed_qty),
+    "Balance": b.status === "new" ? b.pack_size : Math.max(0, b.pack_size - Number(b.consumed_qty)),
+    "Created": b.created_at ? new Date(b.created_at).toLocaleDateString() : "",
+    "Opened": b.opened_at ? new Date(b.opened_at).toLocaleDateString() : "",
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+  XLSX.writeFile(wb, `batch-inventory-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -522,15 +541,18 @@ function BatchInventory({
   const [pendingIngredientId, setPendingIngredientId] = useState<number | undefined>();
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
+  // Only show new/open batches in inventory — consumed batches move to Consumption page
+  const activeBatches = useMemo(() => batches.filter(b => b.status !== "consumed"), [batches]);
+
   const grouped = useMemo(() => {
     const map = new Map<number, { ingredient: Ingredient; batches: IngredientBatch[] }>();
     for (const ing of ingredients) map.set(ing.id, { ingredient: ing, batches: [] });
-    for (const b of batches) {
+    for (const b of activeBatches) {
       const g = map.get(b.ingredient_id);
       if (g) g.batches.push(b);
     }
     return [...map.values()].filter(g => g.batches.length > 0);
-  }, [ingredients, batches]);
+  }, [ingredients, activeBatches]);
 
   async function openBatch(id: number) { await apiPatch(`/admin/ingredient-batches/${id}/open`); onRefresh(); }
   async function consumeBatch(id: number) { await apiPatch(`/admin/ingredient-batches/${id}/consume`); onRefresh(); }
@@ -554,18 +576,29 @@ function BatchInventory({
           <PackageOpen className="w-5 h-5 text-primary" />
           <h2 className="text-base font-semibold text-foreground">Batch Inventory</h2>
           <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
-            {batches.filter(b => b.status !== "consumed").length} active
+            {activeBatches.length} active
           </span>
         </div>
-        <button
-          onClick={() => { setAddingBatch(v => !v); setPendingIngredientId(undefined); }}
-          disabled={ingredients.length === 0}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-          title={ingredients.length === 0 ? "Add ingredients to the master list first" : undefined}
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add Batch
-        </button>
+        <div className="flex items-center gap-2">
+          {activeBatches.length > 0 && (
+            <button
+              onClick={() => exportInventoryXlsx(activeBatches)}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 text-xs font-medium transition-colors"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              Export
+            </button>
+          )}
+          <button
+            onClick={() => { setAddingBatch(v => !v); setPendingIngredientId(undefined); }}
+            disabled={ingredients.length === 0}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+            title={ingredients.length === 0 ? "Add ingredients to the master list first" : undefined}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Batch
+          </button>
+        </div>
       </div>
 
       {addingBatch && (
