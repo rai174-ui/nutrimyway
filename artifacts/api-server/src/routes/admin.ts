@@ -64,8 +64,23 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
      WHERE vms.checkin_id = $1`,
     [checkinId]
   );
-  // Book each selection as a consumption log entry + deduct from ingredient batches
   for (const sel of selections) {
+    // Only log consumption if ALL tracked BOM ingredients have an open batch.
+    // If any tracked ingredient has no open batch, skip this item entirely.
+    const { rows: avail } = await pool.query(
+      `SELECT NOT EXISTS (
+         SELECT 1 FROM menu_item_bom mb
+         WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM ingredient_batches ib
+             WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $2 AND ib.status = 'open'
+           )
+       ) AS is_available`,
+      [sel.menu_item_id as number, centerId]
+    );
+    if (!(avail[0] as { is_available: boolean }).is_available) continue;
+
+    // Log consumption
     await pool.query(
       `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, logged_at)
        VALUES ($1, 'center_visit', $2, $3, NOW())`,
@@ -1061,6 +1076,23 @@ router.post("/admin/checkins/:checkinId/menu-selections", requireAdmin, async (r
     [menu_item_id, adminReq.adminCenterId]
   );
   if (!mi[0]) { res.status(404).json({ error: "Menu item not found in this center" }); return; }
+
+  // Enforce: item must have all tracked BOM ingredients with an open batch
+  const { rows: avail } = await pool.query(
+    `SELECT NOT EXISTS (
+       SELECT 1 FROM menu_item_bom mb
+       WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM ingredient_batches ib
+           WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $2 AND ib.status = 'open'
+         )
+     ) AS is_available`,
+    [menu_item_id, adminReq.adminCenterId]
+  );
+  if (!(avail[0] as { is_available: boolean }).is_available) {
+    res.status(409).json({ error: "Cannot add this item: one or more ingredients have no open batch. Open a batch in Inventory first." });
+    return;
+  }
 
   const { rows } = await pool.query(
     `INSERT INTO visit_menu_selections (checkin_id, menu_item_id)

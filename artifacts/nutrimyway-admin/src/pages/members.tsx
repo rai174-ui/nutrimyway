@@ -429,34 +429,50 @@ function VisitPanel({
         <p className="text-xs text-muted-foreground">No menu items defined for this center yet.</p>
       ) : (
         <div className="space-y-3">
+          {/* No batches open — show prominent warning */}
+          {mandatory.every(m => !m.is_available) && mandatory.length > 0 && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-800">
+                <span className="font-semibold">No set meals can be served.</span>{" "}
+                Open a batch in Inventory before checking in members for a meal visit.
+              </p>
+            </div>
+          )}
+
           {/* Mandatory items */}
           {mandatory.length > 0 && (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-                Mandatory (always included)
+                Set Menu (Mandatory)
               </p>
               <div className="flex flex-wrap gap-2">
                 {mandatory.map(item => {
                   const unavailable = !item.is_available;
                   return (
                     <div key={item.id}
-                      title={unavailable ? "No open batch for this item's ingredients — inventory will not be deducted at checkout" : undefined}
+                      title={unavailable ? "No open batch — open one in Inventory to serve this item" : "Included in this visit"}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${
                         unavailable
-                          ? "bg-amber-50 text-amber-800 border-amber-300"
+                          ? "bg-muted/40 text-muted-foreground border-border/40 opacity-60"
                           : "bg-teal-100 text-teal-800 border-teal-200"
                       }`}
                     >
-                      <Lock className="w-3 h-3" />
-                      {item.name}
                       {unavailable
-                        ? <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                        : <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
-                      }
+                        ? <XCircle className="w-3 h-3" />
+                        : <Lock className="w-3 h-3" />}
+                      <span className={unavailable ? "line-through" : ""}>{item.name}</span>
+                      {!unavailable && <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />}
                     </div>
                   );
                 })}
               </div>
+              {mandatory.some(m => !m.is_available) && !mandatory.every(m => !m.is_available) && (
+                <p className="text-[11px] text-amber-700 mt-1.5 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  Crossed-out items have no open batch and will not be served or logged.
+                </p>
+              )}
             </div>
           )}
 
@@ -475,21 +491,21 @@ function VisitPanel({
                       key={item.id}
                       onClick={() => void toggleItem(item)}
                       disabled={busy || (!canSelect)}
-                      title={!item.is_available ? "No open batch for this item's ingredients" : undefined}
+                      title={!item.is_available ? "No open batch — open one in Inventory to serve this item" : undefined}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all disabled:cursor-not-allowed ${
                         selected
                           ? "bg-emerald-100 text-emerald-800 border-emerald-300"
                           : canSelect
                           ? "bg-background text-foreground border-border hover:border-primary hover:text-primary"
-                          : "bg-muted/50 text-muted-foreground border-border/50 opacity-50"
+                          : "bg-muted/50 text-muted-foreground border-border/50 opacity-40"
                       }`}
                     >
                       {selected
                         ? <CheckCircle2 className="w-3.5 h-3.5" />
                         : canSelect
                         ? <XCircle className="w-3.5 h-3.5 opacity-40" />
-                        : <AlertTriangle className="w-3.5 h-3.5" />}
-                      {item.name}
+                        : <XCircle className="w-3.5 h-3.5" />}
+                      <span className={!canSelect ? "line-through" : ""}>{item.name}</span>
                     </button>
                   );
                 })}
