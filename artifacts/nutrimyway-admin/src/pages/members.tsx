@@ -278,6 +278,15 @@ function VisitPanel({
 
   return (
     <div className="border-t border-border/50 bg-muted/20 px-5 py-4 space-y-4">
+      {/* Already-consumed-today notice */}
+      {member.already_consumed_today && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800">
+            <span className="font-semibold">Repeat visit today.</span> Mandatory items were not auto-added — consumption for this member's set menu has already been recorded. You can still select any additional items below if applicable.
+          </p>
+        </div>
+      )}
       {/* Time bar */}
       <div className="flex items-center gap-3">
         <div className="flex-1 bg-border rounded-full h-1.5 overflow-hidden">

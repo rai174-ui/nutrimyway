@@ -571,7 +571,13 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email,
        ci.id          AS checkin_id,
        ci.checked_in_at,
-       ci.checked_out_at
+       ci.checked_out_at,
+       EXISTS (
+         SELECT 1 FROM consumption_logs cl
+         WHERE cl.member_id = m.id
+           AND cl.meal_slot = 'center_visit'
+           AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+       ) AS already_consumed_today
      FROM members m
      JOIN member_center_mapping mcm ON mcm.member_id = m.id
      LEFT JOIN member_check_ins ci
@@ -644,18 +650,33 @@ router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, 
     [Number(memberId), centerId]
   );
   const checkin = rows[0] as { id: number };
-  // Auto-add all mandatory menu items as pre-selected for this visit
-  const { rows: mandatory } = await pool.query(
-    `SELECT id FROM menu_items WHERE center_id = $1 AND is_mandatory = TRUE`,
-    [centerId]
+
+  // Check if the member already had a center_visit consumption booked today
+  const { rows: todayLogs } = await pool.query(
+    `SELECT 1 FROM consumption_logs
+     WHERE member_id = $1
+       AND meal_slot = 'center_visit'
+       AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+     LIMIT 1`,
+    [Number(memberId)]
   );
-  for (const mi of mandatory) {
-    await pool.query(
-      `INSERT INTO visit_menu_selections (checkin_id, menu_item_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-      [checkin.id, mi.id as number]
+  const alreadyConsumedToday = !!todayLogs[0];
+
+  // Only auto-add mandatory items on the member's first visit of the day
+  if (!alreadyConsumedToday) {
+    const { rows: mandatory } = await pool.query(
+      `SELECT id FROM menu_items WHERE center_id = $1 AND is_mandatory = TRUE`,
+      [centerId]
     );
+    for (const mi of mandatory) {
+      await pool.query(
+        `INSERT INTO visit_menu_selections (checkin_id, menu_item_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [checkin.id, mi.id as number]
+      );
+    }
   }
-  res.status(201).json(checkin);
+
+  res.status(201).json({ ...checkin, already_consumed_today: alreadyConsumedToday });
 });
 
 // POST /api/admin/centers/:centerId/members/:memberId/checkout

@@ -158,6 +158,7 @@ export interface CenterMember {
   checkin_id: number | null;
   checked_in_at: string | null;
   checked_out_at: string | null;
+  already_consumed_today: boolean;
 }
 
 export interface ConsumptionReport {
