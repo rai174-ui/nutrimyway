@@ -132,6 +132,22 @@ export interface BatchConsumptionLog {
   recorded_at: string;
 }
 
+export interface HealthRecord {
+  id: number;
+  member_id: number;
+  center_id: string;
+  recorded_at: string;
+  weight_kg: number | null;
+  bmi: number | null;
+  body_fat_pct: number | null;
+  visceral_fat: number | null;
+  bmr: number | null;
+  metabolic_age: number | null;
+  muscle_mass_kg: number | null;
+  resting_hr: number | null;
+  notes: string | null;
+}
+
 export interface Dashboard {
   member_count: number;
   menu_item_count: number;

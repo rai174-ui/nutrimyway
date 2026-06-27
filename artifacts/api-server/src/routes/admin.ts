@@ -727,6 +727,55 @@ router.post("/admin/centers/:centerId/members/:memberId/checkout", requireAdmin,
   res.json({ checked_out: true, checkin_id: checkinId });
 });
 
+// ── Health Records ───────────────────────────────────────────────────────────
+
+// GET /api/admin/centers/:centerId/members/:memberId/health-records
+router.get("/admin/centers/:centerId/members/:memberId/health-records", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { rows } = await pool.query(
+    `SELECT id, member_id, center_id, recorded_at,
+            weight_kg, bmi, body_fat_pct, visceral_fat,
+            bmr, metabolic_age, muscle_mass_kg, resting_hr, notes
+     FROM health_records
+     WHERE member_id = $1 AND center_id = $2
+     ORDER BY recorded_at DESC`,
+    [Number(memberId), centerId]
+  );
+  res.json(rows);
+});
+
+// POST /api/admin/centers/:centerId/members/:memberId/health-records
+router.post("/admin/centers/:centerId/members/:memberId/health-records", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const {
+    recorded_at, weight_kg, bmi, body_fat_pct, visceral_fat,
+    bmr, metabolic_age, muscle_mass_kg, resting_hr, notes,
+  } = req.body as {
+    recorded_at?: string; weight_kg?: number; bmi?: number; body_fat_pct?: number;
+    visceral_fat?: number; bmr?: number; metabolic_age?: number; muscle_mass_kg?: number;
+    resting_hr?: number; notes?: string;
+  };
+  const { rows } = await pool.query(
+    `INSERT INTO health_records
+       (member_id, center_id, recorded_at, weight_kg, bmi, body_fat_pct, visceral_fat,
+        bmr, metabolic_age, muscle_mass_kg, resting_hr, notes)
+     VALUES ($1,$2,$3::timestamptz,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     RETURNING *`,
+    [
+      Number(memberId), centerId,
+      recorded_at ? new Date(recorded_at).toISOString() : new Date().toISOString(),
+      weight_kg ?? null, bmi ?? null, body_fat_pct ?? null, visceral_fat ?? null,
+      bmr ?? null, metabolic_age ?? null, muscle_mass_kg ?? null, resting_hr ?? null,
+      notes ?? null,
+    ]
+  );
+  res.status(201).json(rows[0]);
+});
+
 // ── Ingredient Catalog ──────────────────────────────────────────────────────
 
 // GET /api/admin/ingredients

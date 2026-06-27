@@ -2,12 +2,12 @@ import { useEffect, useState, useCallback } from "react";
 import {
   UserPlus, LogIn, LogOut, Trash2, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
-  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X,
+  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
   apiGet, apiPost, apiDelete, getAdminCenter,
-  type CenterMember, type MemberLookup, type MenuItem, type VisitMenuSelection,
+  type CenterMember, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord,
 } from "@/lib/api";
 
 const AUTO_CHECKOUT_MIN = 180;
@@ -400,6 +400,196 @@ function VisitPanel({
   );
 }
 
+// ── Health Panel ─────────────────────────────────────────────────────────────
+
+function HealthPanel({ memberId, centerId, onClose }: {
+  memberId: number; centerId: string; onClose: () => void;
+}) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(todayStr);
+  const [weight, setWeight] = useState("");
+  const [bmi, setBmi] = useState("");
+  const [bodyFat, setBodyFat] = useState("");
+  const [visceralFat, setVisceralFat] = useState("");
+  const [muscleMass, setMuscleMass] = useState("");
+  const [metabolicAge, setMetabolicAge] = useState("");
+  const [bmr, setBmr] = useState("");
+  const [restingHr, setRestingHr] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [records, setRecords] = useState<HealthRecord[]>([]);
+  const [loadingRecs, setLoadingRecs] = useState(true);
+
+  async function loadRecords() {
+    setLoadingRecs(true);
+    try {
+      const data = await apiGet<HealthRecord[]>(`/admin/centers/${centerId}/members/${memberId}/health-records`);
+      setRecords(data);
+    } finally { setLoadingRecs(false); }
+  }
+
+  useEffect(() => { void loadRecords(); }, []);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true); setSaveError(null); setSaveSuccess(false);
+    try {
+      await apiPost(`/admin/centers/${centerId}/members/${memberId}/health-records`, {
+        recorded_at: date,
+        weight_kg: weight ? Number(weight) : undefined,
+        bmi: bmi ? Number(bmi) : undefined,
+        body_fat_pct: bodyFat ? Number(bodyFat) : undefined,
+        visceral_fat: visceralFat ? Number(visceralFat) : undefined,
+        muscle_mass_kg: muscleMass ? Number(muscleMass) : undefined,
+        metabolic_age: metabolicAge ? Number(metabolicAge) : undefined,
+        bmr: bmr ? Number(bmr) : undefined,
+        resting_hr: restingHr ? Number(restingHr) : undefined,
+        notes: notes.trim() || undefined,
+      });
+      setSaveSuccess(true);
+      setWeight(""); setBmi(""); setBodyFat(""); setVisceralFat("");
+      setMuscleMass(""); setMetabolicAge(""); setBmr(""); setRestingHr(""); setNotes("");
+      setDate(todayStr);
+      void loadRecords();
+    } catch (err) { setSaveError((err as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  function fmt(v: number | null, dec = 1) { return v != null ? v.toFixed(dec) : "—"; }
+  function fmtDate(iso: string) {
+    return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  const fieldCls = "w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50";
+  const labelCls = "block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1";
+
+  return (
+    <div className="border-t border-border/50 bg-sky-50/40 px-5 py-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-sky-600" />
+          <span className="text-sm font-semibold text-foreground">Health Records</span>
+        </div>
+        <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground rounded">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {saveError && <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">{saveError}</p>}
+      {saveSuccess && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">✓ Health record saved.</p>}
+
+      <form onSubmit={e => void handleSave(e)} className="space-y-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div>
+            <label className={labelCls}>Date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className={fieldCls} required />
+          </div>
+          <div>
+            <label className={labelCls}>Weight (kg)</label>
+            <input type="number" step="0.1" min="0" value={weight} onChange={e => setWeight(e.target.value)} className={fieldCls} placeholder="72.5" />
+          </div>
+          <div>
+            <label className={labelCls}>BMI</label>
+            <input type="number" step="0.1" min="0" value={bmi} onChange={e => setBmi(e.target.value)} className={fieldCls} placeholder="24.5" />
+          </div>
+          <div>
+            <label className={labelCls}>Body Fat %</label>
+            <input type="number" step="0.1" min="0" max="100" value={bodyFat} onChange={e => setBodyFat(e.target.value)} className={fieldCls} placeholder="22.0" />
+          </div>
+          <div>
+            <label className={labelCls}>Visceral Fat</label>
+            <input type="number" step="0.5" min="0" value={visceralFat} onChange={e => setVisceralFat(e.target.value)} className={fieldCls} placeholder="8" />
+          </div>
+          <div>
+            <label className={labelCls}>Muscle Mass (kg)</label>
+            <input type="number" step="0.1" min="0" value={muscleMass} onChange={e => setMuscleMass(e.target.value)} className={fieldCls} placeholder="28.0" />
+          </div>
+          <div>
+            <label className={labelCls}>Metabolic Age</label>
+            <input type="number" min="0" value={metabolicAge} onChange={e => setMetabolicAge(e.target.value)} className={fieldCls} placeholder="35" />
+          </div>
+          <div>
+            <label className={labelCls}>BMR (kcal)</label>
+            <input type="number" min="0" value={bmr} onChange={e => setBmr(e.target.value)} className={fieldCls} placeholder="1650" />
+          </div>
+          <div>
+            <label className={labelCls}>Resting HR (bpm)</label>
+            <input type="number" min="0" value={restingHr} onChange={e => setRestingHr(e.target.value)} className={fieldCls} placeholder="68" />
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>Notes</label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={2}
+            placeholder="Any observations…"
+            className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none placeholder:text-muted-foreground/50"
+          />
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700 disabled:opacity-40 transition-colors"
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            Save Record
+          </button>
+        </div>
+      </form>
+
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+          History{records.length > 0 ? ` (${records.length})` : ""}
+        </p>
+        {loadingRecs ? (
+          <div className="flex justify-center py-3"><Loader2 className="w-4 h-4 animate-spin text-sky-400" /></div>
+        ) : records.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No records yet — add one above.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-muted/50 text-muted-foreground">
+                  <th className="text-left px-3 py-2 font-medium whitespace-nowrap">Date</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Wt (kg)</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap">BMI</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Fat %</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Visceral</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Muscle (kg)</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Met Age</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap">BMR</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap">HR</th>
+                  <th className="text-left px-3 py-2 font-medium">Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {records.map(r => (
+                  <tr key={r.id} className="bg-background hover:bg-muted/20 transition-colors">
+                    <td className="px-3 py-2 whitespace-nowrap font-medium text-foreground">{fmtDate(r.recorded_at)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmt(r.weight_kg)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmt(r.bmi)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmt(r.body_fat_pct)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmt(r.visceral_fat)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmt(r.muscle_mass_kg)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{r.metabolic_age ?? "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{r.bmr != null ? Math.round(r.bmr).toString() : "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{r.resting_hr ?? "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground max-w-[120px] truncate">{r.notes ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Member Row ──────────────────────────────────────────────────────────────
 
 function MemberRow({ member, centerId, onRefresh }: {
@@ -408,6 +598,7 @@ function MemberRow({ member, centerId, onRefresh }: {
   const [busy, setBusy] = useState(false);
   const [showWeightForm, setShowWeightForm] = useState(false);
   const [weightKg, setWeightKg] = useState("");
+  const [showHealthPanel, setShowHealthPanel] = useState(false);
   const isCheckedIn = !!member.checkin_id;
   const mins = isCheckedIn ? minutesSince(member.checked_in_at!) : 0;
 
@@ -508,6 +699,13 @@ function MemberRow({ member, centerId, onRefresh }: {
             </>
           )}
           <button
+            onClick={() => setShowHealthPanel(v => !v)}
+            className={`p-1.5 rounded-lg transition-colors ${showHealthPanel ? "text-sky-600 bg-sky-100" : "text-muted-foreground hover:text-sky-600 hover:bg-sky-50"}`}
+            title="Health records"
+          >
+            <Activity className="w-4 h-4" />
+          </button>
+          <button
             onClick={handleRemove}
             disabled={busy}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors"
@@ -520,6 +718,9 @@ function MemberRow({ member, centerId, onRefresh }: {
       {/* Expanded visit panel for checked-in members */}
       {isCheckedIn && (
         <VisitPanel member={member} centerId={centerId} onCheckout={onRefresh} />
+      )}
+      {showHealthPanel && (
+        <HealthPanel memberId={member.id} centerId={centerId} onClose={() => setShowHealthPanel(false)} />
       )}
     </div>
   );
