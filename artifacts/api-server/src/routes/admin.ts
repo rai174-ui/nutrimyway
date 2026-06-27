@@ -93,10 +93,12 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
       [sel.menu_item_id as number]
     );
     for (const b of bom) {
+      // Join ingredients to get pack_size (it's on ingredients, not ingredient_batches)
       const { rows: batches } = await pool.query(
-        `SELECT id, pack_size FROM ingredient_batches
-         WHERE ingredient_id = $1 AND center_id = $2 AND status = 'open'
-         ORDER BY opened_at ASC LIMIT 1`,
+        `SELECT ib.id, i.pack_size FROM ingredient_batches ib
+         JOIN ingredients i ON i.id = ib.ingredient_id
+         WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
+         ORDER BY ib.opened_at ASC LIMIT 1`,
         [b.ingredient_id as number, centerId]
       );
       if (batches[0]) {
@@ -107,15 +109,17 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
           [batchRow.id, b.quantity as number]
         );
         // Auto-close the batch if the running total has reached or exceeded pack size
-        await pool.query(
-          `UPDATE ingredient_batches
-           SET status = 'consumed', consumed_at = NOW()
-           WHERE id = $1 AND status = 'open'
-             AND (
-               SELECT COALESCE(SUM(quantity), 0) FROM batch_consumption_logs WHERE batch_id = $1
-             ) >= pack_size`,
+        const { rows: bal } = await pool.query(
+          `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
           [batchRow.id]
         );
+        if (Number((bal[0] as { total: number }).total) >= batchRow.pack_size) {
+          await pool.query(
+            `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
+             WHERE id = $1 AND status = 'open'`,
+            [batchRow.id]
+          );
+        }
       }
     }
   }
