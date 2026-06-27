@@ -1,0 +1,25 @@
+ABC@DESKTOP-FEPGTGH MINGW64 /c/Webportal/NutriMyWay (main)
+$ pnpm --filter @workspace/nutrimyway-admin run build
+
+No projects matched the filters "C:\Webportal\NutriMyWay" in "C:\WebPortal\NutriMyWay"
+
+> @workspace/nutrimyway-admin@0.0.0 build C:\WebPortal\NutriMyWay\artifacts\nutrimyway-admin
+> vite build --config vite.config.ts
+
+failed to load config from C:\WebPortal\NutriMyWay\artifacts\nutrimyway-admin\vite.config.ts
+error during build:
+Error: PORT environment variable is required but was not provided.
+    at file:///C:/WebPortal/NutriMyWay/artifacts/nutrimyway-admin/node_modules/.vite-temp/vite.config.ts.timestamp-1782570142515-32c76da79052d8.mjs:10:9
+    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)
+    at async node:internal/modules/esm/loader:639:26
+    at async loadConfigFromBundledFile (file:///C:/WebPortal/NutriMyWay/node_modules/.pnpm/vite@7.3.5_@types+node@25.9.4_jiti@2.7.0_lightningcss@1.32.0_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/config.js:35996:12)
+    at async bundleAndLoadConfigFile (file:///C:/WebPortal/NutriMyWay/node_modules/.pnpm/vite@7.3.5_@types+node@25.9.4_jiti@2.7.0_lightningcss@1.32.0_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/config.js:35884:17)
+    at async loadConfigFromFile (file:///C:/WebPortal/NutriMyWay/node_modules/.pnpm/vite@7.3.5_@types+node@25.9.4_jiti@2.7.0_lightningcss@1.32.0_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/config.js:35851:42)
+    at async resolveConfig (file:///C:/WebPortal/NutriMyWay/node_modules/.pnpm/vite@7.3.5_@types+node@25.9.4_jiti@2.7.0_lightningcss@1.32.0_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/config.js:35500:22)
+    at async createBuilder (file:///C:/WebPortal/NutriMyWay/node_modules/.pnpm/vite@7.3.5_@types+node@25.9.4_jiti@2.7.0_lightningcss@1.32.0_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/chunks/config.js:33955:19)
+    at async CAC.<anonymous> (file:///C:/WebPortal/NutriMyWay/node_modules/.pnpm/vite@7.3.5_@types+node@25.9.4_jiti@2.7.0_lightningcss@1.32.0_tsx@4.22.4_yaml@2.9.0/node_modules/vite/dist/node/cli.js:629:10)
+C:\WebPortal\NutriMyWay\artifacts\nutrimyway-admin:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/nutrimyway-admin@0.0.0 build: `vite build --config vite.config.ts`
+Exit status 1
+
+ABC@DESKTOP-FEPGTGH MINGW64 /c/Webportal/NutriMyWay (main)
