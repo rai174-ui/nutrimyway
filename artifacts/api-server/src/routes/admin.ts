@@ -1,7 +1,38 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import nodemailer from "nodemailer";
+import { randomBytes } from "crypto";
 import { pool } from "../lib/sqlite";
+import { logger } from "../lib/logger";
+
+const SUPER_ADMIN_EMAIL = process.env["SUPER_ADMIN_EMAIL"] ?? "rai.174@gmail.com";
+const APP_URL = process.env["APP_URL"] ?? "http://localhost:8080";
+
+async function sendSuperAdminResetEmail(resetUrl: string): Promise<void> {
+  const host = process.env["SMTP_HOST"];
+  const user = process.env["SMTP_USER"];
+  const pass = process.env["SMTP_PASS"];
+  const port = Number(process.env["SMTP_PORT"] ?? "587");
+  if (!host || !user || !pass) {
+    logger.warn({ resetUrl }, "SMTP not configured — reset URL logged (copy it to use)");
+    return;
+  }
+  const transporter = nodemailer.createTransport({
+    host, port, secure: port === 465, auth: { user, pass },
+  });
+  await transporter.sendMail({
+    from: `"NutriMyWay Admin" <${user}>`,
+    to: SUPER_ADMIN_EMAIL,
+    subject: "Super Admin Password Reset",
+    html: `<div style="font-family:sans-serif;max-width:480px;margin:auto">
+      <h2 style="color:#0d9488">Password Reset</h2>
+      <p>Click the button below to reset your Super Admin password. Link expires in <strong>1 hour</strong>.</p>
+      <a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#0d9488;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Reset Password</a>
+      <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this, ignore this email.</p>
+    </div>`,
+  });
+}
 
 const router = Router();
 const JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
@@ -151,12 +182,15 @@ router.post("/admin/login", async (req, res) => {
     return;
   }
   const { rows } = await pool.query(
-    `SELECT ca.password_hash, c.name, c.is_active
+    `SELECT ca.password_hash, ca.valid_until, c.name, c.is_active
      FROM center_auth ca JOIN centers c ON c.id = ca.center_id WHERE ca.center_id = $1`,
     [center_id]
   );
   if (!rows[0]) { res.status(401).json({ error: "Invalid center or password" }); return; }
   if (!rows[0].is_active) { res.status(403).json({ error: "This center has been deactivated. Contact the super admin." }); return; }
+  if (rows[0].valid_until && new Date(rows[0].valid_until as string) < new Date()) {
+    res.status(403).json({ error: "This center's access has expired. Contact the super admin." }); return;
+  }
   const ok = await bcrypt.compare(password, rows[0].password_hash as string);
   if (!ok) { res.status(401).json({ error: "Invalid center or password" }); return; }
   const token = signAdminToken(center_id);
@@ -174,9 +208,14 @@ router.post("/admin/super/login", async (req, res) => {
   res.json({ token: signSuperAdminToken() });
 });
 
-// GET /api/admin/super/centers — all centers with active status (super admin only)
+// GET /api/admin/super/centers — all centers with active status and validity (super admin only)
 router.get("/admin/super/centers", requireSuperAdmin, async (_req, res) => {
-  const { rows } = await pool.query("SELECT id, name, is_active FROM centers ORDER BY name");
+  const { rows } = await pool.query(`
+    SELECT c.id, c.name, c.is_active, ca.valid_until
+    FROM centers c
+    LEFT JOIN center_auth ca ON ca.center_id = c.id
+    ORDER BY c.name
+  `);
   res.json(rows);
 });
 
@@ -200,6 +239,80 @@ router.patch("/admin/super/centers/:centerId/deactivate", requireSuperAdmin, asy
   );
   if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
   res.json(rows[0]);
+});
+
+// PATCH /api/admin/super/centers/:centerId/password — reset a center's password
+router.patch("/admin/super/centers/:centerId/password", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { password } = req.body as { password?: string };
+  if (!password || password.length < 8) {
+    res.status(400).json({ error: "password must be at least 8 characters" }); return;
+  }
+  const hash = await bcrypt.hash(password, 10);
+  const { rowCount } = await pool.query(
+    "UPDATE center_auth SET password_hash = $1 WHERE center_id = $2",
+    [hash, centerId]
+  );
+  if (!rowCount) { res.status(404).json({ error: "Center not found" }); return; }
+  res.json({ ok: true });
+});
+
+// PATCH /api/admin/super/centers/:centerId/validity — set/clear access expiry date
+router.patch("/admin/super/centers/:centerId/validity", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { valid_until } = req.body as { valid_until?: string | null };
+  await pool.query(
+    "UPDATE center_auth SET valid_until = $1 WHERE center_id = $2",
+    [valid_until ?? null, centerId]
+  );
+  const { rows } = await pool.query(
+    `SELECT c.id, c.name, c.is_active, ca.valid_until
+     FROM centers c LEFT JOIN center_auth ca ON ca.center_id = c.id WHERE c.id = $1`,
+    [centerId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
+  res.json(rows[0]);
+});
+
+// POST /api/admin/super/forgot-password — generate reset token and email it
+router.post("/admin/super/forgot-password", async (_req, res) => {
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+  await pool.query(
+    "INSERT INTO super_admin_reset_tokens (token, expires_at) VALUES ($1, $2)",
+    [token, expiresAt]
+  );
+  const resetUrl = `${APP_URL}/admin/super?token=${token}`;
+  try {
+    await sendSuperAdminResetEmail(resetUrl);
+  } catch (err) {
+    logger.error({ err }, "Failed to send super admin reset email");
+  }
+  res.json({ ok: true });
+});
+
+// POST /api/admin/super/reset-password — consume token and set new password
+router.post("/admin/super/reset-password", async (req, res) => {
+  const { token, new_password } = req.body as { token?: string; new_password?: string };
+  if (!token || !new_password) {
+    res.status(400).json({ error: "token and new_password are required" }); return;
+  }
+  if (new_password.length < 8) {
+    res.status(400).json({ error: "new_password must be at least 8 characters" }); return;
+  }
+  const { rows } = await pool.query(
+    "SELECT token, expires_at, used_at FROM super_admin_reset_tokens WHERE token = $1",
+    [token]
+  );
+  if (!rows[0]) { res.status(400).json({ error: "Invalid or expired reset link" }); return; }
+  if (rows[0].used_at) { res.status(400).json({ error: "This reset link has already been used" }); return; }
+  if (new Date(rows[0].expires_at as string) < new Date()) {
+    res.status(400).json({ error: "Reset link has expired — request a new one" }); return;
+  }
+  const hash = await bcrypt.hash(new_password, 10);
+  await pool.query("UPDATE super_admin_auth SET password_hash = $1 WHERE id = 'superadmin'", [hash]);
+  await pool.query("UPDATE super_admin_reset_tokens SET used_at = NOW() WHERE token = $1", [token]);
+  res.json({ ok: true });
 });
 
 // POST /api/admin/me/password — change password for the authenticated center

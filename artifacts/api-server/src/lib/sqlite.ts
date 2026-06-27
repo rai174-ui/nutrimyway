@@ -497,6 +497,20 @@ async function migrateAdminTables6(): Promise<void> {
   `);
 }
 
+async function migrateAdminTables8(): Promise<void> {
+  // Center access validity date — blocks login after this date when set
+  await pool.query(`ALTER TABLE center_auth ADD COLUMN IF NOT EXISTS valid_until DATE`);
+  // Super admin password reset tokens (one-time, 1-hour expiry)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS super_admin_reset_tokens (
+      token TEXT PRIMARY KEY,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
 async function migrateAdminTables7(): Promise<void> {
   // Mandatory flag on menu items (e.g. "Afresh" drink always included)
   await pool.query(
@@ -525,6 +539,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables5();
   await migrateAdminTables6();
   await migrateAdminTables7();
+  await migrateAdminTables8();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
