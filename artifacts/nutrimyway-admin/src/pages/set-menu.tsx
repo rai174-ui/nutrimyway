@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Edit2, ChevronDown, ChevronUp, Loader2, Check, X, UtensilsCrossed } from "lucide-react";
+import { Plus, Trash2, Edit2, ChevronDown, ChevronUp, Loader2, Check, X, UtensilsCrossed, Lock } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
-  apiGet, apiPost, apiPut, apiDelete, getAdminCenter, bomPutPath, bomDeletePath,
+  apiGet, apiPost, apiPut, apiDelete, apiPatch, getAdminCenter, bomPutPath, bomDeletePath,
   type MenuItem, type BomComponent, type Ingredient
 } from "@/lib/api";
 
@@ -245,7 +245,16 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description ?? "");
   const [saving, setSaving] = useState(false);
+  const [togglingMandatory, setTogglingMandatory] = useState(false);
   const [bom, setBom] = useState<BomComponent[]>(item.bom);
+
+  async function toggleMandatory() {
+    setTogglingMandatory(true);
+    try {
+      const updated = await apiPatch<MenuItem>(`/admin/menu-items/${item.id}/toggle-mandatory`);
+      onUpdate({ ...updated, bom });
+    } finally { setTogglingMandatory(false); }
+  }
 
   async function saveItem() {
     if (!name.trim()) return;
@@ -285,12 +294,27 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
         ) : (
           <>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-foreground truncate">{item.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-foreground truncate">{item.name}</p>
+                {item.is_mandatory && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-teal-100 text-teal-700 rounded-full px-2 py-0.5 flex-shrink-0">
+                    <Lock className="w-2.5 h-2.5" />Mandatory
+                  </span>
+                )}
+              </div>
               {item.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.description}</p>}
             </div>
             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
               {bom.length} component{bom.length !== 1 ? "s" : ""}
             </span>
+            <button
+              onClick={() => void toggleMandatory()}
+              disabled={togglingMandatory}
+              title={item.is_mandatory ? "Remove mandatory flag" : "Mark as mandatory (always served)"}
+              className={`transition-colors disabled:opacity-40 ${item.is_mandatory ? "text-teal-600 hover:text-teal-800" : "text-muted-foreground hover:text-teal-600"}`}
+            >
+              <Lock className="w-4 h-4" />
+            </button>
             <button onClick={() => setEditing(true)} className="text-muted-foreground hover:text-primary transition-colors">
               <Edit2 className="w-4 h-4" />
             </button>

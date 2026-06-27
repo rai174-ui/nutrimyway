@@ -495,6 +495,23 @@ async function migrateAdminTables6(): Promise<void> {
   `);
 }
 
+async function migrateAdminTables7(): Promise<void> {
+  // Mandatory flag on menu items (e.g. "Afresh" drink always included)
+  await pool.query(
+    `ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS is_mandatory BOOLEAN NOT NULL DEFAULT FALSE`
+  );
+  // Per-visit menu selections: what each checked-in member had during their session
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS visit_menu_selections (
+      id SERIAL PRIMARY KEY,
+      checkin_id INTEGER NOT NULL REFERENCES member_check_ins(id) ON DELETE CASCADE,
+      menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(checkin_id, menu_item_id)
+    )
+  `);
+}
+
 export async function initDb(): Promise<void> {
   await createTables();
   await migrateColumns();
@@ -505,6 +522,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables4();
   await migrateAdminTables5();
   await migrateAdminTables6();
+  await migrateAdminTables7();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }

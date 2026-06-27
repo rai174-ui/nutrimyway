@@ -1,1 +1,2 @@
 - [Check-in system](check-in-system.md) — member_check_ins table added via migrateAdminTables3; members.id is now auto-increment via sequence
+- [Visit consumption booking](visit-consumption.md) — bookAndCheckout helper + auto-checkout at 180 min; mandatory items auto-selected on check-in.

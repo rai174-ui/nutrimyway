@@ -100,8 +100,19 @@ export interface MenuItem {
   center_id: string;
   name: string;
   description: string | null;
+  is_mandatory: boolean;
+  is_available: boolean;
   created_at: string;
   bom: BomComponent[];
+}
+
+export interface VisitMenuSelection {
+  id: number;
+  checkin_id: number;
+  menu_item_id: number;
+  menu_item_name: string;
+  is_mandatory: boolean;
+  created_at: string;
 }
 
 export interface BomComponent {

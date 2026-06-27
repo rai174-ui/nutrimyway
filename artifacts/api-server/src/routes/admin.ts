@@ -52,6 +52,46 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction): voi
   }
 }
 
+const AUTO_CHECKOUT_MINUTES = 180;
+
+// Shared helper: book consumption for all selections and mark check-in as checked out
+async function bookAndCheckout(checkinId: number, memberId: number): Promise<void> {
+  // Fetch all selections (mandatory + optional) for this visit
+  const { rows: selections } = await pool.query(
+    `SELECT vms.menu_item_id, mi.name
+     FROM visit_menu_selections vms
+     JOIN menu_items mi ON mi.id = vms.menu_item_id
+     WHERE vms.checkin_id = $1`,
+    [checkinId]
+  );
+  // Book each selection as a consumption log entry
+  for (const sel of selections) {
+    await pool.query(
+      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, logged_at)
+       VALUES ($1, 'center_visit', $2, $3, NOW())`,
+      [memberId, sel.name as string, sel.menu_item_id as number]
+    );
+  }
+  // Mark check-in as checked out
+  await pool.query(
+    `UPDATE member_check_ins SET checked_out_at = NOW() WHERE id = $1 AND checked_out_at IS NULL`,
+    [checkinId]
+  );
+}
+
+// Auto-checkout sessions older than AUTO_CHECKOUT_MINUTES at a given center
+async function autoCheckoutExpired(centerId: string): Promise<void> {
+  const { rows: expired } = await pool.query(
+    `SELECT id, member_id FROM member_check_ins
+     WHERE center_id = $1 AND checked_out_at IS NULL
+       AND NOW() - checked_in_at > ($2 || ' minutes')::INTERVAL`,
+    [centerId, AUTO_CHECKOUT_MINUTES]
+  );
+  for (const ci of expired) {
+    await bookAndCheckout(ci.id as number, ci.member_id as number);
+  }
+}
+
 // POST /api/admin/login
 router.post("/admin/login", async (req, res) => {
   const { center_id, password } = req.body as { center_id?: string; password?: string };
@@ -176,7 +216,18 @@ router.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res)
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const { rows: items } = await pool.query(
-    "SELECT id, center_id, name, description, created_at FROM menu_items WHERE center_id = $1 ORDER BY created_at",
+    `SELECT mi.id, mi.center_id, mi.name, mi.description, mi.is_mandatory, mi.created_at,
+       NOT EXISTS (
+         SELECT 1 FROM menu_item_bom mb
+         WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM ingredient_batches ib
+             WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $1 AND ib.status = 'open'
+           )
+       ) AS is_available
+     FROM menu_items mi
+     WHERE mi.center_id = $1
+     ORDER BY mi.is_mandatory DESC, mi.name`,
     [centerId]
   );
   // Attach BOM for each item
@@ -238,6 +289,20 @@ router.delete("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
   await pool.query("UPDATE consumption_logs SET menu_item_id = NULL WHERE menu_item_id = $1", [itemId]);
   await pool.query("DELETE FROM menu_items WHERE id = $1", [itemId]);
   res.status(204).send();
+});
+
+// PATCH /api/admin/menu-items/:itemId/toggle-mandatory
+router.patch("/admin/menu-items/:itemId/toggle-mandatory", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const adminReq = req as AdminRequest;
+  const { rows: existing } = await pool.query("SELECT center_id, is_mandatory FROM menu_items WHERE id = $1", [itemId]);
+  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { rows } = await pool.query(
+    "UPDATE menu_items SET is_mandatory = NOT is_mandatory WHERE id = $1 RETURNING *",
+    [itemId]
+  );
+  res.json(rows[0]);
 });
 
 // GET /api/admin/menu-items/:itemId/bom
@@ -498,6 +563,9 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
+  // Auto-checkout any sessions that have exceeded the time limit
+  await autoCheckoutExpired(centerId);
+
   const { rows } = await pool.query(
     `SELECT
        m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email,
@@ -575,7 +643,19 @@ router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, 
     `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
     [Number(memberId), centerId]
   );
-  res.status(201).json(rows[0]);
+  const checkin = rows[0] as { id: number };
+  // Auto-add all mandatory menu items as pre-selected for this visit
+  const { rows: mandatory } = await pool.query(
+    `SELECT id FROM menu_items WHERE center_id = $1 AND is_mandatory = TRUE`,
+    [centerId]
+  );
+  for (const mi of mandatory) {
+    await pool.query(
+      `INSERT INTO visit_menu_selections (checkin_id, menu_item_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+      [checkin.id, mi.id as number]
+    );
+  }
+  res.status(201).json(checkin);
 });
 
 // POST /api/admin/centers/:centerId/members/:memberId/checkout
@@ -585,13 +665,14 @@ router.post("/admin/centers/:centerId/members/:memberId/checkout", requireAdmin,
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const { rows } = await pool.query(
-    `UPDATE member_check_ins SET checked_out_at = NOW()
-     WHERE member_id = $1 AND center_id = $2 AND checked_out_at IS NULL
-     RETURNING *`,
+    `SELECT id FROM member_check_ins
+     WHERE member_id = $1 AND center_id = $2 AND checked_out_at IS NULL`,
     [Number(memberId), centerId]
   );
   if (!rows[0]) { res.status(404).json({ error: "No active check-in found" }); return; }
-  res.json(rows[0]);
+  const checkinId = (rows[0] as { id: number }).id;
+  await bookAndCheckout(checkinId, Number(memberId));
+  res.json({ checked_out: true, checkin_id: checkinId });
 });
 
 // ── Ingredient Catalog ──────────────────────────────────────────────────────
@@ -790,6 +871,92 @@ router.delete("/admin/consumption-logs/:logId", requireAdmin, async (req, res) =
   if (rows[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   await pool.query("DELETE FROM batch_consumption_logs WHERE id=$1", [Number(logId)]);
+  res.status(204).end();
+});
+
+// ── Visit Menu Selections ────────────────────────────────────────────────────
+
+// GET /api/admin/checkins/:checkinId/menu-selections
+router.get("/admin/checkins/:checkinId/menu-selections", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req as AdminRequest;
+  // Verify the checkin belongs to the admin's center
+  const { rows: ci } = await pool.query(
+    `SELECT ci.center_id FROM member_check_ins ci WHERE ci.id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ci[0]) { res.status(404).json({ error: "Check-in not found" }); return; }
+  if ((ci[0] as { center_id: string }).center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const { rows } = await pool.query(
+    `SELECT vms.id, vms.checkin_id, vms.menu_item_id, mi.name AS menu_item_name,
+            mi.is_mandatory, vms.created_at
+     FROM visit_menu_selections vms
+     JOIN menu_items mi ON mi.id = vms.menu_item_id
+     WHERE vms.checkin_id = $1
+     ORDER BY mi.is_mandatory DESC, mi.name`,
+    [Number(checkinId)]
+  );
+  res.json(rows);
+});
+
+// POST /api/admin/checkins/:checkinId/menu-selections
+router.post("/admin/checkins/:checkinId/menu-selections", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req as AdminRequest;
+  const { menu_item_id } = req.body as { menu_item_id?: number };
+  if (!menu_item_id) { res.status(400).json({ error: "menu_item_id is required" }); return; }
+
+  // Verify checkin belongs to admin's center
+  const { rows: ci } = await pool.query(
+    `SELECT ci.center_id, ci.checked_out_at FROM member_check_ins ci WHERE ci.id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ci[0]) { res.status(404).json({ error: "Check-in not found" }); return; }
+  const ciRow = ci[0] as { center_id: string; checked_out_at: string | null };
+  if (ciRow.center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (ciRow.checked_out_at) { res.status(409).json({ error: "Session already checked out" }); return; }
+
+  // Verify the menu item belongs to the same center
+  const { rows: mi } = await pool.query(
+    `SELECT id, name, is_mandatory FROM menu_items WHERE id = $1 AND center_id = $2`,
+    [menu_item_id, adminReq.adminCenterId]
+  );
+  if (!mi[0]) { res.status(404).json({ error: "Menu item not found in this center" }); return; }
+
+  const { rows } = await pool.query(
+    `INSERT INTO visit_menu_selections (checkin_id, menu_item_id)
+     VALUES ($1, $2)
+     ON CONFLICT (checkin_id, menu_item_id) DO NOTHING
+     RETURNING id, checkin_id, menu_item_id, created_at`,
+    [Number(checkinId), menu_item_id]
+  );
+  const miRow = mi[0] as { id: number; name: string; is_mandatory: boolean };
+  const result = rows[0]
+    ? { ...rows[0], menu_item_name: miRow.name, is_mandatory: miRow.is_mandatory }
+    : null;
+  res.status(201).json(result);
+});
+
+// DELETE /api/admin/checkin-selections/:selectionId
+router.delete("/admin/checkin-selections/:selectionId", requireAdmin, async (req, res) => {
+  const { selectionId } = req.params;
+  const adminReq = req as AdminRequest;
+  // Verify the selection belongs to the admin's center
+  const { rows } = await pool.query(
+    `SELECT vms.id, mi.is_mandatory, ci.center_id
+     FROM visit_menu_selections vms
+     JOIN menu_items mi ON mi.id = vms.menu_item_id
+     JOIN member_check_ins ci ON ci.id = vms.checkin_id
+     WHERE vms.id = $1`,
+    [Number(selectionId)]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  const row = rows[0] as { center_id: string; is_mandatory: boolean };
+  if (row.center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (row.is_mandatory) { res.status(400).json({ error: "Cannot remove a mandatory item" }); return; }
+  await pool.query("DELETE FROM visit_menu_selections WHERE id = $1", [Number(selectionId)]);
   res.status(204).end();
 });
 
