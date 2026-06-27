@@ -693,10 +693,21 @@ router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, 
   );
   const alreadyConsumedToday = !!todayLogs[0];
 
-  // Only auto-add mandatory items on the member's first visit of the day
+  // Only auto-add mandatory items on the member's first visit of the day,
+  // and only if ALL tracked BOM ingredients have an open batch at this center.
   if (!alreadyConsumedToday) {
     const { rows: mandatory } = await pool.query(
-      `SELECT id FROM menu_items WHERE center_id = $1 AND is_mandatory = TRUE`,
+      `SELECT mi.id FROM menu_items mi
+       WHERE mi.center_id = $1 AND mi.is_mandatory = TRUE
+         AND NOT EXISTS (
+           SELECT 1 FROM menu_item_bom mb
+           WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM ingredient_batches ib
+               WHERE ib.ingredient_id = mb.ingredient_id
+                 AND ib.center_id = $1 AND ib.status = 'open'
+             )
+         )`,
       [centerId]
     );
     for (const mi of mandatory) {
