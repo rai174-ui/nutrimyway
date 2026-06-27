@@ -3,12 +3,13 @@ import { Nav } from "@/components/nav";
 import {
   apiGet, apiPost, apiPut, apiDelete, apiPatch,
   getAdminCenter,
-  type Ingredient, type IngredientBatch, type BatchStatus, type BatchConsumptionLog,
+  type Ingredient, type IngredientBatch, type BatchStatus,
+  type BatchConsumptionLog, type IngredientRequirement,
 } from "@/lib/api";
 import {
   Package, Plus, Edit2, Check, X, Loader2, Trash2,
   PackageOpen, PackageCheck, ChevronDown, ChevronRight,
-  ClipboardList, MinusCircle,
+  ClipboardList, MinusCircle, AlertTriangle, PackagePlus,
 } from "lucide-react";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -205,14 +206,19 @@ function IngredientCatalog({
 // ── Add Batch Form ─────────────────────────────────────────────────────────────
 
 function AddBatchForm({
-  centerId, ingredients, onAdded, onCancel,
+  centerId, ingredients, defaultIngredientId, onAdded, onCancel,
 }: {
   centerId: string;
   ingredients: Ingredient[];
+  defaultIngredientId?: number;
   onAdded: (b: IngredientBatch) => void;
   onCancel: () => void;
 }) {
-  const [ingredientId, setIngredientId] = useState<string>(ingredients[0]?.id ? String(ingredients[0].id) : "");
+  const [ingredientId, setIngredientId] = useState<string>(
+    defaultIngredientId
+      ? String(defaultIngredientId)
+      : (ingredients[0]?.id ? String(ingredients[0].id) : "")
+  );
   const [batchNumber, setBatchNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -470,14 +476,16 @@ function BatchRow({
 // ── Batch Inventory ─────────────────────────────────────────────────────────────
 
 function BatchInventory({
-  centerId, ingredients, batches, onRefresh,
+  centerId, ingredients, batches, requirements, onRefresh,
 }: {
   centerId: string;
   ingredients: Ingredient[];
   batches: IngredientBatch[];
+  requirements: IngredientRequirement[];
   onRefresh: () => void;
 }) {
   const [addingBatch, setAddingBatch] = useState(false);
+  const [pendingIngredientId, setPendingIngredientId] = useState<number | undefined>();
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
   const grouped = useMemo(() => {
@@ -494,6 +502,13 @@ function BatchInventory({
   async function consumeBatch(id: number) { await apiPatch(`/admin/ingredient-batches/${id}/consume`); onRefresh(); }
   async function deleteBatch(id: number) { await apiDelete(`/admin/ingredient-batches/${id}`); onRefresh(); }
 
+  async function openNewPack(openBatchId: number, ingredientId: number) {
+    await apiPatch(`/admin/ingredient-batches/${openBatchId}/consume`);
+    onRefresh();
+    setPendingIngredientId(ingredientId);
+    setAddingBatch(true);
+  }
+
   function toggleCollapse(id: number) {
     setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
@@ -509,7 +524,7 @@ function BatchInventory({
           </span>
         </div>
         <button
-          onClick={() => setAddingBatch(v => !v)}
+          onClick={() => { setAddingBatch(v => !v); setPendingIngredientId(undefined); }}
           disabled={ingredients.length === 0}
           className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
           title={ingredients.length === 0 ? "Add ingredients to the master list first" : undefined}
@@ -523,8 +538,9 @@ function BatchInventory({
         <AddBatchForm
           centerId={centerId}
           ingredients={ingredients}
-          onAdded={() => { onRefresh(); setAddingBatch(false); }}
-          onCancel={() => setAddingBatch(false)}
+          defaultIngredientId={pendingIngredientId}
+          onAdded={() => { onRefresh(); setAddingBatch(false); setPendingIngredientId(undefined); }}
+          onCancel={() => { setAddingBatch(false); setPendingIngredientId(undefined); }}
         />
       )}
 
@@ -536,9 +552,18 @@ function BatchInventory({
 
       <div className="divide-y divide-border">
         {grouped.map(({ ingredient, batches: grpBatches }) => {
+          const currentOpenBatch = grpBatches.find(b => b.status === "open");
+          const req = requirements.find(r => r.ingredient_id === ingredient.id);
+          const consumed = currentOpenBatch ? Number(currentOpenBatch.consumed_qty) : 0;
+          const remaining = currentOpenBatch ? Math.max(0, currentOpenBatch.pack_size - consumed) : 0;
+          const minNeeded = req ? Number(req.min_serving_qty) : 0;
+          const isLow = !!currentOpenBatch && minNeeded > 0 && remaining < minNeeded;
+          const hasNoOpen = !currentOpenBatch;
+          const pct = currentOpenBatch ? Math.min(100, (consumed / currentOpenBatch.pack_size) * 100) : 0;
+
           const isCollapsed = collapsed.has(ingredient.id);
-          const openCount = grpBatches.filter(b => b.status === "open").length;
           const newCount = grpBatches.filter(b => b.status === "new").length;
+
           return (
             <div key={ingredient.id}>
               <button
@@ -549,10 +574,23 @@ function BatchInventory({
                   ? <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                 <span className="flex-1 font-medium text-sm text-foreground">{ingredient.name}</span>
-                <span className="text-xs text-muted-foreground">{ingredient.pack_size}{ingredient.pack_unit}/pack</span>
-                {openCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200">
-                    {openCount} open
+                <span className="text-xs text-muted-foreground">{ingredient.pack_size} {ingredient.pack_unit}/pack</span>
+
+                {currentOpenBatch && !isLow && (
+                  <span className="text-xs font-semibold tabular-nums text-emerald-700">
+                    {remaining} {ingredient.pack_unit} left
+                  </span>
+                )}
+                {isLow && (
+                  <span className="flex items-center gap-0.5 text-xs font-semibold text-red-600">
+                    <AlertTriangle className="w-3 h-3" />
+                    {remaining} {ingredient.pack_unit} left
+                  </span>
+                )}
+                {hasNoOpen && (
+                  <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600">
+                    <AlertTriangle className="w-3 h-3" />
+                    No open pack
                   </span>
                 )}
                 {newCount > 0 && (
@@ -561,17 +599,69 @@ function BatchInventory({
                   </span>
                 )}
               </button>
+
               {!isCollapsed && (
-                <div className="bg-muted/20 border-t border-border/50 divide-y divide-border/50">
-                  {grpBatches.map(b => (
-                    <BatchRow
-                      key={b.id}
-                      batch={b}
-                      onOpen={openBatch}
-                      onConsume={consumeBatch}
-                      onDelete={deleteBatch}
-                    />
-                  ))}
+                <div className="bg-muted/20 border-t border-border/50">
+                  {/* No open pack callout */}
+                  {hasNoOpen && (
+                    <div className="mx-4 mt-2.5 mb-1 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-800 flex-1">
+                        <strong>No open pack</strong> — open one of the batches below to start recording consumption for this ingredient.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Consumption progress + low-stock callout */}
+                  {currentOpenBatch && (
+                    <div className={`mx-4 mt-2.5 mb-1 px-3 py-2.5 rounded-lg border ${isLow ? "bg-red-50 border-red-200" : "bg-emerald-50/60 border-emerald-200"}`}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-xs text-muted-foreground shrink-0">Consumed</span>
+                        <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${isLow ? "bg-red-400" : "bg-emerald-500"}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-semibold tabular-nums shrink-0 ${isLow ? "text-red-700" : "text-emerald-700"}`}>
+                          {consumed} / {currentOpenBatch.pack_size} {currentOpenBatch.pack_unit}
+                        </span>
+                      </div>
+
+                      {isLow ? (
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                          <p className="text-xs text-red-700 flex-1">
+                            Only <strong>{remaining} {currentOpenBatch.pack_unit}</strong> remaining — not enough for one serving ({minNeeded} {currentOpenBatch.pack_unit} needed). Open a new pack.
+                          </p>
+                          <button
+                            onClick={() => void openNewPack(currentOpenBatch.id, ingredient.id)}
+                            className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 shrink-0"
+                          >
+                            <PackagePlus className="w-3.5 h-3.5" />
+                            Open New Pack
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-emerald-700">
+                          <strong>{remaining} {currentOpenBatch.pack_unit}</strong> remaining in current pack
+                          {minNeeded > 0 && ` · ~${Math.floor(remaining / minNeeded)} serving${Math.floor(remaining / minNeeded) === 1 ? "" : "s"} left`}.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="divide-y divide-border/50 mt-1">
+                    {grpBatches.map(b => (
+                      <BatchRow
+                        key={b.id}
+                        batch={b}
+                        onOpen={openBatch}
+                        onConsume={consumeBatch}
+                        onDelete={deleteBatch}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -588,6 +678,7 @@ export default function InventoryPage() {
   const center = getAdminCenter();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [batches, setBatches] = useState<IngredientBatch[]>([]);
+  const [requirements, setRequirements] = useState<IngredientRequirement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -595,12 +686,14 @@ export default function InventoryPage() {
     if (!center) return;
     setError(null);
     try {
-      const [ings, bats] = await Promise.all([
+      const [ings, bats, reqs] = await Promise.all([
         apiGet<Ingredient[]>("/admin/ingredients"),
         apiGet<IngredientBatch[]>(`/admin/centers/${center.id}/ingredient-batches`),
+        apiGet<IngredientRequirement[]>(`/admin/centers/${center.id}/ingredient-requirements`),
       ]);
       setIngredients(ings);
       setBatches(bats);
+      setRequirements(reqs);
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }
@@ -634,6 +727,7 @@ export default function InventoryPage() {
                 centerId={center.id}
                 ingredients={ingredients}
                 batches={batches}
+                requirements={requirements}
                 onRefresh={fetchAll}
               />
             )}

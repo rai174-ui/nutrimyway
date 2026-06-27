@@ -213,4 +213,12 @@ export interface IngredientBatch {
   opened_at: string | null;
   consumed_at: string | null;
   created_at: string;
+  consumed_qty: number;
+}
+
+export interface IngredientRequirement {
+  ingredient_id: number;
+  ingredient_name: string;
+  pack_unit: string;
+  min_serving_qty: number;
 }

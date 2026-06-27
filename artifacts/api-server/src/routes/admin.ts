@@ -747,11 +747,36 @@ router.get("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (r
 
   const { rows } = await pool.query(
     `SELECT ib.id, ib.ingredient_id, i.name AS ingredient_name, i.pack_size, i.pack_unit,
-            ib.center_id, ib.batch_number, ib.status, ib.opened_at, ib.consumed_at, ib.created_at
+            ib.center_id, ib.batch_number, ib.status, ib.opened_at, ib.consumed_at, ib.created_at,
+            COALESCE((
+              SELECT SUM(bcl.quantity)
+              FROM batch_consumption_logs bcl
+              WHERE bcl.batch_id = ib.id
+            ), 0) AS consumed_qty
      FROM ingredient_batches ib
      JOIN ingredients i ON i.id = ib.ingredient_id
      WHERE ib.center_id = $1
      ORDER BY i.name, ib.status DESC, ib.created_at DESC`,
+    [centerId]
+  );
+  res.json(rows);
+});
+
+// GET /api/admin/centers/:centerId/ingredient-requirements — BOM qty per ingredient at this center
+router.get("/admin/centers/:centerId/ingredient-requirements", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    `SELECT mb.ingredient_id, i.name AS ingredient_name, i.pack_unit,
+            COALESCE(SUM(mb.quantity), 0) AS min_serving_qty
+     FROM menu_item_bom mb
+     JOIN ingredients i ON i.id = mb.ingredient_id
+     JOIN menu_items mi ON mi.id = mb.menu_item_id
+     WHERE mi.center_id = $1 AND mb.ingredient_id IS NOT NULL
+     GROUP BY mb.ingredient_id, i.name, i.pack_unit
+     ORDER BY i.name`,
     [centerId]
   );
   res.json(rows);
