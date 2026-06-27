@@ -9,6 +9,7 @@ import SettingsPage from "@/pages/settings";
 import SuperPage from "@/pages/super";
 import MembersPage from "@/pages/members";
 import LogsPage from "@/pages/logs";
+import InventoryPage from "@/pages/inventory";
 import { isAuthenticated } from "@/lib/api";
 
 const queryClient = new QueryClient();
@@ -52,6 +53,9 @@ function Router() {
       </Route>
       <Route path="/logs">
         <AuthGuard><LogsPage /></AuthGuard>
+      </Route>
+      <Route path="/inventory">
+        <AuthGuard><InventoryPage /></AuthGuard>
       </Route>
       <Route component={CatchAll} />
     </Switch>

@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { LayoutDashboard, UtensilsCrossed, BarChart3, Settings, LogOut, Users, ClipboardList } from "lucide-react";
+import { LayoutDashboard, UtensilsCrossed, BarChart3, Settings, LogOut, Users, ClipboardList, Boxes } from "lucide-react";
 import { clearAuth, getAdminCenter } from "@/lib/api";
 
 const navItems = [
@@ -8,6 +8,7 @@ const navItems = [
   { path: "/logs", label: "Logs", icon: ClipboardList },
   { path: "/set-menu", label: "Set Menu", icon: UtensilsCrossed },
   { path: "/consumption", label: "Consumption", icon: BarChart3 },
+  { path: "/inventory", label: "Inventory", icon: Boxes },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
 

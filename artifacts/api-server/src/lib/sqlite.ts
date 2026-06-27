@@ -449,6 +449,35 @@ async function migrateAdminTables4(): Promise<void> {
   await pool.query(`ALTER TABLE menu_item_bom ADD COLUMN IF NOT EXISTS kcal REAL`);
 }
 
+async function migrateAdminTables5(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ingredients (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      pack_size REAL NOT NULL DEFAULT 1,
+      pack_unit TEXT NOT NULL DEFAULT 'g',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ingredient_batches (
+      id SERIAL PRIMARY KEY,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      center_id TEXT NOT NULL REFERENCES centers(id),
+      batch_number TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'open', 'consumed')),
+      opened_at TIMESTAMPTZ,
+      consumed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uidx_ingredient_batches_open
+    ON ingredient_batches (ingredient_id, center_id)
+    WHERE status = 'open'
+  `);
+}
+
 export async function initDb(): Promise<void> {
   await createTables();
   await migrateColumns();
@@ -457,6 +486,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables2();
   await migrateAdminTables3();
   await migrateAdminTables4();
+  await migrateAdminTables5();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }

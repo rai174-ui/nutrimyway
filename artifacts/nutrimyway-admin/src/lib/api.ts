@@ -169,3 +169,27 @@ export function getAdminCenter(): { id: string; name: string } | null {
 export function isAuthenticated(): boolean {
   return !!getToken() && !!getAdminCenter();
 }
+
+export interface Ingredient {
+  id: number;
+  name: string;
+  pack_size: number;
+  pack_unit: string;
+  created_at: string;
+}
+
+export type BatchStatus = "new" | "open" | "consumed";
+
+export interface IngredientBatch {
+  id: number;
+  ingredient_id: number;
+  ingredient_name: string;
+  pack_size: number;
+  pack_unit: string;
+  center_id: string;
+  batch_number: string;
+  status: BatchStatus;
+  opened_at: string | null;
+  consumed_at: string | null;
+  created_at: string;
+}

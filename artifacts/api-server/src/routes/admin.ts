@@ -576,4 +576,147 @@ router.post("/admin/centers/:centerId/members/:memberId/checkout", requireAdmin,
   res.json(rows[0]);
 });
 
+// ── Ingredient Catalog ──────────────────────────────────────────────────────
+
+// GET /api/admin/ingredients
+router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
+  const { rows } = await pool.query(
+    "SELECT id, name, pack_size, pack_unit, created_at FROM ingredients ORDER BY name"
+  );
+  res.json(rows);
+});
+
+// POST /api/admin/ingredients
+router.post("/admin/ingredients", requireAdmin, async (req, res) => {
+  const { name, pack_size, pack_unit } = req.body as { name?: string; pack_size?: number; pack_unit?: string };
+  if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+  const { rows } = await pool.query(
+    "INSERT INTO ingredients (name, pack_size, pack_unit) VALUES ($1,$2,$3) RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g"]
+  );
+  res.status(201).json(rows[0]);
+});
+
+// PUT /api/admin/ingredients/:ingredientId
+router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
+  const { ingredientId } = req.params;
+  const { name, pack_size, pack_unit } = req.body as { name?: string; pack_size?: number; pack_unit?: string };
+  if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+  const { rows } = await pool.query(
+    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3 WHERE id=$4 RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", Number(ingredientId)]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(rows[0]);
+});
+
+// DELETE /api/admin/ingredients/:ingredientId
+router.delete("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
+  const { ingredientId } = req.params;
+  await pool.query("DELETE FROM ingredients WHERE id=$1", [Number(ingredientId)]);
+  res.status(204).end();
+});
+
+// ── Ingredient Batches ──────────────────────────────────────────────────────
+
+// GET /api/admin/centers/:centerId/ingredient-batches
+router.get("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    `SELECT ib.id, ib.ingredient_id, i.name AS ingredient_name, i.pack_size, i.pack_unit,
+            ib.center_id, ib.batch_number, ib.status, ib.opened_at, ib.consumed_at, ib.created_at
+     FROM ingredient_batches ib
+     JOIN ingredients i ON i.id = ib.ingredient_id
+     WHERE ib.center_id = $1
+     ORDER BY i.name, ib.status DESC, ib.created_at DESC`,
+    [centerId]
+  );
+  res.json(rows);
+});
+
+// POST /api/admin/centers/:centerId/ingredient-batches  — add new batch
+router.post("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { ingredient_id, batch_number } = req.body as { ingredient_id?: number; batch_number?: string };
+  if (!ingredient_id) { res.status(400).json({ error: "ingredient_id is required" }); return; }
+  if (!batch_number?.trim()) { res.status(400).json({ error: "batch_number is required" }); return; }
+
+  const { rows } = await pool.query(
+    `INSERT INTO ingredient_batches (ingredient_id, center_id, batch_number, status)
+     VALUES ($1, $2, $3, 'new') RETURNING *`,
+    [ingredient_id, centerId, batch_number.trim()]
+  );
+  res.status(201).json(rows[0]);
+});
+
+// PATCH /api/admin/ingredient-batches/:batchId/open  — new → open
+router.patch("/admin/ingredient-batches/:batchId/open", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: existing } = await pool.query(
+    "SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]
+  );
+  if (!existing[0]) { res.status(404).json({ error: "Batch not found" }); return; }
+  if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (existing[0].status !== "new") { res.status(409).json({ error: "Only a 'new' batch can be opened" }); return; }
+
+  // Enforce: no other open batch for this ingredient at this center
+  const { rows: openCheck } = await pool.query(
+    "SELECT id FROM ingredient_batches WHERE ingredient_id=$1 AND center_id=$2 AND status='open'",
+    [existing[0].ingredient_id, existing[0].center_id]
+  );
+  if (openCheck.length > 0) {
+    res.status(409).json({ error: "There is already an open batch for this ingredient. Mark it as consumed first." });
+    return;
+  }
+
+  const { rows } = await pool.query(
+    "UPDATE ingredient_batches SET status='open', opened_at=NOW() WHERE id=$1 RETURNING *",
+    [Number(batchId)]
+  );
+  res.json(rows[0]);
+});
+
+// PATCH /api/admin/ingredient-batches/:batchId/consume  — open → consumed
+router.patch("/admin/ingredient-batches/:batchId/consume", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: existing } = await pool.query(
+    "SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]
+  );
+  if (!existing[0]) { res.status(404).json({ error: "Batch not found" }); return; }
+  if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (existing[0].status !== "open") { res.status(409).json({ error: "Only an 'open' batch can be marked as consumed" }); return; }
+
+  const { rows } = await pool.query(
+    "UPDATE ingredient_batches SET status='consumed', consumed_at=NOW() WHERE id=$1 RETURNING *",
+    [Number(batchId)]
+  );
+  res.json(rows[0]);
+});
+
+// DELETE /api/admin/ingredient-batches/:batchId  — only 'new' batches
+router.delete("/admin/ingredient-batches/:batchId", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: existing } = await pool.query(
+    "SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]
+  );
+  if (!existing[0]) { res.status(404).json({ error: "Batch not found" }); return; }
+  if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (existing[0].status !== "new") { res.status(409).json({ error: "Only 'new' batches can be deleted" }); return; }
+
+  await pool.query("DELETE FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  res.status(204).end();
+});
+
 export default router;
