@@ -182,7 +182,7 @@ router.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res)
   // Attach BOM for each item
   const result = await Promise.all(items.map(async (item) => {
     const { rows: bom } = await pool.query(
-      "SELECT id, ingredient, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
+      "SELECT id, ingredient, ingredient_id, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
       [item.id]
     );
     return { ...item, bom };
@@ -253,7 +253,7 @@ router.get("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
   if (item[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const { rows } = await pool.query(
-    "SELECT id, ingredient, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
+    "SELECT id, ingredient, ingredient_id, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
     [itemId]
   );
   res.json(rows);
@@ -268,12 +268,21 @@ router.post("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
   if (!item[0]) { res.status(404).json({ error: "Menu item not found" }); return; }
   if (item[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { ingredient, quantity, unit, kcal } = req.body as { ingredient?: string; quantity?: number; unit?: string; kcal?: number | null };
-  if (!ingredient?.trim()) { res.status(400).json({ error: "ingredient is required" }); return; }
+  const { ingredient_id, ingredient, quantity, unit, kcal } = req.body as {
+    ingredient_id?: number | null; ingredient?: string; quantity?: number; unit?: string; kcal?: number | null;
+  };
+
+  let resolvedName = ingredient?.trim() ?? "";
+  if (ingredient_id) {
+    const { rows: ing } = await pool.query("SELECT name FROM ingredients WHERE id=$1", [ingredient_id]);
+    if (!ing[0]) { res.status(400).json({ error: "Ingredient not found in master" }); return; }
+    resolvedName = ing[0].name as string;
+  }
+  if (!resolvedName) { res.status(400).json({ error: "ingredient or ingredient_id is required" }); return; }
 
   const { rows } = await pool.query(
-    "INSERT INTO menu_item_bom (menu_item_id, ingredient, quantity, unit, kcal) VALUES ($1,$2,$3,$4,$5) RETURNING *",
-    [itemId, ingredient.trim(), quantity ?? 0, unit?.trim() ?? "g", kcal ?? null]
+    "INSERT INTO menu_item_bom (menu_item_id, ingredient, ingredient_id, quantity, unit, kcal) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
+    [itemId, resolvedName, ingredient_id ?? null, quantity ?? 0, unit?.trim() ?? "g", kcal ?? null]
   );
   res.status(201).json(rows[0]);
 });
@@ -292,12 +301,21 @@ router.put("/admin/menu-items/:itemId/bom/:bomId", requireAdmin, async (req, res
   if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
   if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { ingredient, quantity, unit, kcal } = req.body as { ingredient?: string; quantity?: number; unit?: string; kcal?: number | null };
-  if (!ingredient?.trim()) { res.status(400).json({ error: "ingredient is required" }); return; }
+  const { ingredient_id, ingredient, quantity, unit, kcal } = req.body as {
+    ingredient_id?: number | null; ingredient?: string; quantity?: number; unit?: string; kcal?: number | null;
+  };
+
+  let resolvedName = ingredient?.trim() ?? "";
+  if (ingredient_id) {
+    const { rows: ing } = await pool.query("SELECT name FROM ingredients WHERE id=$1", [ingredient_id]);
+    if (!ing[0]) { res.status(400).json({ error: "Ingredient not found in master" }); return; }
+    resolvedName = ing[0].name as string;
+  }
+  if (!resolvedName) { res.status(400).json({ error: "ingredient or ingredient_id is required" }); return; }
 
   const { rows } = await pool.query(
-    "UPDATE menu_item_bom SET ingredient=$1, quantity=$2, unit=$3, kcal=$4 WHERE id=$5 RETURNING *",
-    [ingredient.trim(), quantity ?? 0, unit?.trim() ?? "g", kcal ?? null, bomId]
+    "UPDATE menu_item_bom SET ingredient=$1, ingredient_id=$2, quantity=$3, unit=$4, kcal=$5 WHERE id=$6 RETURNING *",
+    [resolvedName, ingredient_id ?? null, quantity ?? 0, unit?.trim() ?? "g", kcal ?? null, bomId]
   );
   res.json(rows[0]);
 });
@@ -716,6 +734,62 @@ router.delete("/admin/ingredient-batches/:batchId", requireAdmin, async (req, re
   if (existing[0].status !== "new") { res.status(409).json({ error: "Only 'new' batches can be deleted" }); return; }
 
   await pool.query("DELETE FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  res.status(204).end();
+});
+
+// ── Batch Consumption Logs ──────────────────────────────────────────────────
+
+// GET /api/admin/ingredient-batches/:batchId/consumption-logs
+router.get("/admin/ingredient-batches/:batchId/consumption-logs", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  if (!batch[0]) { res.status(404).json({ error: "Batch not found" }); return; }
+  if (batch[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    "SELECT id, batch_id, quantity, notes, recorded_at FROM batch_consumption_logs WHERE batch_id=$1 ORDER BY recorded_at DESC",
+    [Number(batchId)]
+  );
+  res.json(rows);
+});
+
+// POST /api/admin/ingredient-batches/:batchId/consumption-logs
+router.post("/admin/ingredient-batches/:batchId/consumption-logs", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  if (!batch[0]) { res.status(404).json({ error: "Batch not found" }); return; }
+  if (batch[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (batch[0].status !== "open") { res.status(409).json({ error: "Consumption can only be recorded for an open batch" }); return; }
+
+  const { quantity, notes } = req.body as { quantity?: number; notes?: string };
+  if (!quantity || quantity <= 0) { res.status(400).json({ error: "quantity must be a positive number" }); return; }
+
+  const { rows } = await pool.query(
+    "INSERT INTO batch_consumption_logs (batch_id, quantity, notes) VALUES ($1,$2,$3) RETURNING *",
+    [Number(batchId), quantity, notes?.trim() ?? null]
+  );
+  res.status(201).json(rows[0]);
+});
+
+// DELETE /api/admin/consumption-logs/:logId
+router.delete("/admin/consumption-logs/:logId", requireAdmin, async (req, res) => {
+  const { logId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows } = await pool.query(
+    `SELECT bcl.*, ib.center_id FROM batch_consumption_logs bcl
+     JOIN ingredient_batches ib ON ib.id = bcl.batch_id
+     WHERE bcl.id=$1`,
+    [Number(logId)]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (rows[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  await pool.query("DELETE FROM batch_consumption_logs WHERE id=$1", [Number(logId)]);
   res.status(204).end();
 });
 

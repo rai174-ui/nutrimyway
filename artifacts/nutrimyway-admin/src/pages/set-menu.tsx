@@ -3,7 +3,7 @@ import { Plus, Trash2, Edit2, ChevronDown, ChevronUp, Loader2, Check, X, Utensil
 import { Nav } from "@/components/nav";
 import {
   apiGet, apiPost, apiPut, apiDelete, getAdminCenter, bomPutPath, bomDeletePath,
-  type MenuItem, type BomComponent
+  type MenuItem, type BomComponent, type Ingredient
 } from "@/lib/api";
 
 const UNITS = ["g", "ml", "mg", "kg", "L", "tsp", "tbsp", "cup", "oz", "pcs", "serving", "scoop"] as const;
@@ -23,71 +23,108 @@ function UnitSelect({ value, onChange, className }: { value: string; onChange: (
   );
 }
 
-function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
+function IngredientSelect({
+  ingredients,
+  value,
+  onChange,
+  className,
+}: {
+  ingredients: Ingredient[];
+  value: string;
+  onChange: (id: string) => void;
+  className?: string;
+}) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)} className={className}>
+      <option value="">— select ingredient —</option>
+      {ingredients.map(i => (
+        <option key={i.id} value={String(i.id)}>
+          {i.name} ({i.pack_size}{i.pack_unit})
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function BomRow({ bom, menuItemId, ingredients, onUpdate, onDelete }: {
   bom: BomComponent;
   menuItemId: number;
+  ingredients: Ingredient[];
   onUpdate: (updated: BomComponent) => void;
   onDelete: (id: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [ingredient, setIngredient] = useState(bom.ingredient);
+  const [ingredientId, setIngredientId] = useState(bom.ingredient_id != null ? String(bom.ingredient_id) : "");
   const [quantity, setQuantity] = useState(String(bom.quantity));
   const [unit, setUnit] = useState(bom.unit);
   const [kcal, setKcal] = useState(bom.kcal != null ? String(bom.kcal) : "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleIngredientChange(id: string) {
+    setIngredientId(id);
+    if (id) {
+      const ing = ingredients.find(i => String(i.id) === id);
+      if (ing) setUnit(ing.pack_unit);
+    }
+  }
 
   async function save() {
-    setSaving(true);
+    if (!ingredientId) { setError("Select an ingredient from the master list"); return; }
+    setSaving(true); setError(null);
     try {
       const updated = await apiPut<BomComponent>(bomPutPath(menuItemId, bom.id), {
-        ingredient, quantity: Number(quantity), unit, kcal: kcal !== "" ? Number(kcal) : null
+        ingredient_id: Number(ingredientId),
+        quantity: Number(quantity),
+        unit,
+        kcal: kcal !== "" ? Number(kcal) : null,
       });
       onUpdate(updated);
       setEditing(false);
-    } finally { setSaving(false); }
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
   }
 
   if (editing) {
     return (
-      <div className="flex items-center gap-2 py-2 border-t border-border/50 flex-wrap">
-        <input
-          value={ingredient}
-          onChange={e => setIngredient(e.target.value)}
-          className="flex-1 min-w-[120px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="Ingredient"
-        />
-        <input
-          value={quantity}
-          onChange={e => setQuantity(e.target.value)}
-          type="number"
-          min="0"
-          step="any"
-          className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="Qty"
-        />
-        <UnitSelect
-          value={unit}
-          onChange={setUnit}
-          className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-        />
-        <div className="relative">
-          <input
-            value={kcal}
-            onChange={e => setKcal(e.target.value)}
-            type="number"
-            min="0"
-            step="any"
-            className="w-24 h-8 pl-2 pr-8 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder="KCal"
+      <div className="flex flex-col gap-1 py-2 border-t border-border/50">
+        <div className="flex items-center gap-2 flex-wrap">
+          <IngredientSelect
+            ingredients={ingredients}
+            value={ingredientId}
+            onChange={handleIngredientChange}
+            className="flex-1 min-w-[160px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
           />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">kcal</span>
+          <input
+            value={quantity}
+            onChange={e => setQuantity(e.target.value)}
+            type="number" min="0" step="any"
+            className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="Qty"
+          />
+          <UnitSelect
+            value={unit}
+            onChange={setUnit}
+            className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <div className="relative">
+            <input
+              value={kcal}
+              onChange={e => setKcal(e.target.value)}
+              type="number" min="0" step="any"
+              className="w-24 h-8 pl-2 pr-8 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="KCal"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">kcal</span>
+          </div>
+          <button onClick={save} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          </button>
+          <button onClick={() => { setEditing(false); setError(null); }} className="text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <button onClick={save} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-        </button>
-        <button onClick={() => setEditing(false)} className="text-muted-foreground hover:text-foreground">
-          <X className="w-4 h-4" />
-        </button>
+        {error && <p className="text-xs text-destructive pl-0.5">{error}</p>}
       </div>
     );
   }
@@ -110,73 +147,96 @@ function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
   );
 }
 
-function AddBomForm({ menuItemId, onAdded }: { menuItemId: number; onAdded: (b: BomComponent) => void }) {
-  const [ingredient, setIngredient] = useState("");
+function AddBomForm({ menuItemId, ingredients, onAdded }: {
+  menuItemId: number;
+  ingredients: Ingredient[];
+  onAdded: (b: BomComponent) => void;
+}) {
+  const [ingredientId, setIngredientId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [unit, setUnit] = useState<string>("g");
   const [kcal, setKcal] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function add() {
-    if (!ingredient.trim()) return;
-    setSaving(true);
-    try {
-      const b = await apiPost<BomComponent>(`/admin/menu-items/${menuItemId}/bom`, {
-        ingredient, quantity: Number(quantity) || 0, unit, kcal: kcal !== "" ? Number(kcal) : null
-      });
-      onAdded(b);
-      setIngredient(""); setQuantity(""); setUnit("g"); setKcal("");
-    } finally { setSaving(false); }
+  function handleIngredientChange(id: string) {
+    setIngredientId(id);
+    if (id) {
+      const ing = ingredients.find(i => String(i.id) === id);
+      if (ing) { setUnit(ing.pack_unit); }
+    }
   }
 
+  async function add() {
+    if (!ingredientId) { setError("Select an ingredient from the master list"); return; }
+    setSaving(true); setError(null);
+    try {
+      const b = await apiPost<BomComponent>(`/admin/menu-items/${menuItemId}/bom`, {
+        ingredient_id: Number(ingredientId),
+        quantity: Number(quantity) || 0,
+        unit,
+        kcal: kcal !== "" ? Number(kcal) : null,
+      });
+      onAdded(b);
+      setIngredientId(""); setQuantity(""); setUnit("g"); setKcal("");
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  const noIngredients = ingredients.length === 0;
+
   return (
-    <div className="flex items-center gap-2 pt-2 border-t border-dashed border-border flex-wrap">
-      <input
-        value={ingredient}
-        onChange={e => setIngredient(e.target.value)}
-        className="flex-1 min-w-[120px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-        placeholder="Add ingredient…"
-        onKeyDown={e => e.key === "Enter" && void add()}
-      />
-      <input
-        value={quantity}
-        onChange={e => setQuantity(e.target.value)}
-        type="number"
-        min="0"
-        step="any"
-        className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-        placeholder="Qty"
-      />
-      <UnitSelect
-        value={unit}
-        onChange={setUnit}
-        className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-      />
-      <div className="relative">
-        <input
-          value={kcal}
-          onChange={e => setKcal(e.target.value)}
-          type="number"
-          min="0"
-          step="any"
-          className="w-24 h-8 pl-2 pr-8 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="KCal"
+    <div className="flex flex-col gap-1 pt-2 border-t border-dashed border-border">
+      {noIngredients && (
+        <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+          No ingredients in the master list yet. Go to <strong>Inventory</strong> to add ingredients first.
+        </p>
+      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        <IngredientSelect
+          ingredients={ingredients}
+          value={ingredientId}
+          onChange={handleIngredientChange}
+          className="flex-1 min-w-[160px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
         />
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">kcal</span>
+        <input
+          value={quantity}
+          onChange={e => setQuantity(e.target.value)}
+          type="number" min="0" step="any"
+          className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+          placeholder="Qty"
+        />
+        <UnitSelect
+          value={unit}
+          onChange={setUnit}
+          className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+        <div className="relative">
+          <input
+            value={kcal}
+            onChange={e => setKcal(e.target.value)}
+            type="number" min="0" step="any"
+            className="w-24 h-8 pl-2 pr-8 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="KCal"
+          />
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">kcal</span>
+        </div>
+        <button
+          onClick={() => void add()}
+          disabled={noIngredients || saving}
+          className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+        >
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+        </button>
       </div>
-      <button
-        onClick={() => void add()}
-        disabled={!ingredient.trim() || saving}
-        className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-      >
-        {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-      </button>
+      {error && <p className="text-xs text-destructive pl-0.5">{error}</p>}
     </div>
   );
 }
 
-function MenuItemCard({ item, onUpdate, onDelete }: {
+function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
   item: MenuItem;
+  ingredients: Ingredient[];
   onUpdate: (updated: MenuItem) => void;
   onDelete: (id: number) => void;
 }) {
@@ -261,6 +321,7 @@ function MenuItemCard({ item, onUpdate, onDelete }: {
               key={b.id}
               bom={b}
               menuItemId={item.id}
+              ingredients={ingredients}
               onUpdate={updated => setBom(prev => prev.map(x => x.id === updated.id ? updated : x))}
               onDelete={deleteBom}
             />
@@ -275,7 +336,7 @@ function MenuItemCard({ item, onUpdate, onDelete }: {
               </div>
             ) : null;
           })()}
-          <AddBomForm menuItemId={item.id} onAdded={b => setBom(prev => [...prev, b])} />
+          <AddBomForm menuItemId={item.id} ingredients={ingredients} onAdded={b => setBom(prev => [...prev, b])} />
         </div>
       )}
     </div>
@@ -285,6 +346,7 @@ function MenuItemCard({ item, onUpdate, onDelete }: {
 export default function SetMenuPage() {
   const center = getAdminCenter();
   const [items, setItems] = useState<MenuItem[]>([]);
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -293,9 +355,13 @@ export default function SetMenuPage() {
 
   useEffect(() => {
     if (!center) return;
-    apiGet<MenuItem[]>(`/admin/centers/${center.id}/menu-items`)
-      .then(setItems)
-      .finally(() => setLoading(false));
+    Promise.all([
+      apiGet<MenuItem[]>(`/admin/centers/${center.id}/menu-items`),
+      apiGet<Ingredient[]>("/admin/ingredients"),
+    ]).then(([menuItems, ings]) => {
+      setItems(menuItems);
+      setIngredients(ings);
+    }).finally(() => setLoading(false));
   }, [center?.id]);
 
   async function addItem() {
@@ -370,6 +436,7 @@ export default function SetMenuPage() {
               <MenuItemCard
                 key={item.id}
                 item={item}
+                ingredients={ingredients}
                 onUpdate={updated => setItems(prev => prev.map(i => i.id === updated.id ? updated : i))}
                 onDelete={deleteItem}
               />

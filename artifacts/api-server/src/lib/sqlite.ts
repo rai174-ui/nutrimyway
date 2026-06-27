@@ -478,6 +478,23 @@ async function migrateAdminTables5(): Promise<void> {
   `);
 }
 
+async function migrateAdminTables6(): Promise<void> {
+  // Link BOM rows to the ingredient master
+  await pool.query(
+    `ALTER TABLE menu_item_bom ADD COLUMN IF NOT EXISTS ingredient_id INTEGER REFERENCES ingredients(id)`
+  );
+  // Manual batch consumption recording (separate from member meal logs)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS batch_consumption_logs (
+      id SERIAL PRIMARY KEY,
+      batch_id INTEGER NOT NULL REFERENCES ingredient_batches(id) ON DELETE CASCADE,
+      quantity REAL NOT NULL,
+      notes TEXT,
+      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
 export async function initDb(): Promise<void> {
   await createTables();
   await migrateColumns();
@@ -487,6 +504,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables3();
   await migrateAdminTables4();
   await migrateAdminTables5();
+  await migrateAdminTables6();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }

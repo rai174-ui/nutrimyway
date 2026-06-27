@@ -3,11 +3,12 @@ import { Nav } from "@/components/nav";
 import {
   apiGet, apiPost, apiPut, apiDelete, apiPatch,
   getAdminCenter,
-  type Ingredient, type IngredientBatch, type BatchStatus,
+  type Ingredient, type IngredientBatch, type BatchStatus, type BatchConsumptionLog,
 } from "@/lib/api";
 import {
   Package, Plus, Edit2, Check, X, Loader2, Trash2,
   PackageOpen, PackageCheck, ChevronDown, ChevronRight,
+  ClipboardList, MinusCircle,
 } from "lucide-react";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -15,6 +16,13 @@ import {
 function fmt(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
 }
 
 function StatusChip({ status }: { status: BatchStatus }) {
@@ -58,9 +66,7 @@ function IngredientCatalog({
     setSaving(true); setError(null);
     try {
       await apiPost<Ingredient>("/admin/ingredients", {
-        name: newName.trim(),
-        pack_size: Number(newSize) || 1,
-        pack_unit: newUnit,
+        name: newName.trim(), pack_size: Number(newSize) || 1, pack_unit: newUnit,
       });
       setNewName(""); setNewSize("1"); setNewUnit("g"); setAdding(false);
       onRefresh();
@@ -73,9 +79,7 @@ function IngredientCatalog({
     setSaving(true); setError(null);
     try {
       await apiPut<Ingredient>(`/admin/ingredients/${id}`, {
-        name: editName.trim(),
-        pack_size: Number(editSize) || 1,
-        pack_unit: editUnit,
+        name: editName.trim(), pack_size: Number(editSize) || 1, pack_unit: editUnit,
       });
       setEditId(null);
       onRefresh();
@@ -92,10 +96,8 @@ function IngredientCatalog({
   }
 
   function startEdit(ing: Ingredient) {
-    setEditId(ing.id);
-    setEditName(ing.name);
-    setEditSize(String(ing.pack_size));
-    setEditUnit(ing.pack_unit);
+    setEditId(ing.id); setEditName(ing.name);
+    setEditSize(String(ing.pack_size)); setEditUnit(ing.pack_unit);
   }
 
   return (
@@ -103,7 +105,7 @@ function IngredientCatalog({
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div className="flex items-center gap-2">
           <Package className="w-5 h-5 text-primary" />
-          <h2 className="text-base font-semibold text-foreground">Ingredient Catalog</h2>
+          <h2 className="text-base font-semibold text-foreground">Ingredient Master</h2>
           <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
             {ingredients.length}
           </span>
@@ -135,7 +137,7 @@ function IngredientCatalog({
             value={newSize}
             onChange={e => setNewSize(e.target.value)}
             type="number" min="0" step="any"
-            className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder="Pack size"
           />
           <select
@@ -157,28 +159,21 @@ function IngredientCatalog({
 
       <div className="divide-y divide-border">
         {ingredients.length === 0 && (
-          <p className="px-5 py-8 text-center text-sm text-muted-foreground">No ingredients yet. Add one above.</p>
+          <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+            No ingredients yet. Add one above — BOM can only use ingredients from this master list.
+          </p>
         )}
         {ingredients.map(ing => (
           <div key={ing.id} className="flex items-center gap-3 px-5 py-3 group">
             {editId === ing.id ? (
               <>
-                <input
-                  value={editName}
-                  onChange={e => setEditName(e.target.value)}
-                  className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-                <input
-                  value={editSize}
-                  onChange={e => setEditSize(e.target.value)}
+                <input value={editName} onChange={e => setEditName(e.target.value)}
+                  className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+                <input value={editSize} onChange={e => setEditSize(e.target.value)}
                   type="number" min="0" step="any"
-                  className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-                <select
-                  value={editUnit}
-                  onChange={e => setEditUnit(e.target.value)}
-                  className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                >
+                  className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+                <select value={editUnit} onChange={e => setEditUnit(e.target.value)}
+                  className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary">
                   {UNITS.map(u => <option key={u}>{u}</option>)}
                 </select>
                 <button onClick={() => void saveEdit(ing.id)} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
@@ -191,9 +186,7 @@ function IngredientCatalog({
             ) : (
               <>
                 <span className="flex-1 text-sm font-medium text-foreground">{ing.name}</span>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {ing.pack_size} {ing.pack_unit} / pack
-                </span>
+                <span className="text-xs text-muted-foreground tabular-nums">{ing.pack_size} {ing.pack_unit} / pack</span>
                 <button onClick={() => startEdit(ing)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all">
                   <Edit2 className="w-3.5 h-3.5" />
                 </button>
@@ -212,10 +205,7 @@ function IngredientCatalog({
 // ── Add Batch Form ─────────────────────────────────────────────────────────────
 
 function AddBatchForm({
-  centerId,
-  ingredients,
-  onAdded,
-  onCancel,
+  centerId, ingredients, onAdded, onCancel,
 }: {
   centerId: string;
   ingredients: Ingredient[];
@@ -255,7 +245,7 @@ function AddBatchForm({
         <input
           value={batchNumber}
           onChange={e => setBatchNumber(e.target.value)}
-          className="w-40 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-44 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
           placeholder="Batch / lot number"
           onKeyDown={e => e.key === "Enter" && void add()}
         />
@@ -267,6 +257,122 @@ function AddBatchForm({
           <X className="w-4 h-4" />
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Consumption Log Panel ──────────────────────────────────────────────────────
+
+function ConsumptionPanel({
+  batch,
+  onLogAdded,
+}: {
+  batch: IngredientBatch;
+  onLogAdded: () => void;
+}) {
+  const [logs, setLogs] = useState<BatchConsumptionLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(true);
+  const [qty, setQty] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiGet<BatchConsumptionLog[]>(`/admin/ingredient-batches/${batch.id}/consumption-logs`)
+      .then(setLogs)
+      .finally(() => setLoadingLogs(false));
+  }, [batch.id]);
+
+  const totalConsumed = logs.reduce((s, l) => s + l.quantity, 0);
+
+  async function record() {
+    const q = Number(qty);
+    if (!q || q <= 0) { setError("Enter a positive quantity"); return; }
+    setSaving(true); setError(null);
+    try {
+      const log = await apiPost<BatchConsumptionLog>(
+        `/admin/ingredient-batches/${batch.id}/consumption-logs`,
+        { quantity: q, notes: notes.trim() || undefined }
+      );
+      setLogs(prev => [log, ...prev]);
+      setQty(""); setNotes("");
+      onLogAdded();
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  async function removeLog(id: number) {
+    try {
+      await apiDelete(`/admin/consumption-logs/${id}`);
+      setLogs(prev => prev.filter(l => l.id !== id));
+      onLogAdded();
+    } catch (e) { setError((e as Error).message); }
+  }
+
+  return (
+    <div className="pl-6 pr-4 pb-3 bg-emerald-50/40 border-t border-emerald-100">
+      <p className="text-xs font-semibold text-emerald-700 pt-2 mb-2 flex items-center gap-1.5">
+        <ClipboardList className="w-3.5 h-3.5" />
+        Record Consumption
+        {totalConsumed > 0 && (
+          <span className="ml-auto font-normal text-emerald-600">
+            {totalConsumed} {batch.pack_unit} used so far
+          </span>
+        )}
+      </p>
+
+      {error && <p className="text-xs text-destructive mb-2">{error}</p>}
+
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="relative">
+          <input
+            value={qty}
+            onChange={e => setQty(e.target.value)}
+            type="number" min="0" step="any"
+            className="w-28 h-8 pl-2 pr-8 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-emerald-400"
+            placeholder="Qty used"
+          />
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">
+            {batch.pack_unit}
+          </span>
+        </div>
+        <input
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          className="flex-1 min-w-[120px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-emerald-400"
+          placeholder="Notes (optional)"
+          onKeyDown={e => e.key === "Enter" && void record()}
+        />
+        <button
+          onClick={() => void record()}
+          disabled={!qty || saving}
+          className="h-8 px-3 rounded-lg bg-emerald-600 text-white text-xs font-medium disabled:opacity-40 hover:bg-emerald-700"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Record"}
+        </button>
+      </div>
+
+      {loadingLogs ? (
+        <p className="text-xs text-muted-foreground py-1">Loading logs…</p>
+      ) : logs.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-1">No consumption recorded yet.</p>
+      ) : (
+        <div className="space-y-1">
+          {logs.map(log => (
+            <div key={log.id} className="flex items-center gap-2 group text-xs">
+              <span className="font-semibold text-emerald-700 tabular-nums w-16">{log.quantity} {batch.pack_unit}</span>
+              <span className="text-muted-foreground flex-1 truncate">{log.notes ?? "—"}</span>
+              <span className="text-muted-foreground/70 shrink-0">{fmtTime(log.recorded_at)}</span>
+              <button
+                onClick={() => void removeLog(log.id)}
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+              >
+                <MinusCircle className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -286,6 +392,7 @@ function BatchRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConsumption, setShowConsumption] = useState(false);
 
   async function act(fn: () => Promise<void>) {
     setBusy(true); setError(null);
@@ -304,6 +411,20 @@ function BatchRow({
           {batch.status === "open" && `Opened ${fmt(batch.opened_at)}`}
           {batch.status === "consumed" && `Consumed ${fmt(batch.consumed_at)}`}
         </span>
+
+        {batch.status === "open" && (
+          <button
+            onClick={() => setShowConsumption(v => !v)}
+            className={`flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-medium border transition-colors ${
+              showConsumption
+                ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                : "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+            }`}
+          >
+            <ClipboardList className="w-3 h-3" />
+            Consumption
+          </button>
+        )}
 
         {batch.status === "new" && (
           <>
@@ -339,6 +460,9 @@ function BatchRow({
       {error && (
         <p className="pl-6 pr-4 pb-1.5 text-xs text-destructive">{error}</p>
       )}
+      {showConsumption && batch.status === "open" && (
+        <ConsumptionPanel batch={batch} onLogAdded={() => { /* parent refresh not needed */ }} />
+      )}
     </div>
   );
 }
@@ -346,10 +470,7 @@ function BatchRow({
 // ── Batch Inventory ─────────────────────────────────────────────────────────────
 
 function BatchInventory({
-  centerId,
-  ingredients,
-  batches,
-  onRefresh,
+  centerId, ingredients, batches, onRefresh,
 }: {
   centerId: string;
   ingredients: Ingredient[];
@@ -361,40 +482,21 @@ function BatchInventory({
 
   const grouped = useMemo(() => {
     const map = new Map<number, { ingredient: Ingredient; batches: IngredientBatch[] }>();
-    for (const ing of ingredients) {
-      map.set(ing.id, { ingredient: ing, batches: [] });
-    }
+    for (const ing of ingredients) map.set(ing.id, { ingredient: ing, batches: [] });
     for (const b of batches) {
       const g = map.get(b.ingredient_id);
       if (g) g.batches.push(b);
     }
-    return [...map.values()].filter(g => g.batches.length > 0 || ingredients.length > 0);
+    return [...map.values()].filter(g => g.batches.length > 0);
   }, [ingredients, batches]);
 
-  async function openBatch(id: number) {
-    await apiPatch(`/admin/ingredient-batches/${id}/open`);
-    onRefresh();
-  }
-
-  async function consumeBatch(id: number) {
-    await apiPatch(`/admin/ingredient-batches/${id}/consume`);
-    onRefresh();
-  }
-
-  async function deleteBatch(id: number) {
-    await apiDelete(`/admin/ingredient-batches/${id}`);
-    onRefresh();
-  }
+  async function openBatch(id: number) { await apiPatch(`/admin/ingredient-batches/${id}/open`); onRefresh(); }
+  async function consumeBatch(id: number) { await apiPatch(`/admin/ingredient-batches/${id}/consume`); onRefresh(); }
+  async function deleteBatch(id: number) { await apiDelete(`/admin/ingredient-batches/${id}`); onRefresh(); }
 
   function toggleCollapse(id: number) {
-    setCollapsed(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
-
-  const allIngredientGroups = grouped.filter(g => g.batches.length > 0);
 
   return (
     <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
@@ -410,7 +512,7 @@ function BatchInventory({
           onClick={() => setAddingBatch(v => !v)}
           disabled={ingredients.length === 0}
           className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-          title={ingredients.length === 0 ? "Add ingredients to the catalog first" : undefined}
+          title={ingredients.length === 0 ? "Add ingredients to the master list first" : undefined}
         >
           <Plus className="w-3.5 h-3.5" />
           Add Batch
@@ -421,39 +523,41 @@ function BatchInventory({
         <AddBatchForm
           centerId={centerId}
           ingredients={ingredients}
-          onAdded={(b) => { onRefresh(); setAddingBatch(false); void b; }}
+          onAdded={() => { onRefresh(); setAddingBatch(false); }}
           onCancel={() => setAddingBatch(false)}
         />
       )}
 
-      {allIngredientGroups.length === 0 && (
+      {grouped.length === 0 && (
         <p className="px-5 py-8 text-center text-sm text-muted-foreground">
           No batch records yet. Use "Add Batch" to register a received pack.
         </p>
       )}
 
       <div className="divide-y divide-border">
-        {allIngredientGroups.map(({ ingredient, batches: grpBatches }) => {
+        {grouped.map(({ ingredient, batches: grpBatches }) => {
           const isCollapsed = collapsed.has(ingredient.id);
-          const openBatchCount = grpBatches.filter(b => b.status === "open").length;
-          const newBatchCount = grpBatches.filter(b => b.status === "new").length;
+          const openCount = grpBatches.filter(b => b.status === "open").length;
+          const newCount = grpBatches.filter(b => b.status === "new").length;
           return (
             <div key={ingredient.id}>
               <button
                 onClick={() => toggleCollapse(ingredient.id)}
                 className="w-full flex items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors text-left"
               >
-                {isCollapsed ? <ChevronRight className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                {isCollapsed
+                  ? <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                 <span className="flex-1 font-medium text-sm text-foreground">{ingredient.name}</span>
                 <span className="text-xs text-muted-foreground">{ingredient.pack_size}{ingredient.pack_unit}/pack</span>
-                {openBatchCount > 0 && (
+                {openCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200">
-                    {openBatchCount} open
+                    {openCount} open
                   </span>
                 )}
-                {newBatchCount > 0 && (
+                {newCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 text-xs font-semibold border border-sky-200">
-                    {newBatchCount} new
+                    {newCount} new
                   </span>
                 )}
               </button>
@@ -510,7 +614,7 @@ export default function InventoryPage() {
         <div>
           <h1 className="text-xl font-bold text-foreground">Inventory</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Manage ingredient catalog and track batch status per pack
+            Manage ingredient master and track batch lifecycle — open a batch to record consumption
           </p>
         </div>
 

@@ -107,9 +107,18 @@ export interface MenuItem {
 export interface BomComponent {
   id: number;
   ingredient: string;
+  ingredient_id: number | null;
   quantity: number;
   unit: string;
   kcal: number | null;
+}
+
+export interface BatchConsumptionLog {
+  id: number;
+  batch_id: number;
+  quantity: number;
+  notes: string | null;
+  recorded_at: string;
 }
 
 export interface Dashboard {
