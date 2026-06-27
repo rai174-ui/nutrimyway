@@ -383,15 +383,17 @@ function ConsumptionPanel({
   );
 }
 
-// ── Batch row ──────────────────────────────────────────────────────────────────
+// ── Batch Table Row ────────────────────────────────────────────────────────────
 
-function BatchRow({
+function BatchTableRow({
   batch,
+  minNeeded,
   onOpen,
   onConsume,
   onDelete,
 }: {
   batch: IngredientBatch;
+  minNeeded: number;
   onOpen: (id: number) => Promise<void>;
   onConsume: (id: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
@@ -399,6 +401,20 @@ function BatchRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showConsumption, setShowConsumption] = useState(false);
+
+  const consumed = Number(batch.consumed_qty);
+  const balance =
+    batch.status === "new"
+      ? batch.pack_size
+      : Math.max(0, batch.pack_size - consumed);
+  const balancePct = batch.pack_size > 0 ? (balance / batch.pack_size) * 100 : 0;
+  const isLow = batch.status === "open" && minNeeded > 0 && balance < minNeeded;
+
+  const barColor =
+    batch.status === "consumed" ? "bg-slate-300" :
+    batch.status === "new"      ? "bg-slate-400" :
+    isLow                       ? "bg-red-400"   :
+    balancePct > 50             ? "bg-emerald-500" : "bg-amber-400";
 
   async function act(fn: () => Promise<void>) {
     setBusy(true); setError(null);
@@ -408,68 +424,131 @@ function BatchRow({
   }
 
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-3 py-2.5 pl-6 pr-4 group">
-        <StatusChip status={batch.status} />
-        <span className="text-sm font-mono text-foreground">{batch.batch_number}</span>
-        <span className="flex-1 text-xs text-muted-foreground">
-          {batch.status === "new" && `Added ${fmt(batch.created_at)}`}
-          {batch.status === "open" && `Opened ${fmt(batch.opened_at)}`}
-          {batch.status === "consumed" && `Consumed ${fmt(batch.consumed_at)}`}
-        </span>
+    <>
+      <tr className="hover:bg-muted/30 transition-colors group">
+        {/* Batch # */}
+        <td className="py-2.5 pl-5 pr-3 font-mono text-sm text-foreground whitespace-nowrap align-middle">
+          {batch.batch_number}
+        </td>
 
-        {batch.status === "open" && (
-          <button
-            onClick={() => setShowConsumption(v => !v)}
-            className={`flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-medium border transition-colors ${
-              showConsumption
-                ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                : "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"
-            }`}
-          >
-            <ClipboardList className="w-3 h-3" />
-            Consumption
-          </button>
-        )}
+        {/* Status + date */}
+        <td className="py-2.5 px-3 whitespace-nowrap align-middle">
+          <div className="flex items-center gap-1.5">
+            <StatusChip status={batch.status} />
+            <span className="text-[10px] text-muted-foreground">
+              {batch.status === "new" && fmt(batch.created_at)}
+              {batch.status === "open" && fmt(batch.opened_at)}
+              {batch.status === "consumed" && fmt(batch.consumed_at)}
+            </span>
+          </div>
+        </td>
 
-        {batch.status === "new" && (
-          <>
-            <button
-              onClick={() => void act(() => onOpen(batch.id))}
-              disabled={busy}
-              className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 disabled:opacity-40"
-            >
-              {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <PackageOpen className="w-3 h-3" />}
-              Open
-            </button>
-            <button
-              onClick={() => void act(() => onDelete(batch.id))}
-              disabled={busy}
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all disabled:opacity-40"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </>
-        )}
+        {/* Consumed */}
+        <td className="py-2.5 px-3 text-right tabular-nums whitespace-nowrap align-middle">
+          {batch.status === "new" ? (
+            <span className="text-muted-foreground text-sm">—</span>
+          ) : (
+            <span className="text-sm">
+              {consumed}{" "}
+              <span className="text-xs text-muted-foreground">{batch.pack_unit}</span>
+            </span>
+          )}
+        </td>
 
-        {batch.status === "open" && (
-          <button
-            onClick={() => void act(() => onConsume(batch.id))}
-            disabled={busy}
-            className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-40"
-          >
-            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <PackageCheck className="w-3 h-3" />}
-            Mark Empty
-          </button>
-        )}
-      </div>
-      {error && (
-        <p className="pl-6 pr-4 pb-1.5 text-xs text-destructive">{error}</p>
-      )}
+        {/* Balance */}
+        <td className="py-2.5 px-3 text-right tabular-nums whitespace-nowrap align-middle">
+          <span className={`text-sm font-semibold ${
+            batch.status === "consumed" ? "text-muted-foreground" :
+            isLow ? "text-red-600" : "text-foreground"
+          }`}>
+            {batch.status === "consumed" ? 0 : balance}{" "}
+            <span className="text-xs font-normal text-muted-foreground">{batch.pack_unit}</span>
+          </span>
+        </td>
+
+        {/* Level — graphical bar */}
+        <td className="py-2.5 px-3 align-middle min-w-[160px]">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 h-4 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${barColor}`}
+                style={{ width: `${balancePct}%` }}
+              />
+              {batch.status === "new" && (
+                <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-slate-600 leading-none">
+                  SEALED
+                </span>
+              )}
+              {isLow && (
+                <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-red-700 leading-none">
+                  LOW
+                </span>
+              )}
+            </div>
+            <span className="text-xs tabular-nums text-muted-foreground w-9 text-right shrink-0">
+              {Math.round(balancePct)}%
+            </span>
+          </div>
+        </td>
+
+        {/* Actions */}
+        <td className="py-2.5 pl-3 pr-4 align-middle whitespace-nowrap">
+          <div className="flex items-center gap-1.5 justify-end">
+            {batch.status === "open" && (
+              <>
+                <button
+                  onClick={() => setShowConsumption(v => !v)}
+                  className={`flex items-center gap-1 h-6 px-2 rounded-md text-xs font-medium border transition-colors ${
+                    showConsumption
+                      ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                      : "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                  }`}
+                >
+                  <ClipboardList className="w-3 h-3" />
+                  Log
+                </button>
+                <button
+                  onClick={() => void act(() => onConsume(batch.id))}
+                  disabled={busy}
+                  className="flex items-center gap-1 h-6 px-2 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-40"
+                >
+                  {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <PackageCheck className="w-3 h-3" />}
+                  Empty
+                </button>
+              </>
+            )}
+            {batch.status === "new" && (
+              <>
+                <button
+                  onClick={() => void act(() => onOpen(batch.id))}
+                  disabled={busy}
+                  className="flex items-center gap-1 h-6 px-2 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 disabled:opacity-40"
+                >
+                  {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <PackageOpen className="w-3 h-3" />}
+                  Open
+                </button>
+                <button
+                  onClick={() => void act(() => onDelete(batch.id))}
+                  disabled={busy}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all disabled:opacity-40"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </>
+            )}
+          </div>
+          {error && <p className="text-[10px] text-destructive mt-0.5 text-right">{error}</p>}
+        </td>
+      </tr>
+
       {showConsumption && batch.status === "open" && (
-        <ConsumptionPanel batch={batch} onLogAdded={() => { /* parent refresh not needed */ }} />
+        <tr>
+          <td colSpan={6} className="pb-2 px-5 bg-emerald-50/40">
+            <ConsumptionPanel batch={batch} onLogAdded={() => {}} />
+          </td>
+        </tr>
       )}
-    </div>
+    </>
   );
 }
 
@@ -601,10 +680,10 @@ function BatchInventory({
               </button>
 
               {!isCollapsed && (
-                <div className="bg-muted/20 border-t border-border/50">
+                <div className="border-t border-border/50">
                   {/* No open pack callout */}
                   {hasNoOpen && (
-                    <div className="mx-4 mt-2.5 mb-1 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-2">
+                    <div className="mx-4 mt-2.5 mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-2">
                       <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                       <p className="text-xs text-amber-800 flex-1">
                         <strong>No open pack</strong> — open one of the batches below to start recording consumption for this ingredient.
@@ -612,55 +691,49 @@ function BatchInventory({
                     </div>
                   )}
 
-                  {/* Consumption progress + low-stock callout */}
-                  {currentOpenBatch && (
-                    <div className={`mx-4 mt-2.5 mb-1 px-3 py-2.5 rounded-lg border ${isLow ? "bg-red-50 border-red-200" : "bg-emerald-50/60 border-emerald-200"}`}>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-xs text-muted-foreground shrink-0">Consumed</span>
-                        <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${isLow ? "bg-red-400" : "bg-emerald-500"}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className={`text-xs font-semibold tabular-nums shrink-0 ${isLow ? "text-red-700" : "text-emerald-700"}`}>
-                          {consumed} / {currentOpenBatch.pack_size} {currentOpenBatch.pack_unit}
-                        </span>
-                      </div>
-
-                      {isLow ? (
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                          <p className="text-xs text-red-700 flex-1">
-                            Only <strong>{remaining} {currentOpenBatch.pack_unit}</strong> remaining — not enough for one serving ({minNeeded} {currentOpenBatch.pack_unit} needed). Open a new pack.
-                          </p>
-                          <button
-                            onClick={() => void openNewPack(currentOpenBatch.id, ingredient.id)}
-                            className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 shrink-0"
-                          >
-                            <PackagePlus className="w-3.5 h-3.5" />
-                            Open New Pack
-                          </button>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-emerald-700">
-                          <strong>{remaining} {currentOpenBatch.pack_unit}</strong> remaining in current pack
-                          {minNeeded > 0 && ` · ~${Math.floor(remaining / minNeeded)} serving${Math.floor(remaining / minNeeded) === 1 ? "" : "s"} left`}.
-                        </p>
-                      )}
+                  {/* Low-stock callout */}
+                  {currentOpenBatch && isLow && (
+                    <div className="mx-4 mt-2.5 mb-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                      <p className="text-xs text-red-700 flex-1">
+                        Only <strong>{remaining} {currentOpenBatch.pack_unit}</strong> remaining — not enough for one serving ({minNeeded} {currentOpenBatch.pack_unit} needed).
+                      </p>
+                      <button
+                        onClick={() => void openNewPack(currentOpenBatch.id, ingredient.id)}
+                        className="flex items-center gap-1 h-6 px-2.5 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700 shrink-0"
+                      >
+                        <PackagePlus className="w-3.5 h-3.5" />
+                        Open New Pack
+                      </button>
                     </div>
                   )}
 
-                  <div className="divide-y divide-border/50 mt-1">
-                    {grpBatches.map(b => (
-                      <BatchRow
-                        key={b.id}
-                        batch={b}
-                        onOpen={openBatch}
-                        onConsume={consumeBatch}
-                        onDelete={deleteBatch}
-                      />
-                    ))}
+                  {/* Batch table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border/60 bg-muted/40">
+                          <th className="py-2 pl-5 pr-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Batch #</th>
+                          <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Status</th>
+                          <th className="py-2 px-3 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Consumed</th>
+                          <th className="py-2 px-3 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Balance</th>
+                          <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Inventory Level</th>
+                          <th className="py-2 pl-3 pr-4 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40">
+                        {grpBatches.map(b => (
+                          <BatchTableRow
+                            key={b.id}
+                            batch={b}
+                            minNeeded={minNeeded}
+                            onOpen={openBatch}
+                            onConsume={consumeBatch}
+                            onDelete={deleteBatch}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
