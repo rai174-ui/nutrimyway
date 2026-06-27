@@ -33,13 +33,14 @@ function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
   const [ingredient, setIngredient] = useState(bom.ingredient);
   const [quantity, setQuantity] = useState(String(bom.quantity));
   const [unit, setUnit] = useState(bom.unit);
+  const [kcal, setKcal] = useState(bom.kcal != null ? String(bom.kcal) : "");
   const [saving, setSaving] = useState(false);
 
   async function save() {
     setSaving(true);
     try {
       const updated = await apiPut<BomComponent>(bomPutPath(menuItemId, bom.id), {
-        ingredient, quantity: Number(quantity), unit
+        ingredient, quantity: Number(quantity), unit, kcal: kcal !== "" ? Number(kcal) : null
       });
       onUpdate(updated);
       setEditing(false);
@@ -48,11 +49,11 @@ function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
 
   if (editing) {
     return (
-      <div className="flex items-center gap-2 py-2 border-t border-border/50">
+      <div className="flex items-center gap-2 py-2 border-t border-border/50 flex-wrap">
         <input
           value={ingredient}
           onChange={e => setIngredient(e.target.value)}
-          className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+          className="flex-1 min-w-[120px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
           placeholder="Ingredient"
         />
         <input
@@ -69,6 +70,18 @@ function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
           onChange={setUnit}
           className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
         />
+        <div className="relative">
+          <input
+            value={kcal}
+            onChange={e => setKcal(e.target.value)}
+            type="number"
+            min="0"
+            step="any"
+            className="w-24 h-8 pl-2 pr-8 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="KCal"
+          />
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">kcal</span>
+        </div>
         <button onClick={save} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
         </button>
@@ -83,6 +96,10 @@ function BomRow({ bom, menuItemId, onUpdate, onDelete }: {
     <div className="flex items-center gap-3 py-2 border-t border-border/50 group">
       <span className="flex-1 text-sm text-foreground">{bom.ingredient}</span>
       <span className="text-sm text-muted-foreground tabular-nums">{bom.quantity} {bom.unit}</span>
+      {bom.kcal != null
+        ? <span className="text-xs font-medium text-amber-600 tabular-nums">{bom.kcal} kcal</span>
+        : <span className="text-xs text-muted-foreground/40">—</span>
+      }
       <button onClick={() => setEditing(true)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all">
         <Edit2 className="w-3.5 h-3.5" />
       </button>
@@ -97,6 +114,7 @@ function AddBomForm({ menuItemId, onAdded }: { menuItemId: number; onAdded: (b: 
   const [ingredient, setIngredient] = useState("");
   const [quantity, setQuantity] = useState("");
   const [unit, setUnit] = useState<string>("g");
+  const [kcal, setKcal] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function add() {
@@ -104,19 +122,19 @@ function AddBomForm({ menuItemId, onAdded }: { menuItemId: number; onAdded: (b: 
     setSaving(true);
     try {
       const b = await apiPost<BomComponent>(`/admin/menu-items/${menuItemId}/bom`, {
-        ingredient, quantity: Number(quantity) || 0, unit
+        ingredient, quantity: Number(quantity) || 0, unit, kcal: kcal !== "" ? Number(kcal) : null
       });
       onAdded(b);
-      setIngredient(""); setQuantity(""); setUnit("g");
+      setIngredient(""); setQuantity(""); setUnit("g"); setKcal("");
     } finally { setSaving(false); }
   }
 
   return (
-    <div className="flex items-center gap-2 pt-2 border-t border-dashed border-border">
+    <div className="flex items-center gap-2 pt-2 border-t border-dashed border-border flex-wrap">
       <input
         value={ingredient}
         onChange={e => setIngredient(e.target.value)}
-        className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+        className="flex-1 min-w-[120px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
         placeholder="Add ingredient…"
         onKeyDown={e => e.key === "Enter" && void add()}
       />
@@ -134,6 +152,18 @@ function AddBomForm({ menuItemId, onAdded }: { menuItemId: number; onAdded: (b: 
         onChange={setUnit}
         className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
       />
+      <div className="relative">
+        <input
+          value={kcal}
+          onChange={e => setKcal(e.target.value)}
+          type="number"
+          min="0"
+          step="any"
+          className="w-24 h-8 pl-2 pr-8 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+          placeholder="KCal"
+        />
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">kcal</span>
+      </div>
       <button
         onClick={() => void add()}
         disabled={!ingredient.trim() || saving}
@@ -218,8 +248,9 @@ function MenuItemCard({ item, onUpdate, onDelete }: {
         <div className="px-5 pb-4 border-t border-border/50">
           <div className="flex items-center gap-2 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <span className="flex-1">Ingredient</span>
-            <span className="w-20">Quantity</span>
+            <span className="w-20">Qty</span>
             <span className="w-24">Unit</span>
+            <span className="w-16 text-right">KCal</span>
             <span className="w-12" />
           </div>
           {bom.length === 0 && (
@@ -234,6 +265,16 @@ function MenuItemCard({ item, onUpdate, onDelete }: {
               onDelete={deleteBom}
             />
           ))}
+          {bom.length > 0 && (() => {
+            const totalKcal = bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
+            const hasAnyKcal = bom.some(b => b.kcal != null);
+            return hasAnyKcal ? (
+              <div className="flex items-center gap-2 pt-2 mt-1 border-t border-border text-xs font-semibold text-foreground">
+                <span className="flex-1 text-muted-foreground">Total (1 serving)</span>
+                <span className="text-amber-600">{Math.round(totalKcal)} kcal</span>
+              </div>
+            ) : null;
+          })()}
           <AddBomForm menuItemId={item.id} onAdded={b => setBom(prev => [...prev, b])} />
         </div>
       )}

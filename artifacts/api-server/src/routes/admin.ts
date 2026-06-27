@@ -182,7 +182,7 @@ router.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res)
   // Attach BOM for each item
   const result = await Promise.all(items.map(async (item) => {
     const { rows: bom } = await pool.query(
-      "SELECT id, ingredient, quantity, unit FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
+      "SELECT id, ingredient, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
       [item.id]
     );
     return { ...item, bom };
@@ -253,7 +253,7 @@ router.get("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
   if (item[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const { rows } = await pool.query(
-    "SELECT id, ingredient, quantity, unit FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
+    "SELECT id, ingredient, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
     [itemId]
   );
   res.json(rows);
@@ -268,12 +268,12 @@ router.post("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
   if (!item[0]) { res.status(404).json({ error: "Menu item not found" }); return; }
   if (item[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { ingredient, quantity, unit } = req.body as { ingredient?: string; quantity?: number; unit?: string };
+  const { ingredient, quantity, unit, kcal } = req.body as { ingredient?: string; quantity?: number; unit?: string; kcal?: number | null };
   if (!ingredient?.trim()) { res.status(400).json({ error: "ingredient is required" }); return; }
 
   const { rows } = await pool.query(
-    "INSERT INTO menu_item_bom (menu_item_id, ingredient, quantity, unit) VALUES ($1,$2,$3,$4) RETURNING *",
-    [itemId, ingredient.trim(), quantity ?? 0, unit?.trim() ?? "g"]
+    "INSERT INTO menu_item_bom (menu_item_id, ingredient, quantity, unit, kcal) VALUES ($1,$2,$3,$4,$5) RETURNING *",
+    [itemId, ingredient.trim(), quantity ?? 0, unit?.trim() ?? "g", kcal ?? null]
   );
   res.status(201).json(rows[0]);
 });
@@ -292,12 +292,12 @@ router.put("/admin/menu-items/:itemId/bom/:bomId", requireAdmin, async (req, res
   if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
   if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { ingredient, quantity, unit } = req.body as { ingredient?: string; quantity?: number; unit?: string };
+  const { ingredient, quantity, unit, kcal } = req.body as { ingredient?: string; quantity?: number; unit?: string; kcal?: number | null };
   if (!ingredient?.trim()) { res.status(400).json({ error: "ingredient is required" }); return; }
 
   const { rows } = await pool.query(
-    "UPDATE menu_item_bom SET ingredient=$1, quantity=$2, unit=$3 WHERE id=$4 RETURNING *",
-    [ingredient.trim(), quantity ?? 0, unit?.trim() ?? "g", bomId]
+    "UPDATE menu_item_bom SET ingredient=$1, quantity=$2, unit=$3, kcal=$4 WHERE id=$5 RETURNING *",
+    [ingredient.trim(), quantity ?? 0, unit?.trim() ?? "g", kcal ?? null, bomId]
   );
   res.json(rows[0]);
 });

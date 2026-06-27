@@ -29,6 +29,7 @@ interface BomComponent {
   ingredient: string;
   quantity: number;
   unit: string;
+  kcal: number | null;
 }
 
 interface CenterMenuItem {
@@ -89,6 +90,8 @@ export function Log() {
   };
 
   const selectMenuItem = (item: CenterMenuItem) => {
+    const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
+    const hasKcal = item.bom.some(b => b.kcal != null);
     createLog.mutate(
       {
         memberId: MEMBER_ID!,
@@ -97,7 +100,7 @@ export function Log() {
           meal_slot: activeSlot,
           food_item: item.name,
           menu_item_id: item.id,
-          calories_kcal: null,
+          calories_kcal: hasKcal ? totalKcal : null,
           protein_g: null,
           carbs_g: null,
           fat_g: null,
@@ -171,9 +174,16 @@ export function Log() {
                     </p>
                   )}
                 </div>
-                <span className="text-xs font-medium text-primary ml-3 flex-shrink-0 mt-0.5">
-                  {item.bom.length} ingredients
-                </span>
+                <div className="flex flex-col items-end gap-0.5 ml-3 flex-shrink-0">
+                  {(() => {
+                    const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
+                    const hasKcal = item.bom.some(b => b.kcal != null);
+                    return hasKcal ? (
+                      <span className="text-xs font-semibold text-amber-600">{Math.round(totalKcal)} kcal</span>
+                    ) : null;
+                  })()}
+                  <span className="text-xs text-muted-foreground">{item.bom.length} ing.</span>
+                </div>
               </button>
             )) : (
               <p className="p-4 text-sm text-muted-foreground text-center">No menu items at this center yet</p>

@@ -109,6 +109,7 @@ export interface BomComponent {
   ingredient: string;
   quantity: number;
   unit: string;
+  kcal: number | null;
 }
 
 export interface Dashboard {

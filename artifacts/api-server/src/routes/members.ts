@@ -176,7 +176,7 @@ router.get("/members/:id/center-menu", async (req, res) => {
     `SELECT mi.id, mi.name, mi.description,
        COALESCE(
          json_agg(
-           json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit)
+           json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit, 'kcal', mib.kcal)
            ORDER BY mib.id
          ) FILTER (WHERE mib.id IS NOT NULL),
          '[]'::json

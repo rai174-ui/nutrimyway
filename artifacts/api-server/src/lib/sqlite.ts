@@ -444,6 +444,11 @@ async function seedFromXlsx(): Promise<void> {
   logger.info("Database seeded from composition.xlsx");
 }
 
+async function migrateAdminTables4(): Promise<void> {
+  // Add kcal per ingredient to BOM rows
+  await pool.query(`ALTER TABLE menu_item_bom ADD COLUMN IF NOT EXISTS kcal REAL`);
+}
+
 export async function initDb(): Promise<void> {
   await createTables();
   await migrateColumns();
@@ -451,6 +456,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables();
   await migrateAdminTables2();
   await migrateAdminTables3();
+  await migrateAdminTables4();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
