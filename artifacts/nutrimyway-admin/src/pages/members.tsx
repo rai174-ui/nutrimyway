@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   UserPlus, LogIn, LogOut, Trash2, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
-  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2,
+  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
@@ -394,13 +394,19 @@ function MemberRow({ member, centerId, onRefresh }: {
   member: CenterMember; centerId: string; onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [showWeightForm, setShowWeightForm] = useState(false);
+  const [weightKg, setWeightKg] = useState("");
   const isCheckedIn = !!member.checkin_id;
   const mins = isCheckedIn ? minutesSince(member.checked_in_at!) : 0;
 
   async function handleCheckin() {
+    const w = Number(weightKg);
+    if (!w || w <= 0) return;
     setBusy(true);
     try {
-      await apiPost(`/admin/centers/${centerId}/members/${member.id}/checkin`, {});
+      await apiPost(`/admin/centers/${centerId}/members/${member.id}/checkin`, { weight_kg: w });
+      setShowWeightForm(false);
+      setWeightKg("");
       onRefresh();
     } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy(false); }
@@ -442,20 +448,59 @@ function MemberRow({ member, centerId, onRefresh }: {
                 Since {formatTime(member.checked_in_at)} · {mins} min
               </p>
             )}
-            {!isCheckedIn && <p className="text-xs text-muted-foreground">Not checked in</p>}
+            {!isCheckedIn && !showWeightForm && (
+              <p className="text-xs text-muted-foreground">Not checked in</p>
+            )}
+            {!isCheckedIn && showWeightForm && (
+              <p className="text-xs text-amber-700 font-medium">Enter today&apos;s weight to check in</p>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {!isCheckedIn && (
-            <button onClick={handleCheckin} disabled={busy}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {!isCheckedIn && !showWeightForm && (
+            <button
+              onClick={() => setShowWeightForm(true)}
+              disabled={busy}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors"
+            >
               <LogIn className="w-3.5 h-3.5" />
               Check In
             </button>
           )}
-          <button onClick={handleRemove} disabled={busy}
+          {!isCheckedIn && showWeightForm && (
+            <>
+              <input
+                type="number"
+                value={weightKg}
+                onChange={e => setWeightKg(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && void handleCheckin()}
+                placeholder="kg"
+                min="20" max="300" step="0.1"
+                autoFocus
+                className="w-20 h-7 px-2 text-sm rounded-lg border border-green-300 bg-white focus:outline-none focus:ring-1 focus:ring-green-400"
+              />
+              <button
+                onClick={() => void handleCheckin()}
+                disabled={!weightKg || Number(weightKg) <= 0 || busy}
+                className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-40"
+              >
+                {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <LogIn className="w-3 h-3" />}
+                Check In
+              </button>
+              <button
+                onClick={() => { setShowWeightForm(false); setWeightKg(""); }}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+          <button
+            onClick={handleRemove}
+            disabled={busy}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors"
-            title="Remove from center">
+            title="Remove from center"
+          >
             <Trash2 className="w-4 h-4" />
           </button>
         </div>

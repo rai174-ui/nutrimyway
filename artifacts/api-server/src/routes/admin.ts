@@ -645,11 +645,21 @@ router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, 
   );
   if (existing[0]) { res.status(409).json({ error: "Member is already checked in" }); return; }
 
+  const { weight_kg } = req.body as { weight_kg?: number };
+
   const { rows } = await pool.query(
     `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
     [Number(memberId), centerId]
   );
   const checkin = rows[0] as { id: number };
+
+  // Save weight to health_records if provided
+  if (weight_kg !== undefined && weight_kg > 0) {
+    await pool.query(
+      `INSERT INTO health_records (member_id, center_id, weight_kg, recorded_at) VALUES ($1,$2,$3,NOW())`,
+      [Number(memberId), centerId, weight_kg]
+    );
+  }
 
   // Check if the member already had a center_visit consumption booked today
   const { rows: todayLogs } = await pool.query(
