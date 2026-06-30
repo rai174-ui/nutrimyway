@@ -638,7 +638,7 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
        FROM consumption_logs cl
        JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
        WHERE mcm.center_id = $1
-         AND DATE(cl.logged_at) BETWEEN $2 AND $3
+         AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
      )
      SELECT
        mb.ingredient,
@@ -656,9 +656,20 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
 
   // Logs breakdown: ALL logs for this center in the date range.
   // Each row carries a resolved menu_item_id+name (null = self-logged by member, not via check-in).
+  // qty and kcal fall back to BOM totals when the stored value is NULL (BOM-based check-in logs).
   const { rows: logsRaw } = await pool.query(
     `SELECT cl.id, cl.member_id, m.name AS member_name, cl.logged_at, cl.meal_slot,
-            cl.food_item, cl.quantity_g, cl.calories_kcal,
+            cl.food_item,
+            COALESCE(
+              cl.quantity_g,
+              (SELECT SUM(mb.quantity) FROM menu_item_bom mb
+               WHERE mb.menu_item_id = cl.menu_item_id)
+            ) AS quantity_g,
+            COALESCE(
+              cl.calories_kcal,
+              (SELECT SUM(mb.kcal) FROM menu_item_bom mb
+               WHERE mb.menu_item_id = cl.menu_item_id AND mb.kcal IS NOT NULL)
+            ) AS calories_kcal,
             COALESCE(
               (SELECT mi.id FROM menu_items mi
                WHERE mi.id = cl.menu_item_id AND mi.center_id = $1 LIMIT 1),
@@ -679,7 +690,7 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
      JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      JOIN members m ON m.id = cl.member_id
      WHERE mcm.center_id = $1
-       AND DATE(cl.logged_at) BETWEEN $2 AND $3
+       AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
      ORDER BY cl.logged_at DESC`,
     [centerId, from, to]
   );
