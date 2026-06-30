@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   UserPlus, LogIn, LogOut, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
   Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus, Hash, RotateCcw, CalendarClock, Pencil, Save,
+  FileDown, ClipboardList,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
@@ -1106,6 +1107,215 @@ function MemberRow({ member, centerId, onRefresh }: {
   );
 }
 
+// ── Health Report Modal ───────────────────────────────────────────────────────
+
+interface HealthReportRecord extends HealthRecord {
+  member_name: string;
+}
+
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+function thirtyDaysAgoISO() {
+  const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
+}
+
+function HealthReportModal({ centerId, members, onClose }: {
+  centerId: string;
+  members: CenterMember[];
+  onClose: () => void;
+}) {
+  const [from, setFrom] = useState(thirtyDaysAgoISO);
+  const [to, setTo] = useState(todayISO);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set(members.map(m => m.id)));
+  const [records, setRecords] = useState<HealthReportRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const allSelected = members.every(m => selectedIds.has(m.id));
+
+  function toggleAll() {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(members.map(m => m.id)));
+  }
+
+  function toggleMember(id: number) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      if (!from || !to) return;
+      setLoading(true);
+      const ids = Array.from(selectedIds);
+      const qs = new URLSearchParams({ from, to });
+      if (ids.length > 0 && ids.length < members.length) {
+        qs.set("member_ids", ids.join(","));
+      }
+      apiGet<HealthReportRecord[]>(`/admin/centers/${centerId}/health-records?${qs.toString()}`)
+        .then(rows => {
+          // If no members selected, show empty immediately without a round-trip
+          if (ids.length === 0) { setRecords([]); setLoading(false); return; }
+          setRecords(rows);
+        })
+        .catch(() => setRecords([]))
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [from, to, selectedIds, centerId, members.length]);
+
+  function downloadCSV() {
+    const header = ["Member Name","Date","Weight (kg)","BMI","Body Fat %","Visceral Fat","BMR (kcal)","Metabolic Age","Muscle Mass (kg)","Resting HR (bpm)","Notes"];
+    const rows = records.map(r => [
+      r.member_name,
+      fmtDateDMY(r.recorded_at),
+      r.weight_kg ?? "",
+      r.bmi ?? "",
+      r.body_fat_pct ?? "",
+      r.visceral_fat ?? "",
+      r.bmr ?? "",
+      r.metabolic_age ?? "",
+      r.muscle_mass_kg ?? "",
+      r.resting_hr ?? "",
+      (r.notes ?? "").replace(/"/g, '""'),
+    ]);
+    const csv = [header, ...rows].map(row => row.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `health-records-${centerId}-${from}-to-${to}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function fmt(v: number | null, dec = 1) { return v != null ? v.toFixed(dec) : "—"; }
+
+  const visibleMembers = memberSearch.trim()
+    ? members.filter(m => m.name.toLowerCase().includes(memberSearch.trim().toLowerCase()))
+    : members;
+
+  const uniqueMemberCount = new Set(records.map(r => r.member_id)).size;
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-background">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-border bg-card flex-shrink-0 flex-wrap gap-y-2">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="w-5 h-5 text-sky-600" />
+          <h2 className="text-base font-semibold text-foreground">Health Records Report</h2>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <label className="font-medium">From</label>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+              className="h-8 px-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            <label className="font-medium">To</label>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)}
+              className="h-8 px-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+          </div>
+          <button onClick={downloadCSV} disabled={records.length === 0}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors">
+            <FileDown className="w-4 h-4" />Download CSV
+          </button>
+          <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Member sidebar */}
+        <aside className="w-52 flex-shrink-0 border-r border-border flex flex-col bg-card">
+          <div className="px-3 py-2 border-b border-border">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <input type="text" value={memberSearch} onChange={e => setMemberSearch(e.target.value)}
+                placeholder="Search members…"
+                className="w-full pl-7 pr-2 py-1.5 text-xs border border-input rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+          </div>
+          <div className="px-3 py-2 border-b border-border">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                className="rounded text-primary accent-primary" />
+              <span className="text-xs font-semibold text-foreground">All members</span>
+            </label>
+          </div>
+          <div className="overflow-y-auto flex-1 py-1">
+            {visibleMembers.map(m => (
+              <label key={m.id} className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-muted/40 select-none">
+                <input type="checkbox" checked={selectedIds.has(m.id)} onChange={() => toggleMember(m.id)}
+                  className="rounded accent-primary flex-shrink-0" />
+                <span className="text-xs text-foreground truncate">{m.name}</span>
+              </label>
+            ))}
+          </div>
+        </aside>
+
+        {/* Table area */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Summary row */}
+          <div className="px-4 py-2 border-b border-border bg-muted/30 flex items-center gap-3 flex-shrink-0">
+            {loading ? (
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />Fetching records…
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                Showing <span className="font-semibold text-foreground">{records.length}</span> record{records.length !== 1 ? "s" : ""} for{" "}
+                <span className="font-semibold text-foreground">{uniqueMemberCount}</span> member{uniqueMemberCount !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+
+          {/* Scrollable table */}
+          <div className="flex-1 overflow-auto">
+            {!loading && records.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-16 px-8 gap-3">
+                <Activity className="w-10 h-10 text-muted-foreground/40" />
+                <p className="text-sm font-medium text-muted-foreground">No health records found</p>
+                <p className="text-xs text-muted-foreground/70">Try expanding the date range or selecting more members.</p>
+              </div>
+            ) : (
+              <table className="w-full text-xs border-collapse min-w-[900px]">
+                <thead className="sticky top-0 bg-muted z-10">
+                  <tr>
+                    {["Member","Date","Weight (kg)","BMI","Body Fat %","Visceral Fat","BMR","Met. Age","Muscle (kg)","Resting HR","Notes"].map(h => (
+                      <th key={h} className="text-left px-3 py-2 font-semibold text-muted-foreground border-b border-border whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map(r => (
+                    <tr key={r.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                      <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">{r.member_name}</td>
+                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{fmtDateDMY(r.recorded_at)}</td>
+                      <td className="px-3 py-2 tabular-nums">{fmt(r.weight_kg)}</td>
+                      <td className="px-3 py-2 tabular-nums">{fmt(r.bmi)}</td>
+                      <td className="px-3 py-2 tabular-nums">{fmt(r.body_fat_pct)}</td>
+                      <td className="px-3 py-2 tabular-nums">{fmt(r.visceral_fat)}</td>
+                      <td className="px-3 py-2 tabular-nums">{r.bmr != null ? r.bmr.toFixed(0) : "—"}</td>
+                      <td className="px-3 py-2 tabular-nums">{r.metabolic_age != null ? r.metabolic_age.toFixed(0) : "—"}</td>
+                      <td className="px-3 py-2 tabular-nums">{fmt(r.muscle_mass_kg)}</td>
+                      <td className="px-3 py-2 tabular-nums">{r.resting_hr != null ? r.resting_hr.toFixed(0) : "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground max-w-[180px] truncate" title={r.notes ?? ""}>{r.notes || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MembersPage() {
@@ -1113,6 +1323,7 @@ export default function MembersPage() {
   const [members, setMembers] = useState<CenterMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showHealthReport, setShowHealthReport] = useState(false);
   const [, navigate] = useLocation();
 
   const expiringSoon = new URLSearchParams(window.location.search).get("expiring_soon") === "true";
@@ -1153,8 +1364,26 @@ export default function MembersPage() {
               {members.length} member{members.length !== 1 ? "s" : ""} · {members.filter(m => m.checkin_id).length} checked in
             </p>
           </div>
-          {center && <AddMemberForm centerId={center.id} onAdded={load} />}
+          <div className="flex items-center gap-2 flex-wrap">
+            {members.length > 0 && (
+              <button
+                onClick={() => setShowHealthReport(true)}
+                className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
+              >
+                <ClipboardList className="w-4 h-4 text-sky-600" />Health Report
+              </button>
+            )}
+            {center && <AddMemberForm centerId={center.id} onAdded={load} />}
+          </div>
         </div>
+
+        {showHealthReport && center && (
+          <HealthReportModal
+            centerId={center.id}
+            members={members}
+            onClose={() => setShowHealthReport(false)}
+          />
+        )}
 
         {/* Expiring soon filter banner */}
         {expiringSoon && (

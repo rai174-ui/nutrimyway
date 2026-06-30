@@ -1178,6 +1178,66 @@ router.post("/admin/centers/:centerId/members/:memberId/health-records", require
   res.status(201).json(rows[0]);
 });
 
+// GET /api/admin/centers/:centerId/health-records — bulk report (multi-member, date range)
+router.get("/admin/centers/:centerId/health-records", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { from, to, member_ids } = req.query as {
+    from?: string; to?: string; member_ids?: string;
+  };
+
+  // Default date range: last 30 days
+  const toDate = to ? new Date(to) : new Date();
+  toDate.setHours(23, 59, 59, 999);
+  const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  fromDate.setHours(0, 0, 0, 0);
+
+  // Parse optional member_ids filter
+  const memberIdList = member_ids
+    ? member_ids.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+    : [];
+
+  let query: string;
+  let params: (string | number | Date)[];
+
+  if (memberIdList.length > 0) {
+    const placeholders = memberIdList.map((_, i) => `$${i + 4}`).join(",");
+    query = `
+      SELECT hr.id, hr.member_id, m.name AS member_name,
+             hr.center_id, hr.recorded_at,
+             hr.weight_kg, hr.bmi, hr.body_fat_pct, hr.visceral_fat,
+             hr.bmr, hr.metabolic_age, hr.muscle_mass_kg, hr.resting_hr, hr.notes
+      FROM health_records hr
+      JOIN members m ON m.id = hr.member_id
+      JOIN member_center_mapping mcm ON mcm.member_id = hr.member_id
+      WHERE hr.center_id = $1
+        AND hr.recorded_at >= $2 AND hr.recorded_at <= $3
+        AND hr.member_id IN (${placeholders})
+        AND mcm.center_id = $1
+      ORDER BY hr.recorded_at DESC`;
+    params = [centerId, fromDate, toDate, ...memberIdList];
+  } else {
+    query = `
+      SELECT hr.id, hr.member_id, m.name AS member_name,
+             hr.center_id, hr.recorded_at,
+             hr.weight_kg, hr.bmi, hr.body_fat_pct, hr.visceral_fat,
+             hr.bmr, hr.metabolic_age, hr.muscle_mass_kg, hr.resting_hr, hr.notes
+      FROM health_records hr
+      JOIN members m ON m.id = hr.member_id
+      JOIN member_center_mapping mcm ON mcm.member_id = hr.member_id
+      WHERE hr.center_id = $1
+        AND hr.recorded_at >= $2 AND hr.recorded_at <= $3
+        AND mcm.center_id = $1
+      ORDER BY hr.recorded_at DESC`;
+    params = [centerId, fromDate, toDate];
+  }
+
+  const { rows } = await pool.query(query, params);
+  res.json(rows);
+});
+
 // ── Ingredient Catalog ──────────────────────────────────────────────────────
 
 // GET /api/admin/ingredients
