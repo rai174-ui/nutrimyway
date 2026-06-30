@@ -137,14 +137,12 @@ function ItemMaster() {
   const [error, setError] = useState<string | null>(null);
 
   const [newName, setNewName] = useState("");
-  const [newSize, setNewSize] = useState("1");
   const [newUnit, setNewUnit] = useState("g");
   const [newMaterialCode, setNewMaterialCode] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newFlavour, setNewFlavour] = useState("");
 
   const [editName, setEditName] = useState("");
-  const [editSize, setEditSize] = useState("");
   const [editUnit, setEditUnit] = useState("");
   const [editMaterialCode, setEditMaterialCode] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -169,13 +167,13 @@ function ItemMaster() {
     try {
       await apiPost<Ingredient>("/admin/ingredients", {
         name: newName.trim(),
-        pack_size: Number(newSize) || 1,
+        pack_size: 1,
         pack_unit: newUnit,
         material_code: newMaterialCode.trim() || null,
         description: newDescription.trim() || null,
         flavour: newFlavour.trim() || null,
       });
-      setNewName(""); setNewSize("1"); setNewUnit("g");
+      setNewName(""); setNewUnit("g");
       setNewMaterialCode(""); setNewDescription(""); setNewFlavour("");
       setAdding(false);
       void load();
@@ -187,9 +185,10 @@ function ItemMaster() {
     if (!editName.trim()) return;
     setSaving(true); setError(null);
     try {
+      const cur = ingredients.find(i => i.id === id);
       await apiPut<Ingredient>(`/admin/ingredients/${id}`, {
         name: editName.trim(),
-        pack_size: Number(editSize) || 1,
+        pack_size: cur?.pack_size ?? 1,
         pack_unit: editUnit,
         material_code: editMaterialCode.trim() || null,
         description: editDescription.trim() || null,
@@ -212,7 +211,6 @@ function ItemMaster() {
   function startEdit(ing: Ingredient) {
     setEditId(ing.id);
     setEditName(ing.name);
-    setEditSize(String(ing.pack_size));
     setEditUnit(ing.pack_unit);
     setEditMaterialCode(ing.material_code ?? "");
     setEditDescription(ing.description ?? "");
@@ -280,13 +278,6 @@ function ItemMaster() {
             placeholder="Description (optional)"
           />
           <div className="flex items-center gap-2">
-            <input
-              value={newSize}
-              onChange={e => setNewSize(e.target.value)}
-              type="number" min="0" step="any"
-              className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="Pack size"
-            />
             <select
               value={newUnit}
               onChange={e => setNewUnit(e.target.value)}
@@ -352,12 +343,6 @@ function ItemMaster() {
                     placeholder="Description"
                   />
                   <div className="flex items-center gap-2">
-                    <input
-                      value={editSize}
-                      onChange={e => setEditSize(e.target.value)}
-                      type="number" min="0" step="any"
-                      className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
                     <select
                       value={editUnit}
                       onChange={e => setEditUnit(e.target.value)}
@@ -392,7 +377,7 @@ function ItemMaster() {
                     {ing.description && (
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">{ing.description}</p>
                     )}
-                    <p className="text-xs text-muted-foreground mt-0.5">{ing.pack_size} {ing.pack_unit} / pack</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Unit: {ing.pack_unit}</p>
                   </div>
                   <div className="flex items-center gap-1 pt-1 opacity-0 group-hover:opacity-100 transition-all">
                     <button onClick={() => startEdit(ing)} className="text-muted-foreground hover:text-primary">

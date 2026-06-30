@@ -92,13 +92,13 @@ function QuickReceiptForm({
   const [lastReceived, setLastReceived] = useState<{ batch: string; member: string | null } | null>(null);
 
   const selectedIngredient = ingredients.find(i => String(i.id) === ingredientId);
-  const [receivedQty, setReceivedQty] = useState<string>(String(selectedIngredient?.pack_size ?? ""));
+  const [receivedQty, setReceivedQty] = useState<string>("");
   const [receivedUnit, setReceivedUnit] = useState<string>(selectedIngredient?.pack_unit ?? "g");
 
-  // Pre-fill received qty/unit when ingredient selection changes
+  // Update unit when ingredient selection changes
   useEffect(() => {
     const ing = ingredients.find(i => String(i.id) === ingredientId);
-    if (ing) { setReceivedQty(String(ing.pack_size)); setReceivedUnit(ing.pack_unit); }
+    if (ing) { setReceivedUnit(ing.pack_unit); }
   }, [ingredientId, ingredients]);
 
   const isMemberPack = assignMemberId !== "";
@@ -168,7 +168,7 @@ function QuickReceiptForm({
             >
               {ingredients.map(i => (
                 <option key={i.id} value={i.id}>
-                  {i.name} ({i.pack_size} {i.pack_unit}/pack)
+                  {i.name}
                 </option>
               ))}
             </select>
@@ -275,14 +275,14 @@ function AddBatchForm({
   const initIng = ingredients.find(i => String(i.id) === initId);
   const [ingredientId, setIngredientId] = useState<string>(initId);
   const [batchNumber, setBatchNumber] = useState("");
-  const [receivedQty, setReceivedQty] = useState<string>(String(initIng?.pack_size ?? ""));
+  const [receivedQty, setReceivedQty] = useState<string>("");
   const [receivedUnit, setReceivedUnit] = useState<string>(initIng?.pack_unit ?? "g");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const ing = ingredients.find(i => String(i.id) === ingredientId);
-    if (ing) { setReceivedQty(String(ing.pack_size)); setReceivedUnit(ing.pack_unit); }
+    if (ing) { setReceivedUnit(ing.pack_unit); }
   }, [ingredientId, ingredients]);
 
   async function add() {
@@ -313,7 +313,7 @@ function AddBatchForm({
           onChange={e => setIngredientId(e.target.value)}
           className="flex-1 min-w-[160px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
         >
-          {ingredients.map(i => <option key={i.id} value={i.id}>{i.name} ({i.pack_size}{i.pack_unit})</option>)}
+          {ingredients.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
         </select>
         <input
           value={batchNumber}
