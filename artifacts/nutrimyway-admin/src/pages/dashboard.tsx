@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Users, UtensilsCrossed, Flame, Activity, CalendarClock, ChevronRight } from "lucide-react";
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from "recharts";
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList,
+} from "recharts";
 import { Nav } from "@/components/nav";
 import { apiGet, getAdminCenter, type Dashboard } from "@/lib/api";
 
@@ -36,39 +38,47 @@ function StatCard({
   );
 }
 
-function MiniTrendChart({ data }: { data: { day: string; count: number }[] }) {
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const key = d.toLocaleDateString("en-CA");
-    const label = d.toLocaleDateString("en-IN", { weekday: "short" });
+function MonthlyTrendChart({ data }: { data: { day: string; count: number }[] }) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayDate = now.getDate();
+  const monthName = now.toLocaleString("en-IN", { month: "long" });
+
+  const days = Array.from({ length: daysInMonth }, (_, i) => {
+    const dayNum = i + 1;
+    const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
     const found = data.find(r => r.day.slice(0, 10) === key);
-    return { day: label, count: found ? Number(found.count) : 0 };
+    const count = found ? Number(found.count) : 0;
+    return {
+      day: dayNum,
+      label: String(dayNum),
+      count: dayNum <= todayDate ? count : null,
+    };
   });
+
+  const maxCount = Math.max(...days.map(d => d.count ?? 0), 1);
 
   return (
     <div className="bg-card rounded-xl border border-border px-4 py-3">
       <div className="flex items-center justify-between mb-2">
         <div>
-          <p className="text-xs font-semibold text-foreground">Weekly check-ins</p>
-          <p className="text-[10px] text-muted-foreground">Active members · last 7 days</p>
+          <p className="text-xs font-semibold text-foreground">Monthly check-ins</p>
+          <p className="text-[10px] text-muted-foreground">Unique members · {monthName} {year}</p>
         </div>
         <Activity className="w-3.5 h-3.5 text-muted-foreground/50" />
       </div>
-      <ResponsiveContainer width="100%" height={72}>
-        <AreaChart data={days} margin={{ top: 2, right: 2, left: 2, bottom: 0 }}>
-          <defs>
-            <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.18} />
-              <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
+      <ResponsiveContainer width="100%" height={90}>
+        <LineChart data={days} margin={{ top: 14, right: 4, left: -28, bottom: 0 }}>
           <XAxis
-            dataKey="day"
-            tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
+            dataKey="label"
+            tick={{ fontSize: 8, fill: "var(--muted-foreground)" }}
             axisLine={false}
             tickLine={false}
+            interval={daysInMonth > 20 ? 4 : 1}
           />
+          <YAxis domain={[0, maxCount + 1]} hide />
           <Tooltip
             contentStyle={{
               background: "var(--card)",
@@ -77,18 +87,26 @@ function MiniTrendChart({ data }: { data: { day: string; count: number }[] }) {
               fontSize: 11,
               padding: "3px 8px",
             }}
-            formatter={(v: number) => [v, "members"]}
+            formatter={(v: unknown) => [typeof v === "number" ? v : 0, "members"]}
+            labelFormatter={(l: unknown) => `Day ${String(l)}`}
           />
-          <Area
+          <Line
             type="monotone"
             dataKey="count"
             stroke="var(--primary)"
             strokeWidth={2}
-            fill="url(#trendGrad)"
             dot={{ r: 2.5, fill: "var(--primary)", strokeWidth: 0 }}
             activeDot={{ r: 4, strokeWidth: 0 }}
-          />
-        </AreaChart>
+            connectNulls={false}
+          >
+            <LabelList
+              dataKey="count"
+              position="top"
+              style={{ fontSize: 8, fill: "var(--muted-foreground)", fontWeight: 600 }}
+              formatter={(v: unknown) => (typeof v === "number" && v > 0 ? v : "")}
+            />
+          </Line>
+        </LineChart>
       </ResponsiveContainer>
     </div>
   );
@@ -141,7 +159,7 @@ export default function DashboardPage() {
               color={data.expiring_soon_count > 0 ? "bg-amber-500" : "bg-slate-400"}
               onClick={data.expiring_soon_count > 0 ? () => navigate("/members?expiring_soon=true") : undefined}
               badge={data.expiring_soon_count > 0 ? (
-                <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Renew</span>
+                <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Renew Membership</span>
               ) : undefined}
             />
           </div>
@@ -153,7 +171,7 @@ export default function DashboardPage() {
 
             {/* Trend chart — 1 column */}
             <div className="lg:col-span-1">
-              <MiniTrendChart data={data.weekly_checkins} />
+              <MonthlyTrendChart data={data.monthly_checkins} />
             </div>
 
             {/* Nav cards — 3 columns */}

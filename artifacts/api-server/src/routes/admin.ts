@@ -426,7 +426,8 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
               COUNT(DISTINCT member_id) AS count
        FROM member_check_ins
        WHERE center_id = $1
-         AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') >= CURRENT_DATE - INTERVAL '6 days'
+         AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') >= DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Kolkata')
+         AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') <  DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Kolkata') + INTERVAL '1 month'
        GROUP BY day ORDER BY day`,
       [centerId]
     ),
@@ -438,7 +439,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
     today_calories:        Number(kcalRes.rows[0].total_calories),
     today_active_members:  Number(activeRes.rows[0].count),
     expiring_soon_count:   Number(expiringRes.rows[0].count),
-    weekly_checkins:       weeklyRes.rows as Array<{ day: string; count: number }>,
+    monthly_checkins:      weeklyRes.rows as Array<{ day: string; count: number }>,
   });
 });
 
