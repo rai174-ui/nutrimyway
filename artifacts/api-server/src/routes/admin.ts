@@ -1690,6 +1690,91 @@ router.post("/admin/checkins/:checkinId/menu-selections", requireAdmin, async (r
   res.status(201).json(result);
 });
 
+// GET /api/admin/checkins/:checkinId/flavour-options — available direct-flavour items for this visit's center today
+router.get("/admin/checkins/:checkinId/flavour-options", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req as AdminRequest;
+  const { rows: ciRows } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ciRows[0]) { res.status(404).json({ error: "Check-in not found" }); return; }
+  const centerId = (ciRows[0] as { center_id: string }).center_id;
+  if (centerId !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayDay = dayNames[nowIst.getUTCDay()];
+
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.pack_unit AS unit
+     FROM ingredients i
+     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
+     LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
+     WHERE i.flavour IS NOT NULL AND i.flavour != ''
+       AND ib.center_id = $1 AND ib.status = 'open'
+       AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
+     ORDER BY i.id, i.name`,
+    [centerId, `%${todayDay}%`]
+  );
+  res.json(rows);
+});
+
+// GET /api/admin/checkins/:checkinId/flavour-selections
+router.get("/admin/checkins/:checkinId/flavour-selections", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req as AdminRequest;
+  const { rows: ciRows } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ciRows[0]) { res.status(404).json({ error: "Check-in not found" }); return; }
+  if ((ciRows[0] as { center_id: string }).center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { rows } = await pool.query(
+    `SELECT id, checkin_id, ingredient_id, flavour, created_at FROM visit_flavour_selections WHERE checkin_id = $1`,
+    [Number(checkinId)]
+  );
+  res.json(rows);
+});
+
+// POST /api/admin/checkins/:checkinId/flavour-selections
+router.post("/admin/checkins/:checkinId/flavour-selections", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req as AdminRequest;
+  const { rows: ciRows } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ciRows[0]) { res.status(404).json({ error: "Check-in not found" }); return; }
+  if ((ciRows[0] as { center_id: string }).center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { ingredient_id, flavour } = req.body as { ingredient_id?: number; flavour?: string };
+  if (!ingredient_id || !flavour) { res.status(400).json({ error: "ingredient_id and flavour are required" }); return; }
+  const { rows } = await pool.query(
+    `INSERT INTO visit_flavour_selections (checkin_id, ingredient_id, flavour)
+     VALUES ($1, $2, $3) RETURNING *`,
+    [Number(checkinId), ingredient_id, flavour]
+  );
+  res.status(201).json(rows[0]);
+});
+
+// DELETE /api/admin/flavour-selections/:selId
+router.delete("/admin/flavour-selections/:selId", requireAdmin, async (req, res) => {
+  const { selId } = req.params;
+  const adminReq = req as AdminRequest;
+  const { rows } = await pool.query(
+    `SELECT vfs.id, mci.center_id
+     FROM visit_flavour_selections vfs
+     JOIN member_check_ins mci ON mci.id = vfs.checkin_id
+     WHERE vfs.id = $1`,
+    [Number(selId)]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if ((rows[0] as { center_id: string }).center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  await pool.query("DELETE FROM visit_flavour_selections WHERE id = $1", [Number(selId)]);
+  res.status(204).end();
+});
+
 // DELETE /api/admin/checkin-selections/:selectionId
 router.delete("/admin/checkin-selections/:selectionId", requireAdmin, async (req, res) => {
   const { selectionId } = req.params;

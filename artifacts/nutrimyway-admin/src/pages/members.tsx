@@ -14,6 +14,9 @@ import {
 
 const AUTO_CHECKOUT_MIN = 180;
 
+interface FlavourOption { id: number; name: string; flavour: string; unit: string; }
+interface FlavourSelection { id: number; checkin_id: number; ingredient_id: number; flavour: string; }
+
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
@@ -362,6 +365,8 @@ function VisitPanel({
   const checkinId = member.checkin_id!;
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [selections, setSelections] = useState<VisitMenuSelection[]>([]);
+  const [flavourOptions, setFlavourOptions] = useState<FlavourOption[]>([]);
+  const [flavourSelections, setFlavourSelections] = useState<FlavourSelection[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
@@ -376,12 +381,16 @@ function VisitPanel({
 
   const loadData = useCallback(async () => {
     try {
-      const [items, sels] = await Promise.all([
+      const [items, sels, fOpts, fSels] = await Promise.all([
         apiGet<MenuItem[]>(`/admin/centers/${centerId}/menu-items`),
         apiGet<VisitMenuSelection[]>(`/admin/checkins/${checkinId}/menu-selections`),
+        apiGet<FlavourOption[]>(`/admin/checkins/${checkinId}/flavour-options`),
+        apiGet<FlavourSelection[]>(`/admin/checkins/${checkinId}/flavour-selections`),
       ]);
       setMenuItems(items);
       setSelections(sels);
+      setFlavourOptions(fOpts);
+      setFlavourSelections(fSels);
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }, [centerId, checkinId]);
@@ -389,6 +398,25 @@ function VisitPanel({
   useEffect(() => { void loadData(); }, [loadData]);
 
   const selectedIds = new Set(selections.map(s => s.menu_item_id));
+  const selectedFlavourIngredientIds = new Set(flavourSelections.map(f => f.ingredient_id));
+
+  async function toggleFlavour(opt: FlavourOption) {
+    setBusy(true); setError(null);
+    try {
+      const existing = flavourSelections.find(f => f.ingredient_id === opt.id);
+      if (existing) {
+        await apiDelete(`/admin/flavour-selections/${existing.id}`);
+        setFlavourSelections(prev => prev.filter(f => f.id !== existing.id));
+      } else {
+        const created = await apiPost<FlavourSelection>(`/admin/checkins/${checkinId}/flavour-selections`, {
+          ingredient_id: opt.id,
+          flavour: opt.flavour,
+        });
+        setFlavourSelections(prev => [...prev, created]);
+      }
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
 
   async function toggleItem(item: MenuItem) {
     if (item.is_mandatory) return; // mandatory items cannot be deselected
@@ -433,7 +461,7 @@ function VisitPanel({
   const remaining = AUTO_CHECKOUT_MIN - mins;
   const mandatory = menuItems.filter(m => m.is_mandatory);
   const optional = menuItems.filter(m => !m.is_mandatory);
-  const selectionCount = selections.length;
+  const selectionCount = selections.length + flavourSelections.length;
 
   if (loading) {
     return (
@@ -560,6 +588,37 @@ function VisitPanel({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Direct flavour items */}
+      {flavourOptions.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+            Direct Items — tap to select
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {flavourOptions.map(opt => {
+              const selected = selectedFlavourIngredientIds.has(opt.id);
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => void toggleFlavour(opt)}
+                  disabled={busy}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all disabled:cursor-not-allowed ${
+                    selected
+                      ? "bg-violet-100 text-violet-800 border-violet-300"
+                      : "bg-background text-foreground border-border hover:border-violet-400 hover:text-violet-700"
+                  }`}
+                >
+                  {selected
+                    ? <CheckCircle2 className="w-3.5 h-3.5" />
+                    : <XCircle className="w-3.5 h-3.5 opacity-40" />}
+                  {opt.flavour}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
