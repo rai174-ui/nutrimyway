@@ -15,23 +15,23 @@ function StatCard({
   onClick?: () => void;
   badge?: React.ReactNode;
 }) {
-  const base = "bg-card rounded-2xl border border-border p-5 flex items-center gap-4 transition-all";
-  const interactive = onClick
-    ? "cursor-pointer hover:border-primary/40 hover:shadow-md active:scale-[0.98]"
-    : "";
   return (
-    <div className={`${base} ${interactive}`} onClick={onClick}>
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
-        <Icon className="w-6 h-6 text-white" />
+    <div
+      onClick={onClick}
+      className={`bg-card rounded-xl border border-border px-4 py-3 flex items-center gap-3 transition-all
+        ${onClick ? "cursor-pointer hover:border-primary/40 hover:shadow-sm active:scale-[0.98]" : ""}`}
+    >
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}>
+        <Icon className="w-4.5 h-4.5 text-white" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-2xl font-bold text-foreground">{value}</p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="text-xl font-bold text-foreground leading-none">{value}</p>
           {badge}
         </div>
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{label}</p>
       </div>
-      {onClick && <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />}
+      {onClick && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />}
     </div>
   );
 }
@@ -48,55 +48,48 @@ function WeeklyChart({ data }: { data: { day: string; count: number }[] }) {
   const max = Math.max(...days.map(d => d.count), 1);
 
   return (
-    <div className="bg-card rounded-2xl border border-border p-6">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-9 h-9 rounded-xl bg-teal-pale flex items-center justify-center">
-          <Activity className="w-4.5 h-4.5 text-teal-base" />
-        </div>
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 mb-3">
+        <Activity className="w-4 h-4 text-teal-base flex-shrink-0" />
         <div>
-          <h2 className="font-semibold text-foreground text-sm">Active Members — Last 7 Days</h2>
-          <p className="text-xs text-muted-foreground">Unique check-ins per day</p>
+          <p className="text-sm font-semibold text-foreground">Active Members</p>
+          <p className="text-[10px] text-muted-foreground">Last 7 days</p>
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={160}>
-        <BarChart data={days} barSize={28} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-          <XAxis
-            dataKey="day"
-            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            allowDecimals={false}
-            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-            axisLine={false}
-            tickLine={false}
-            domain={[0, max + 1]}
-          />
-          <Tooltip
-            cursor={{ fill: "var(--muted)/30" }}
-            contentStyle={{
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              fontSize: 12,
-            }}
-            formatter={(v: number) => [v, "members"]}
-          />
-          <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-            {days.map(d => (
-              <Cell key={d.date} fill={d.isToday ? "var(--primary)" : "var(--teal-pale)"} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-      <div className="flex items-center gap-4 mt-3 text-[11px] text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm bg-primary inline-block" />Today
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm bg-teal-pale inline-block" />Previous days
-        </span>
+      <div className="flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={days} barSize={22} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+            <XAxis
+              dataKey="day"
+              tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              allowDecimals={false}
+              tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+              axisLine={false}
+              tickLine={false}
+              domain={[0, max + 1]}
+            />
+            <Tooltip
+              cursor={{ fill: "rgba(0,0,0,0.04)" }}
+              contentStyle={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                fontSize: 11,
+                padding: "4px 8px",
+              }}
+              formatter={(v: number) => [v, "members"]}
+            />
+            <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+              {days.map(d => (
+                <Cell key={d.date} fill={d.isToday ? "var(--primary)" : "#e2f0ee"} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
@@ -117,24 +110,27 @@ export default function DashboardPage() {
   }, [center?.id]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
       <Nav />
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-foreground">{center?.name}</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Today's overview — {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
+      <main className="flex-1 flex flex-col gap-3 px-4 py-3 overflow-hidden max-w-6xl mx-auto w-full">
+
+        {/* Header */}
+        <div>
+          <h1 className="text-xl font-bold text-foreground leading-tight">{center?.name}</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
           </p>
         </div>
 
+        {/* Stat cards — 5 in a row on desktop, 2+3 on mobile */}
         {loading ? (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="bg-card rounded-2xl border border-border p-5 h-24 animate-pulse" />
+              <div key={i} className="bg-card rounded-xl border border-border p-4 h-16 animate-pulse" />
             ))}
           </div>
         ) : data ? (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
             <StatCard
               icon={Users}
               label="Total Members"
@@ -151,7 +147,7 @@ export default function DashboardPage() {
             />
             <StatCard
               icon={Flame}
-              label="kcal Logged Today"
+              label="kcal Today"
               value={Math.round(data.today_calories).toLocaleString()}
               color="bg-amber-500"
               onClick={() => navigate("/consumption")}
@@ -165,14 +161,14 @@ export default function DashboardPage() {
             />
             <StatCard
               icon={CalendarClock}
-              label="Memberships Expiring (10 days)"
+              label="Expiring (10 days)"
               value={data.expiring_soon_count}
               color={data.expiring_soon_count > 0 ? "bg-amber-500" : "bg-slate-400"}
               onClick={data.expiring_soon_count > 0 ? () => navigate("/members?expiring_soon=true") : undefined}
               badge={
                 data.expiring_soon_count > 0 ? (
-                  <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
-                    Renew needed
+                  <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
+                    Renew
                   </span>
                 ) : undefined
               }
@@ -180,39 +176,60 @@ export default function DashboardPage() {
           </div>
         ) : null}
 
+        {/* Bottom section: chart + quick links */}
         {data && (
-          <div className="mt-6">
-            <WeeklyChart data={data.weekly_checkins} />
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-3 min-h-0">
+
+            {/* Weekly chart — takes 3 columns */}
+            <div className="lg:col-span-3 bg-card rounded-xl border border-border p-4 min-h-0">
+              <WeeklyChart data={data.weekly_checkins} />
+            </div>
+
+            {/* Quick nav links — takes 2 columns */}
+            <div className="lg:col-span-2 flex flex-col gap-3">
+              <div
+                onClick={() => navigate("/set-menu")}
+                className="flex-1 bg-card rounded-xl border border-border p-4 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex flex-col justify-between"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
+                    <UtensilsCrossed className="w-4 h-4 text-teal-base" />
+                  </div>
+                  <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">Set Menu</p>
+                </div>
+                <p className="text-xs text-muted-foreground">Define food items, BOM components, and quantities for your center.</p>
+              </div>
+
+              <div
+                onClick={() => navigate("/consumption")}
+                className="flex-1 bg-card rounded-xl border border-border p-4 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex flex-col justify-between"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
+                    <Activity className="w-4 h-4 text-teal-base" />
+                  </div>
+                  <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">Consumption Report</p>
+                </div>
+                <p className="text-xs text-muted-foreground">Track component-level consumption across all members by date range.</p>
+              </div>
+
+              <div
+                onClick={() => navigate("/members")}
+                className="flex-1 bg-card rounded-xl border border-border p-4 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex flex-col justify-between"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
+                    <Users className="w-4 h-4 text-teal-base" />
+                  </div>
+                  <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">Members</p>
+                </div>
+                <p className="text-xs text-muted-foreground">Manage check-ins, renewals, health records, and member profiles.</p>
+              </div>
+            </div>
+
           </div>
         )}
 
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div
-            onClick={() => navigate("/set-menu")}
-            className="bg-card rounded-2xl border border-border p-6 cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-pale flex items-center justify-center">
-                <UtensilsCrossed className="w-5 h-5 text-teal-base" />
-              </div>
-              <h2 className="font-semibold text-foreground group-hover:text-primary transition-colors">Manage Set Menu</h2>
-            </div>
-            <p className="text-sm text-muted-foreground">Define the food items offered at your center, with BOM components and quantities for each.</p>
-          </div>
-
-          <div
-            onClick={() => navigate("/consumption")}
-            className="bg-card rounded-2xl border border-border p-6 cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-pale flex items-center justify-center">
-                <Activity className="w-5 h-5 text-teal-base" />
-              </div>
-              <h2 className="font-semibold text-foreground group-hover:text-primary transition-colors">Consumption Report</h2>
-            </div>
-            <p className="text-sm text-muted-foreground">Track component-level consumption across all center members by date range.</p>
-          </div>
-        </div>
       </main>
     </div>
   );
