@@ -1001,6 +1001,31 @@ router.post("/admin/centers/:centerId/members/:memberId/checkout", requireAdmin,
   res.json({ checked_out: true, checkin_id: checkinId });
 });
 
+// POST /api/admin/centers/:centerId/members/:memberId/cancel-checkin
+// Checkout without booking any consumption — visit is recorded as cancelled
+router.post("/admin/centers/:centerId/members/:memberId/cancel-checkin", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    `SELECT id FROM member_check_ins
+     WHERE member_id = $1 AND center_id = $2 AND checked_out_at IS NULL`,
+    [Number(memberId), centerId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "No active check-in found" }); return; }
+  const checkinId = (rows[0] as { id: number }).id;
+
+  // Remove all pending menu selections so nothing is consumed
+  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id = $1`, [checkinId]);
+  // Mark as checked out and cancelled — no consumption logs created
+  await pool.query(
+    `UPDATE member_check_ins SET checked_out_at = NOW(), cancelled = TRUE WHERE id = $1`,
+    [checkinId]
+  );
+  res.json({ cancelled: true, checkin_id: checkinId });
+});
+
 // ── Health Records ───────────────────────────────────────────────────────────
 
 // GET /api/admin/centers/:centerId/members/:memberId/health-records

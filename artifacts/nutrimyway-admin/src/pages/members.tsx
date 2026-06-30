@@ -410,6 +410,15 @@ function VisitPanel({
     finally { setCheckingOut(false); }
   }
 
+  async function handleCancelCheckin() {
+    setCheckingOut(true); setError(null);
+    try {
+      await apiPost(`/admin/centers/${centerId}/members/${member.id}/cancel-checkin`, {});
+      onCheckout();
+    } catch (e) { setError((e as Error).message); }
+    finally { setCheckingOut(false); }
+  }
+
   const mins = minutesSince(member.checked_in_at!);
   const remaining = AUTO_CHECKOUT_MIN - mins;
   const mandatory = menuItems.filter(m => m.is_mandatory);
@@ -545,20 +554,31 @@ function VisitPanel({
       )}
 
       {/* Checkout footer */}
-      <div className="flex items-center justify-between pt-2 border-t border-border/50">
-        <p className="text-xs text-muted-foreground">
+      <div className="flex items-center justify-between pt-2 border-t border-border/50 gap-3 flex-wrap">
+        <p className="text-xs text-muted-foreground flex-1">
           {selectionCount > 0
             ? `${selectionCount} item${selectionCount !== 1 ? "s" : ""} will be logged at checkout`
             : "No items selected — consumption will not be logged"}
         </p>
-        <button
-          onClick={() => void handleCheckout()}
-          disabled={checkingOut}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
-        >
-          {checkingOut ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
-          Check Out & Book
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => void handleCancelCheckin()}
+            disabled={checkingOut}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/5 disabled:opacity-50 transition-colors"
+            title="Check out without recording any consumption"
+          >
+            {checkingOut ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+            Cancel Check-in
+          </button>
+          <button
+            onClick={() => void handleCheckout()}
+            disabled={checkingOut}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+          >
+            {checkingOut ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+            Check Out & Book
+          </button>
+        </div>
       </div>
     </div>
   );

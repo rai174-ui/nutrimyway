@@ -526,6 +526,11 @@ async function migrateAdminTables13(): Promise<void> {
   await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS selected_flavour TEXT`);
 }
 
+async function migrateAdminTables15(): Promise<void> {
+  // Cancel check-in: mark a visit as cancelled so no consumption is booked
+  await pool.query(`ALTER TABLE member_check_ins ADD COLUMN IF NOT EXISTS cancelled BOOLEAN NOT NULL DEFAULT FALSE`);
+}
+
 async function migrateAdminTables14(): Promise<void> {
   // Member-assigned batches: a pack issued directly to a specific member
   await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS assigned_member_id INTEGER REFERENCES members(id) ON DELETE SET NULL`);
@@ -598,6 +603,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables12();
   await migrateAdminTables13();
   await migrateAdminTables14();
+  await migrateAdminTables15();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
