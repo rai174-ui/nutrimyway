@@ -139,9 +139,9 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
       [sel.menu_item_id as number]
     );
     for (const b of bom) {
-      // Join ingredients to get pack_size (it's on ingredients, not ingredient_batches)
+      // Use received_qty if set, else fall back to ingredient's Item Master pack_size
       const { rows: batches } = await pool.query(
-        `SELECT ib.id, i.pack_size FROM ingredient_batches ib
+        `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size) AS pack_size FROM ingredient_batches ib
          JOIN ingredients i ON i.id = ib.ingredient_id
          WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
          ORDER BY ib.opened_at ASC LIMIT 1`,
@@ -154,7 +154,7 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
            VALUES ($1, $2, 'auto: member visit', NOW())`,
           [batchRow.id, b.quantity as number]
         );
-        // Auto-close the batch if the running total has reached or exceeded pack size
+        // Auto-close the batch if the running total has reached or exceeded the actual received qty
         const { rows: bal } = await pool.query(
           `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
           [batchRow.id]
@@ -1332,6 +1332,7 @@ router.get("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (r
 
   const { rows } = await pool.query(
     `SELECT ib.id, ib.ingredient_id, i.name AS ingredient_name, i.pack_size, i.pack_unit,
+            ib.received_qty, ib.received_unit,
             ib.center_id, ib.batch_number, ib.status, ib.opened_at, ib.consumed_at, ib.created_at,
             ib.assigned_member_id, ib.assigned_member_name,
             COALESCE((
@@ -1378,22 +1379,24 @@ router.post("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { ingredient_id, batch_number, assigned_member_id, assigned_member_name } =
-    req.body as { ingredient_id?: number; batch_number?: string; assigned_member_id?: number; assigned_member_name?: string };
+  const { ingredient_id, batch_number, assigned_member_id, assigned_member_name, received_qty, received_unit } =
+    req.body as { ingredient_id?: number; batch_number?: string; assigned_member_id?: number; assigned_member_name?: string; received_qty?: number; received_unit?: string };
   if (!ingredient_id) { res.status(400).json({ error: "ingredient_id is required" }); return; }
   if (!batch_number?.trim()) { res.status(400).json({ error: "batch_number is required" }); return; }
 
   // Member packs are immediately opened (they're "in use" by the member right away)
   const isMemberPack = assigned_member_id != null;
   const { rows } = await pool.query(
-    `INSERT INTO ingredient_batches (ingredient_id, center_id, batch_number, status, opened_at, assigned_member_id, assigned_member_name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    `INSERT INTO ingredient_batches (ingredient_id, center_id, batch_number, status, opened_at, assigned_member_id, assigned_member_name, received_qty, received_unit)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
     [
       ingredient_id, centerId, batch_number.trim(),
       isMemberPack ? "open" : "new",
       isMemberPack ? new Date() : null,
       assigned_member_id ?? null,
       assigned_member_name?.trim() ?? null,
+      received_qty ?? null,
+      received_unit?.trim() ?? null,
     ]
   );
   res.status(201).json(rows[0]);

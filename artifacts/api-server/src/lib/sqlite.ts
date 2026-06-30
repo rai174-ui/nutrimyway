@@ -608,8 +608,15 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables17();
   await migrateAdminTables18();
   await migrateAdminTables19();
+  await migrateAdminTables20();
   await seedCenterPasswords();
   await seedSuperAdmin();
+}
+
+async function migrateAdminTables20(): Promise<void> {
+  // Actual received quantity per batch — may differ from Item Master pack_size
+  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS received_qty REAL`);
+  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS received_unit TEXT`);
 }
 
 async function migrateAdminTables19(): Promise<void> {

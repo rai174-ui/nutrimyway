@@ -263,6 +263,8 @@ export interface IngredientBatch {
   ingredient_name: string;
   pack_size: number;
   pack_unit: string;
+  received_qty: number | null;
+  received_unit: string | null;
   center_id: string;
   batch_number: string;
   status: BatchStatus;

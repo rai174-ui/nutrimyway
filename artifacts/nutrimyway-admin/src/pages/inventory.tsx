@@ -15,18 +15,28 @@ import {
   SlidersHorizontal, Users,
 } from "lucide-react";
 
+function batchCapacity(b: IngredientBatch): number {
+  return b.received_qty ?? b.pack_size;
+}
+function batchUnit(b: IngredientBatch): string {
+  return b.received_unit ?? b.pack_unit;
+}
+
 function exportInventoryXlsx(batches: IngredientBatch[]) {
-  const rows = batches.map(b => ({
-    Ingredient: b.ingredient_name,
-    "Batch #": b.batch_number,
-    Status: b.status,
-    "Pack Size": b.pack_size,
-    Unit: b.pack_unit,
-    "Consumed Qty": Number(b.consumed_qty),
-    "Balance": b.status === "new" ? b.pack_size : Math.max(0, b.pack_size - Number(b.consumed_qty)),
-    "Created": b.created_at ? new Date(b.created_at).toLocaleDateString() : "",
-    "Opened": b.opened_at ? new Date(b.opened_at).toLocaleDateString() : "",
-  }));
+  const rows = batches.map(b => {
+    const cap = batchCapacity(b);
+    return {
+      Ingredient: b.ingredient_name,
+      "Batch #": b.batch_number,
+      Status: b.status,
+      "Received Qty": cap,
+      Unit: batchUnit(b),
+      "Consumed Qty": Number(b.consumed_qty),
+      "Balance": b.status === "new" ? cap : Math.max(0, cap - Number(b.consumed_qty)),
+      "Created": b.created_at ? new Date(b.created_at).toLocaleDateString() : "",
+      "Opened": b.opened_at ? new Date(b.opened_at).toLocaleDateString() : "",
+    };
+  });
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Inventory");
@@ -81,6 +91,16 @@ function QuickReceiptForm({
   const [error, setError] = useState<string | null>(null);
   const [lastReceived, setLastReceived] = useState<{ batch: string; member: string | null } | null>(null);
 
+  const selectedIngredient = ingredients.find(i => String(i.id) === ingredientId);
+  const [receivedQty, setReceivedQty] = useState<string>(String(selectedIngredient?.pack_size ?? ""));
+  const [receivedUnit, setReceivedUnit] = useState<string>(selectedIngredient?.pack_unit ?? "g");
+
+  // Pre-fill received qty/unit when ingredient selection changes
+  useEffect(() => {
+    const ing = ingredients.find(i => String(i.id) === ingredientId);
+    if (ing) { setReceivedQty(String(ing.pack_size)); setReceivedUnit(ing.pack_unit); }
+  }, [ingredientId, ingredients]);
+
   const isMemberPack = assignMemberId !== "";
   const selectedMember = members.find(m => String(m.id) === assignMemberId);
 
@@ -91,6 +111,8 @@ function QuickReceiptForm({
       const body: Record<string, unknown> = {
         ingredient_id: Number(ingredientId),
         batch_number: batchNumber.trim(),
+        received_qty: receivedQty ? Number(receivedQty) : undefined,
+        received_unit: receivedUnit || undefined,
       };
       if (isMemberPack && selectedMember) {
         body.assigned_member_id = selectedMember.id;
@@ -165,6 +187,28 @@ function QuickReceiptForm({
             />
           </div>
 
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Received Qty
+            </label>
+            <div className="flex gap-1">
+              <input
+                value={receivedQty}
+                onChange={e => setReceivedQty(e.target.value)}
+                type="number" min="0" step="any"
+                className="w-24 h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Qty"
+              />
+              <select
+                value={receivedUnit}
+                onChange={e => setReceivedUnit(e.target.value)}
+                className="w-16 h-9 px-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {["g","kg","ml","L","pcs","oz","lb"].map(u => <option key={u}>{u}</option>)}
+              </select>
+            </div>
+          </div>
+
           {members.length > 0 && (
             <div className="flex flex-col gap-1 min-w-[180px] flex-1">
               <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -225,14 +269,21 @@ function AddBatchForm({
   onAdded: (b: IngredientBatch) => void;
   onCancel: () => void;
 }) {
-  const [ingredientId, setIngredientId] = useState<string>(
-    defaultIngredientId
-      ? String(defaultIngredientId)
-      : (ingredients[0]?.id ? String(ingredients[0].id) : "")
-  );
+  const initId = defaultIngredientId
+    ? String(defaultIngredientId)
+    : (ingredients[0]?.id ? String(ingredients[0].id) : "");
+  const initIng = ingredients.find(i => String(i.id) === initId);
+  const [ingredientId, setIngredientId] = useState<string>(initId);
   const [batchNumber, setBatchNumber] = useState("");
+  const [receivedQty, setReceivedQty] = useState<string>(String(initIng?.pack_size ?? ""));
+  const [receivedUnit, setReceivedUnit] = useState<string>(initIng?.pack_unit ?? "g");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const ing = ingredients.find(i => String(i.id) === ingredientId);
+    if (ing) { setReceivedQty(String(ing.pack_size)); setReceivedUnit(ing.pack_unit); }
+  }, [ingredientId, ingredients]);
 
   async function add() {
     if (!ingredientId || !batchNumber.trim()) return;
@@ -240,7 +291,12 @@ function AddBatchForm({
     try {
       const b = await apiPost<IngredientBatch>(
         `/admin/centers/${centerId}/ingredient-batches`,
-        { ingredient_id: Number(ingredientId), batch_number: batchNumber.trim() }
+        {
+          ingredient_id: Number(ingredientId),
+          batch_number: batchNumber.trim(),
+          received_qty: receivedQty ? Number(receivedQty) : undefined,
+          received_unit: receivedUnit || undefined,
+        }
       );
       onAdded(b);
       setBatchNumber(""); setIngredientId(ingredients[0]?.id ? String(ingredients[0].id) : "");
@@ -262,10 +318,25 @@ function AddBatchForm({
         <input
           value={batchNumber}
           onChange={e => setBatchNumber(e.target.value)}
-          className="w-44 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-40 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
           placeholder="Batch / lot number"
           onKeyDown={e => e.key === "Enter" && void add()}
         />
+        <input
+          value={receivedQty}
+          onChange={e => setReceivedQty(e.target.value)}
+          type="number" min="0" step="any"
+          className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+          placeholder="Qty"
+          title="Received quantity"
+        />
+        <select
+          value={receivedUnit}
+          onChange={e => setReceivedUnit(e.target.value)}
+          className="w-14 h-8 px-1 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          {["g","kg","ml","L","pcs","oz","lb"].map(u => <option key={u}>{u}</option>)}
+        </select>
         <button onClick={() => void add()} disabled={!ingredientId || !batchNumber.trim() || saving}
           className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40">
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add Batch"}
@@ -333,7 +404,7 @@ function ConsumptionPanel({
         Record Consumption
         {totalConsumed > 0 && (
           <span className="ml-auto font-normal text-emerald-600">
-            {totalConsumed} {batch.pack_unit} used so far
+            {totalConsumed} {batchUnit(batch)} used so far
           </span>
         )}
       </p>
@@ -350,7 +421,7 @@ function ConsumptionPanel({
             placeholder="Qty used"
           />
           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">
-            {batch.pack_unit}
+            {batchUnit(batch)}
           </span>
         </div>
         <input
@@ -377,7 +448,7 @@ function ConsumptionPanel({
         <div className="space-y-1">
           {logs.map(log => (
             <div key={log.id} className="flex items-center gap-2 group text-xs">
-              <span className="font-semibold text-emerald-700 tabular-nums w-16">{log.quantity} {batch.pack_unit}</span>
+              <span className="font-semibold text-emerald-700 tabular-nums w-16">{log.quantity} {batchUnit(batch)}</span>
               <span className="text-muted-foreground flex-1 truncate">{log.notes ?? "—"}</span>
               <span className="text-muted-foreground/70 shrink-0">{fmtTime(log.recorded_at)}</span>
               <button
@@ -460,7 +531,7 @@ function AdjustBatchForm({
             placeholder="Qty"
             autoFocus
           />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">{batch.pack_unit}</span>
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">{batchUnit(batch)}</span>
         </div>
         <input
           value={note}
@@ -486,7 +557,7 @@ function AdjustBatchForm({
           {adjustments.slice(0, 5).map(a => (
             <div key={a.id} className="flex items-center gap-2 text-xs">
               <span className={`font-semibold tabular-nums w-16 shrink-0 ${Number(a.qty_change) > 0 ? "text-emerald-700" : "text-red-600"}`}>
-                {Number(a.qty_change) > 0 ? "+" : ""}{Number(a.qty_change)} {batch.pack_unit}
+                {Number(a.qty_change) > 0 ? "+" : ""}{Number(a.qty_change)} {batchUnit(batch)}
               </span>
               <span className="text-muted-foreground flex-1 truncate">{a.note ?? "—"}</span>
               <span className="text-muted-foreground/70 shrink-0">{fmtTime(a.adjusted_at)}</span>
@@ -517,12 +588,11 @@ function BatchTableRow({
   const [error, setError] = useState<string | null>(null);
   const [showConsumption, setShowConsumption] = useState(false);
 
+  const cap = batchCapacity(batch);
+  const unit = batchUnit(batch);
   const consumed = Number(batch.consumed_qty);
-  const balance =
-    batch.status === "new"
-      ? batch.pack_size
-      : Math.max(0, batch.pack_size - consumed);
-  const balancePct = batch.pack_size > 0 ? (balance / batch.pack_size) * 100 : 0;
+  const balance = batch.status === "new" ? cap : Math.max(0, cap - consumed);
+  const balancePct = cap > 0 ? (balance / cap) * 100 : 0;
   const isLow = batch.status === "open" && minNeeded > 0 && balance < minNeeded;
 
   const barColor =
@@ -565,7 +635,7 @@ function BatchTableRow({
           ) : (
             <span className="text-sm">
               {consumed}{" "}
-              <span className="text-xs text-muted-foreground">{batch.pack_unit}</span>
+              <span className="text-xs text-muted-foreground">{unit}</span>
             </span>
           )}
         </td>
@@ -577,7 +647,7 @@ function BatchTableRow({
             isLow ? "text-red-600" : "text-foreground"
           }`}>
             {batch.status === "consumed" ? 0 : balance}{" "}
-            <span className="text-xs font-normal text-muted-foreground">{batch.pack_unit}</span>
+            <span className="text-xs font-normal text-muted-foreground">{unit}</span>
           </span>
         </td>
 
@@ -762,11 +832,13 @@ function BatchInventory({
           <div className="divide-y divide-border">
             {openGroups.map(({ ingredient, openBatch, reserveCount }) => {
               const req = requirements.find(r => r.ingredient_id === ingredient.id);
+              const cap = batchCapacity(openBatch);
+              const unit = batchUnit(openBatch);
               const consumed = Number(openBatch.consumed_qty);
-              const remaining = Math.max(0, openBatch.pack_size - consumed);
+              const remaining = Math.max(0, cap - consumed);
               const minNeeded = req ? Number(req.min_serving_qty) : 0;
               const isLow = minNeeded > 0 && remaining < minNeeded;
-              const pct = Math.min(100, (consumed / openBatch.pack_size) * 100);
+              const pct = Math.min(100, cap > 0 ? (consumed / cap) * 100 : 0);
               const isAdjusting = adjustingId === openBatch.id;
               return (
                 <div key={ingredient.id}>
@@ -789,7 +861,7 @@ function BatchInventory({
                           />
                         </div>
                         <span className={`text-xs font-semibold tabular-nums whitespace-nowrap ${isLow ? "text-red-600" : "text-emerald-700"}`}>
-                          {remaining} {ingredient.pack_unit} left
+                          {remaining} {unit} left
                         </span>
                       </div>
                     </div>
@@ -893,7 +965,7 @@ function BatchInventory({
                   <tr key={b.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-2.5 pl-5 pr-3 font-medium text-foreground">{b.ingredient_name}</td>
                     <td className="py-2.5 px-3 text-muted-foreground font-mono text-xs">{b.batch_number}</td>
-                    <td className="py-2.5 px-3 text-right tabular-nums">{b.pack_size} {b.pack_unit}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums">{batchCapacity(b)} {batchUnit(b)}</td>
                     <td className="py-2.5 px-3 text-muted-foreground text-xs">{fmt(b.created_at)}</td>
                     <td className="py-2.5 pl-3 pr-5 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -933,9 +1005,11 @@ function BatchInventory({
           </div>
           <div className="divide-y divide-border">
             {memberBatches.map(b => {
+              const cap = batchCapacity(b);
+              const bUnit = batchUnit(b);
               const consumed = Number(b.consumed_qty);
-              const remaining = Math.max(0, b.pack_size - consumed);
-              const pct = b.pack_size > 0 ? Math.min(100, (consumed / b.pack_size) * 100) : 0;
+              const remaining = Math.max(0, cap - consumed);
+              const pct = cap > 0 ? Math.min(100, (consumed / cap) * 100) : 0;
               const isAdjusting = adjustingId === b.id;
               return (
                 <div key={b.id}>
@@ -957,10 +1031,10 @@ function BatchInventory({
                           />
                         </div>
                         <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap">
-                          {consumed} / {b.pack_size} {b.pack_unit}
+                          {consumed} / {cap} {bUnit}
                         </span>
                         <span className="text-xs font-semibold text-violet-700 tabular-nums whitespace-nowrap">
-                          {remaining} {b.pack_unit} left
+                          {remaining} {bUnit} left
                         </span>
                       </div>
                     </div>
