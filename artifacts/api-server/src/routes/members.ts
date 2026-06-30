@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "../lib/sqlite";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const router = Router();
 
@@ -372,6 +373,84 @@ router.get("/members/:id/checkin-logs", async (req, res) => {
     [memberId]
   );
   res.json(rows);
+});
+
+// GET /api/members/:id/gemini-key — returns whether a key is set (never exposes the raw key)
+router.get("/members/:id/gemini-key", async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT gemini_api_key FROM members WHERE id = $1",
+    [Number(req.params.id)]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Member not found" }); return; }
+  res.json({ has_key: !!rows[0].gemini_api_key });
+});
+
+// PUT /api/members/:id/gemini-key — save or clear the member's Gemini API key
+router.put("/members/:id/gemini-key", async (req, res) => {
+  const { key } = req.body as { key?: string };
+  const normalized = (key ?? "").trim();
+  await pool.query(
+    "UPDATE members SET gemini_api_key = $1 WHERE id = $2",
+    [normalized || null, Number(req.params.id)]
+  );
+  res.json({ has_key: !!normalized });
+});
+
+// POST /api/members/:id/analyze-food-photo — AI calorie estimation via member's own Gemini key
+router.post("/members/:id/analyze-food-photo", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { image_base64, mime_type } = req.body as { image_base64?: string; mime_type?: string };
+
+  if (!image_base64 || !mime_type) {
+    res.status(400).json({ error: "image_base64 and mime_type are required" });
+    return;
+  }
+
+  const { rows } = await pool.query(
+    "SELECT gemini_api_key FROM members WHERE id = $1",
+    [memberId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Member not found" }); return; }
+  if (!rows[0].gemini_api_key) {
+    res.status(402).json({ error: "No Gemini API key set. Add your key in Profile → AI Food Scan." });
+    return;
+  }
+
+  const genAI = new GoogleGenerativeAI(rows[0].gemini_api_key as string);
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+  const prompt = `Analyse this food image and respond with ONLY a valid JSON object, no markdown, no explanation:
+{
+  "food_item": "<name of the food>",
+  "calories_kcal": <estimated kcal as a number or null>,
+  "protein_g": <estimated protein in grams as a number or null>
+}
+If you cannot identify food, return: {"error": "No food detected"}`;
+
+  const result = await model.generateContent([
+    prompt,
+    { inlineData: { data: image_base64, mimeType: mime_type } },
+  ]);
+
+  const text = result.response.text().trim().replace(/^```json\s*|```\s*$/g, "");
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    res.status(422).json({ error: "Could not parse AI response. Try a clearer photo." });
+    return;
+  }
+
+  if (parsed.error) {
+    res.status(422).json({ error: String(parsed.error) });
+    return;
+  }
+
+  res.json({
+    food_item: String(parsed.food_item ?? ""),
+    calories_kcal: parsed.calories_kcal != null ? Number(parsed.calories_kcal) : null,
+    protein_g: parsed.protein_g != null ? Number(parsed.protein_g) : null,
+  });
 });
 
 export default router;

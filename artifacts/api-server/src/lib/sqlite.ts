@@ -606,8 +606,14 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables15();
   await migrateAdminTables16();
   await migrateAdminTables17();
+  await migrateAdminTables18();
   await seedCenterPasswords();
   await seedSuperAdmin();
+}
+
+async function migrateAdminTables18(): Promise<void> {
+  // Per-member Gemini API key for AI food photo analysis
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS gemini_api_key TEXT`);
 }
 
 async function migrateAdminTables16(): Promise<void> {

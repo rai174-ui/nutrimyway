@@ -11,6 +11,7 @@
     "reset-passwords": "node --env-file-if-exists=../../.env reset-passwords.mjs"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@types/better-sqlite3": "^7.6.13",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
