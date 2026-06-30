@@ -778,12 +778,29 @@ function HealthPanel({ memberId, centerId, onClose }: {
 
 function validityBadge(valid_until: string | null) {
   if (!valid_until) return null;
+  const now = new Date();
   const exp = new Date(valid_until);
-  const expired = exp < new Date();
+  const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   const label = exp.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-  return expired
-    ? <span className="inline-flex items-center gap-1 text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5"><CalendarClock className="w-3 h-3" />Expired {label}</span>
-    : <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><CalendarClock className="w-3 h-3" />Valid until {label}</span>;
+  if (daysLeft <= 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-300 rounded-full px-2 py-0.5">
+        <CalendarClock className="w-3 h-3" />Expired {label}
+      </span>
+    );
+  }
+  if (daysLeft <= 30) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded-full px-2 py-0.5">
+        <CalendarClock className="w-3 h-3" />Expires in {daysLeft}d · {label}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+      <CalendarClock className="w-3 h-3" />Valid until {label}
+    </span>
+  );
 }
 
 function MemberRow({ member, centerId, onRefresh }: {
@@ -1058,7 +1075,15 @@ function MemberRow({ member, centerId, onRefresh }: {
           {editError && (
             <p className="mt-2 text-xs text-destructive bg-destructive/8 rounded-lg px-3 py-2">{editError}</p>
           )}
-          <div className="flex justify-end mt-3">
+          <div className="flex items-center justify-end gap-2 mt-3">
+            <button
+              onClick={() => setShowEditPanel(false)}
+              disabled={editSaving}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-50 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancel
+            </button>
             <button onClick={() => void handleSaveEdit()} disabled={editSaving}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">
               {editSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
