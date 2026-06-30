@@ -92,14 +92,8 @@ function QuickReceiptForm({
   const [lastReceived, setLastReceived] = useState<{ batch: string; member: string | null } | null>(null);
 
   const selectedIngredient = ingredients.find(i => String(i.id) === ingredientId);
+  const receivedUnit = selectedIngredient?.pack_unit ?? "g";
   const [receivedQty, setReceivedQty] = useState<string>("");
-  const [receivedUnit, setReceivedUnit] = useState<string>(selectedIngredient?.pack_unit ?? "g");
-
-  // Update unit when ingredient selection changes
-  useEffect(() => {
-    const ing = ingredients.find(i => String(i.id) === ingredientId);
-    if (ing) { setReceivedUnit(ing.pack_unit); }
-  }, [ingredientId, ingredients]);
 
   const isMemberPack = assignMemberId !== "";
   const selectedMember = members.find(m => String(m.id) === assignMemberId);
@@ -112,7 +106,7 @@ function QuickReceiptForm({
         ingredient_id: Number(ingredientId),
         batch_number: batchNumber.trim(),
         received_qty: receivedQty ? Number(receivedQty) : undefined,
-        received_unit: receivedUnit || undefined,
+        received_unit: receivedUnit,
       };
       if (isMemberPack && selectedMember) {
         body.assigned_member_id = selectedMember.id;
@@ -191,7 +185,7 @@ function QuickReceiptForm({
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Received Qty
             </label>
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1.5">
               <input
                 value={receivedQty}
                 onChange={e => setReceivedQty(e.target.value)}
@@ -199,13 +193,9 @@ function QuickReceiptForm({
                 className="w-24 h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                 placeholder="Qty"
               />
-              <select
-                value={receivedUnit}
-                onChange={e => setReceivedUnit(e.target.value)}
-                className="w-16 h-9 px-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                {["g","kg","ml","L","pcs","oz","lb"].map(u => <option key={u}>{u}</option>)}
-              </select>
+              <span className="h-9 px-2.5 flex items-center text-sm font-medium text-muted-foreground bg-muted rounded-lg border border-input min-w-[3rem]">
+                {receivedUnit}
+              </span>
             </div>
           </div>
 
@@ -272,18 +262,14 @@ function AddBatchForm({
   const initId = defaultIngredientId
     ? String(defaultIngredientId)
     : (ingredients[0]?.id ? String(ingredients[0].id) : "");
-  const initIng = ingredients.find(i => String(i.id) === initId);
   const [ingredientId, setIngredientId] = useState<string>(initId);
   const [batchNumber, setBatchNumber] = useState("");
   const [receivedQty, setReceivedQty] = useState<string>("");
-  const [receivedUnit, setReceivedUnit] = useState<string>(initIng?.pack_unit ?? "g");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const ing = ingredients.find(i => String(i.id) === ingredientId);
-    if (ing) { setReceivedUnit(ing.pack_unit); }
-  }, [ingredientId, ingredients]);
+  const selectedIng = ingredients.find(i => String(i.id) === ingredientId);
+  const receivedUnit = selectedIng?.pack_unit ?? "g";
 
   async function add() {
     if (!ingredientId || !batchNumber.trim()) return;
@@ -295,7 +281,7 @@ function AddBatchForm({
           ingredient_id: Number(ingredientId),
           batch_number: batchNumber.trim(),
           received_qty: receivedQty ? Number(receivedQty) : undefined,
-          received_unit: receivedUnit || undefined,
+          received_unit: receivedUnit,
         }
       );
       onAdded(b);
@@ -330,13 +316,9 @@ function AddBatchForm({
           placeholder="Qty"
           title="Received quantity"
         />
-        <select
-          value={receivedUnit}
-          onChange={e => setReceivedUnit(e.target.value)}
-          className="w-14 h-8 px-1 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-        >
-          {["g","kg","ml","L","pcs","oz","lb"].map(u => <option key={u}>{u}</option>)}
-        </select>
+        <span className="h-8 px-2 flex items-center text-xs font-medium text-muted-foreground bg-muted rounded-lg border border-input min-w-[2.5rem]">
+          {receivedUnit}
+        </span>
         <button onClick={() => void add()} disabled={!ingredientId || !batchNumber.trim() || saving}
           className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40">
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add Batch"}
