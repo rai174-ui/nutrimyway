@@ -111,11 +111,18 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
     );
     if (!(avail[0] as { is_available: boolean }).is_available) continue;
 
+    // Sum BOM kcal for this menu item
+    const { rows: kcalRows } = await pool.query(
+      `SELECT COALESCE(SUM(kcal), 0) AS total_kcal FROM menu_item_bom WHERE menu_item_id = $1`,
+      [sel.menu_item_id as number]
+    );
+    const totalKcal = Number((kcalRows[0] as { total_kcal: number }).total_kcal) || null;
+
     // Log consumption
     await pool.query(
-      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, logged_at)
-       VALUES ($1, 'center_visit', $2, $3, NOW())`,
-      [memberId, sel.name as string, sel.menu_item_id as number]
+      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, calories_kcal, logged_at)
+       VALUES ($1, 'center_visit', $2, $3, $4, NOW())`,
+      [memberId, sel.name as string, sel.menu_item_id as number, totalKcal]
     );
     // Deduct BOM quantities from the open ingredient batch (oldest open batch first)
     const { rows: bom } = await pool.query(
