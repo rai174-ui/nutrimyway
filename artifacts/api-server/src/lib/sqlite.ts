@@ -607,8 +607,22 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables16();
   await migrateAdminTables17();
   await migrateAdminTables18();
+  await migrateAdminTables19();
   await seedCenterPasswords();
   await seedSuperAdmin();
+}
+
+async function migrateAdminTables19(): Promise<void> {
+  // Flavour master — center-scoped list of flavour names selectable in Item Master
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS center_flavours (
+      id         SERIAL PRIMARY KEY,
+      center_id  TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
+      name       TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(center_id, name)
+    )
+  `);
 }
 
 async function migrateAdminTables18(): Promise<void> {

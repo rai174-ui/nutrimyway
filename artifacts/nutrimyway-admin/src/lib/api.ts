@@ -237,6 +237,13 @@ export function isAuthenticated(): boolean {
   return !!getToken() && !!getAdminCenter();
 }
 
+export interface CenterFlavour {
+  id: number;
+  center_id: string;
+  name: string;
+  created_at: string;
+}
+
 export interface Ingredient {
   id: number;
   name: string;

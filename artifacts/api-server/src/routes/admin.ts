@@ -1241,6 +1241,42 @@ router.get("/admin/centers/:centerId/health-records", requireAdmin, async (req, 
 
 // ── Ingredient Catalog ──────────────────────────────────────────────────────
 
+// GET /api/admin/centers/:centerId/flavours
+router.get("/admin/centers/:centerId/flavours", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { rows } = await pool.query(
+    "SELECT id, center_id, name, created_at FROM center_flavours WHERE center_id = $1 ORDER BY name",
+    [centerId]
+  );
+  res.json(rows);
+});
+
+// POST /api/admin/centers/:centerId/flavours
+router.post("/admin/centers/:centerId/flavours", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { name } = req.body as { name?: string };
+  if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+  const { rows } = await pool.query(
+    "INSERT INTO center_flavours (center_id, name) VALUES ($1, $2) ON CONFLICT (center_id, name) DO NOTHING RETURNING *",
+    [centerId, name.trim()]
+  );
+  if (!rows[0]) { res.status(409).json({ error: "Flavour already exists" }); return; }
+  res.status(201).json(rows[0]);
+});
+
+// DELETE /api/admin/centers/:centerId/flavours/:flavourId
+router.delete("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, async (req, res) => {
+  const { centerId, flavourId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  await pool.query("DELETE FROM center_flavours WHERE id = $1 AND center_id = $2", [Number(flavourId), centerId]);
+  res.status(204).end();
+});
+
 // GET /api/admin/ingredients
 router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
   const { rows } = await pool.query(

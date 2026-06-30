@@ -1,15 +1,135 @@
 import { useState, useEffect, useRef } from "react";
-import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download } from "lucide-react";
+import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
-import { apiPost, apiGet, apiPut, apiDelete, getAdminCenter, type Ingredient, type CenterMember } from "@/lib/api";
+import { apiPost, apiGet, apiPut, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember } from "@/lib/api";
 
 const UNITS = ["g", "kg", "ml", "L", "pcs", "oz", "lb"];
+
+// ── Flavour Master ────────────────────────────────────────────────────────────
+
+function FlavourMaster() {
+  const center = getAdminCenter();
+  const [flavours, setFlavours] = useState<CenterFlavour[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    if (!center) return;
+    try {
+      const data = await apiGet<CenterFlavour[]>(`/admin/centers/${center.id}/flavours`);
+      setFlavours(data);
+    } finally { setLoading(false); }
+  }
+
+  useEffect(() => { void load(); }, [center?.id]);
+
+  async function addFlavour() {
+    if (!center || !newName.trim()) return;
+    setSaving(true); setError(null);
+    try {
+      await apiPost(`/admin/centers/${center.id}/flavours`, { name: newName.trim() });
+      setNewName(""); setAdding(false);
+      void load();
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  async function deleteFlavour(id: number) {
+    if (!center) return;
+    if (!confirm("Remove this flavour from the master list?")) return;
+    try {
+      await apiDelete(`/admin/centers/${center.id}/flavours/${id}`);
+      void load();
+    } catch (e) { setError((e as Error).message); }
+  }
+
+  return (
+    <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center">
+            <Tag className="w-4 h-4 text-violet-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground leading-tight">Flavour Master</h2>
+            <p className="text-xs text-muted-foreground">Define flavour options available in Item Master</p>
+          </div>
+          <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+            {flavours.length}
+          </span>
+        </div>
+        <button
+          onClick={() => { setAdding(v => !v); setError(null); setNewName(""); }}
+          className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-xs font-medium"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add
+        </button>
+      </div>
+
+      {error && (
+        <div className="mx-5 mt-3 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">{error}</div>
+      )}
+
+      {adding && (
+        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30">
+          <div className="flex items-center gap-2">
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && void addFlavour()}
+              autoFocus
+              placeholder="Flavour name e.g. Chocolate, Vanilla"
+              className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-violet-500"
+            />
+            <button
+              onClick={() => void addFlavour()}
+              disabled={!newName.trim() || saving}
+              className="h-8 px-3 rounded-lg bg-violet-600 text-white text-xs font-medium disabled:opacity-40"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
+            </button>
+            <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="w-5 h-5 animate-spin text-violet-500" />
+        </div>
+      ) : flavours.length === 0 ? (
+        <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+          No flavours yet. Add some above — they'll appear as a dropdown in Item Master.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2 px-5 py-4">
+          {flavours.map(f => (
+            <span key={f.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-sm">
+              {f.name}
+              <button onClick={() => void deleteFlavour(f.id)} className="text-violet-400 hover:text-red-500 transition-colors">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Item Master ───────────────────────────────────────────────────────────────
 
 function ItemMaster() {
+  const center = getAdminCenter();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [flavours, setFlavours] = useState<CenterFlavour[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -32,12 +152,16 @@ function ItemMaster() {
 
   async function load() {
     try {
-      const data = await apiGet<Ingredient[]>("/admin/ingredients");
-      setIngredients(data);
+      const [ingData, flavData] = await Promise.all([
+        apiGet<Ingredient[]>("/admin/ingredients"),
+        center ? apiGet<CenterFlavour[]>(`/admin/centers/${center.id}/flavours`) : Promise.resolve([]),
+      ]);
+      setIngredients(ingData);
+      setFlavours(flavData);
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [center?.id]);
 
   async function addIngredient() {
     if (!newName.trim()) return;
@@ -140,12 +264,14 @@ function ItemMaster() {
               className="w-36 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="Material code"
             />
-            <input
+            <select
               value={newFlavour}
               onChange={e => setNewFlavour(e.target.value)}
-              className="w-32 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="Flavour"
-            />
+              className="w-36 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">— Flavour —</option>
+              {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
+            </select>
           </div>
           <input
             value={newDescription}
@@ -210,12 +336,14 @@ function ItemMaster() {
                       className="w-32 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                       placeholder="Material code"
                     />
-                    <input
+                    <select
                       value={editFlavour}
                       onChange={e => setEditFlavour(e.target.value)}
-                      className="w-28 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                      placeholder="Flavour"
-                    />
+                      className="w-36 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      <option value="">— Flavour —</option>
+                      {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
+                    </select>
                   </div>
                   <input
                     value={editDescription}
@@ -483,8 +611,10 @@ export default function SettingsPage() {
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-          <p className="text-muted-foreground text-sm mt-1">Manage item master, center QR code, and admin password</p>
+          <p className="text-muted-foreground text-sm mt-1">Manage flavours, item master, center QR code, and admin password</p>
         </div>
+
+        <FlavourMaster />
 
         <ItemMaster />
 
