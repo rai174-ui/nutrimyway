@@ -353,23 +353,49 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
 
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
-  const [memberRes, menuRes, consumptionRes] = await Promise.all([
+  const [memberRes, menuRes, kcalRes, activeRes, expiringRes, weeklyRes] = await Promise.all([
     pool.query("SELECT COUNT(*) as count FROM member_center_mapping WHERE center_id = $1", [centerId]),
     pool.query("SELECT COUNT(*) as count FROM menu_items WHERE center_id = $1", [centerId]),
     pool.query(
-      `SELECT COALESCE(SUM(cl.calories_kcal), 0) as total_calories, COUNT(DISTINCT cl.member_id) as active_members
+      `SELECT COALESCE(SUM(cl.calories_kcal), 0) AS total_calories
        FROM consumption_logs cl
-       JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-       WHERE mcm.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2`,
+       JOIN menu_items mi ON mi.id = cl.menu_item_id
+       WHERE mi.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2`,
       [centerId, today]
+    ),
+    pool.query(
+      `SELECT COUNT(DISTINCT member_id) AS count
+       FROM member_check_ins
+       WHERE center_id = $1 AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') = $2`,
+      [centerId, today]
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS count
+       FROM members m
+       JOIN member_center_mapping mcm ON mcm.member_id = m.id
+       WHERE mcm.center_id = $1
+         AND m.valid_until IS NOT NULL
+         AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '10 days'`,
+      [centerId]
+    ),
+    pool.query(
+      `SELECT DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') AS day,
+              COUNT(DISTINCT member_id) AS count
+       FROM member_check_ins
+       WHERE center_id = $1
+         AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') >= CURRENT_DATE - INTERVAL '6 days'
+       GROUP BY day ORDER BY day`,
+      [centerId]
     ),
   ]);
 
   res.json({
-    member_count: Number(memberRes.rows[0].count),
-    menu_item_count: Number(menuRes.rows[0].count),
-    today_calories: Number(consumptionRes.rows[0].total_calories),
-    today_active_members: Number(consumptionRes.rows[0].active_members),
+    member_count:          Number(memberRes.rows[0].count),
+    menu_item_count:       Number(menuRes.rows[0].count),
+    today_calories:        Number(kcalRes.rows[0].total_calories),
+    today_active_members:  Number(activeRes.rows[0].count),
+    expiring_soon_count:   Number(expiringRes.rows[0].count),
+    weekly_checkins:       weeklyRes.rows as Array<{ day: string; count: number }>,
   });
 });
 
@@ -727,6 +753,8 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
+  const expiringSoon = req.query.expiring_soon === "true";
+
   // Auto-checkout any sessions that have exceeded the time limit
   await autoCheckoutExpired(centerId);
 
@@ -748,7 +776,8 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
      LEFT JOIN member_check_ins ci
        ON ci.member_id = m.id AND ci.center_id = $1 AND ci.checked_out_at IS NULL
      WHERE mcm.center_id = $1
-     ORDER BY m.name`,
+       ${expiringSoon ? "AND m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '10 days'" : ""}
+     ORDER BY m.valid_until ASC NULLS LAST, m.name`,
     [centerId]
   );
   res.json(rows);

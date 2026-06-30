@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useLocation } from "wouter";
 import {
   UserPlus, LogIn, LogOut, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
@@ -1112,17 +1113,21 @@ export default function MembersPage() {
   const [members, setMembers] = useState<CenterMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [, navigate] = useLocation();
+
+  const expiringSoon = new URLSearchParams(window.location.search).get("expiring_soon") === "true";
 
   function load() {
     if (!center) return;
     setLoading(true);
-    apiGet<CenterMember[]>(`/admin/centers/${center.id}/members`)
+    const qs = expiringSoon ? "?expiring_soon=true" : "";
+    apiGet<CenterMember[]>(`/admin/centers/${center.id}/members${qs}`)
       .then(setMembers)
       .catch(console.error)
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); }, [center?.id]);
+  useEffect(() => { load(); }, [center?.id, expiringSoon]);
 
   const q = search.trim().toLowerCase();
   const filtered = q
@@ -1150,6 +1155,22 @@ export default function MembersPage() {
           </div>
           {center && <AddMemberForm centerId={center.id} onAdded={load} />}
         </div>
+
+        {/* Expiring soon filter banner */}
+        {expiringSoon && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-sm">
+            <span className="flex items-center gap-2 text-amber-800 font-medium">
+              <CalendarClock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              Showing members whose membership expires within 10 days
+            </span>
+            <button
+              onClick={() => navigate("/members")}
+              className="flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 font-medium whitespace-nowrap"
+            >
+              <X className="w-3.5 h-3.5" />Clear filter
+            </button>
+          </div>
+        )}
 
         {/* Search bar */}
         {members.length > 0 && (

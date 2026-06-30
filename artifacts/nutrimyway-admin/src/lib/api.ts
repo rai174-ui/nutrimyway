@@ -154,6 +154,8 @@ export interface Dashboard {
   menu_item_count: number;
   today_calories: number;
   today_active_members: number;
+  expiring_soon_count: number;
+  weekly_checkins: { day: string; count: number }[];
 }
 
 export interface MemberLookup {
