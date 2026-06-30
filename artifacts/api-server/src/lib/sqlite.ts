@@ -605,6 +605,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables14();
   await migrateAdminTables15();
   await migrateAdminTables16();
+  await migrateAdminTables17();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -612,4 +613,20 @@ export async function initDb(): Promise<void> {
 async function migrateAdminTables16(): Promise<void> {
   // Day-of-week availability for menu items: 'all' or comma-separated e.g. 'Mon,Wed,Fri'
   await pool.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS available_days TEXT NOT NULL DEFAULT 'all'`);
+}
+
+async function migrateAdminTables17(): Promise<void> {
+  // Track which flavour was chosen per menu-item selection at a visit
+  await pool.query(`ALTER TABLE visit_menu_selections ADD COLUMN IF NOT EXISTS selected_flavour TEXT`);
+  // Direct-order flavoured ingredient selections at check-in (not part of a menu item BOM)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS visit_flavour_selections (
+      id SERIAL PRIMARY KEY,
+      checkin_id INTEGER NOT NULL REFERENCES member_check_ins(id) ON DELETE CASCADE,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      flavour TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(checkin_id, ingredient_id)
+    )
+  `);
 }

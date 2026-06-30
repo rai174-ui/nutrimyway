@@ -161,6 +161,29 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
       }
     }
   }
+  // Process direct-order flavour selections (ingredients ordered by flavour at check-in)
+  const { rows: flavourSels } = await pool.query(
+    `SELECT vfs.ingredient_id, vfs.flavour, i.name
+     FROM visit_flavour_selections vfs
+     JOIN ingredients i ON i.id = vfs.ingredient_id
+     WHERE vfs.checkin_id = $1`,
+    [checkinId]
+  );
+  for (const fsel of flavourSels) {
+    const { rows: batches } = await pool.query(
+      `SELECT ib.id FROM ingredient_batches ib
+       WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
+       ORDER BY ib.opened_at ASC LIMIT 1`,
+      [fsel.ingredient_id as number, centerId]
+    );
+    if (!batches[0]) continue;
+    const foodLabel = `${fsel.name as string} – ${fsel.flavour as string}`;
+    await pool.query(
+      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, calories_kcal, logged_at)
+       VALUES ($1, 'center_visit', $2, NULL, NOW())`,
+      [memberId, foodLabel]
+    );
+  }
   // Mark check-in as checked out
   await pool.query(
     `UPDATE member_check_ins SET checked_out_at = NOW() WHERE id = $1 AND checked_out_at IS NULL`,
@@ -476,6 +499,24 @@ router.put("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
     [name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all", itemId]
   );
   res.json(rows[0]);
+});
+
+// GET /api/admin/centers/:centerId/open-flavours — flavours from open ingredient batches
+router.get("/admin/centers/:centerId/open-flavours", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    `SELECT DISTINCT i.flavour, i.name AS ingredient_name, i.id AS ingredient_id
+     FROM ingredients i
+     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
+     WHERE i.flavour IS NOT NULL AND i.flavour != ''
+       AND ib.center_id = $1 AND ib.status = 'open'
+     ORDER BY i.flavour`,
+    [centerId]
+  );
+  res.json(rows);
 });
 
 // DELETE /api/admin/menu-items/:itemId

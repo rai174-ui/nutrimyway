@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Sunrise, Sun, Apple, Moon, MapPin } from "lucide-react";
+import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X } from "lucide-react";
 import { useCreateConsumptionLog, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -16,13 +15,6 @@ const slots = [
   { id: "Snack", icon: Apple },
   { id: "Dinner", icon: Moon },
 ];
-
-interface ActiveCheckin {
-  id: number;
-  center_id: string;
-  center_name: string;
-  checked_in_at: string;
-}
 
 interface BomComponent {
   id: number;
@@ -40,28 +32,44 @@ interface CenterMenuItem {
   bom: BomComponent[];
 }
 
+interface DirectFlavourItem {
+  id: number;
+  name: string;
+  flavour: string;
+  unit: string;
+}
+
+type SelectionItem =
+  | { type: "menu_item"; menu_item_id: number; name: string; selected_flavour?: string | null }
+  | { type: "direct_flavour"; ingredient_id: number; name: string; flavour: string };
+
+interface CheckinOptions {
+  checkin: { id: number; center_id: string; center_name: string; checked_in_at: string } | null;
+  menuItems: CenterMenuItem[];
+  directFlavours: DirectFlavourItem[];
+  selections: SelectionItem[];
+}
+
 export function Log() {
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { memberId: MEMBER_ID } = useAuth();
   const [activeSlot, setActiveSlot] = useState("Breakfast");
   const [foodItem, setFoodItem] = useState("");
   const [customKcal, setCustomKcal] = useState("");
-  const [checkin, setCheckin] = useState<ActiveCheckin | null>(null);
-  const [centerMenu, setCenterMenu] = useState<CenterMenuItem[]>([]);
-  const [pendingItem, setPendingItem] = useState<CenterMenuItem | null>(null);
+
+  const [checkinOptions, setCheckinOptions] = useState<CheckinOptions | null>(null);
+  const [selections, setSelections] = useState<SelectionItem[]>([]);
+  const [pendingFlavourFor, setPendingFlavourFor] = useState<{ item: CenterMenuItem } | null>(null);
+  const [savingSelections, setSavingSelections] = useState(false);
 
   useEffect(() => {
     if (!MEMBER_ID) return;
-    fetch(`${BASE}/members/${MEMBER_ID}/checkin/active`)
+    fetch(`${BASE}/members/${MEMBER_ID}/checkin-options`)
       .then(r => r.json())
-      .then(async (data: ActiveCheckin | null) => {
-        setCheckin(data);
-        if (data) {
-          const menu = await fetch(`${BASE}/members/${MEMBER_ID}/center-menu`).then(r => r.json());
-          setCenterMenu(menu as CenterMenuItem[]);
-        }
+      .then((data: CheckinOptions) => {
+        setCheckinOptions(data);
+        setSelections(data.selections ?? []);
       })
       .catch(() => {});
   }, [MEMBER_ID]);
@@ -89,48 +97,79 @@ export function Log() {
           toast({ title: "Meal logged successfully!" });
           setFoodItem("");
           setCustomKcal("");
-          setLocation("/dashboard");
         }
       }
     );
   };
 
-  const selectMenuItem = (item: CenterMenuItem, flavour?: string) => {
-    const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
-    const hasKcal = item.bom.some(b => b.kcal != null);
-    createLog.mutate(
-      {
-        memberId: MEMBER_ID!,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        data: {
-          meal_slot: activeSlot,
-          food_item: item.name,
-          menu_item_id: item.id,
-          calories_kcal: hasKcal ? totalKcal : null,
-          protein_g: null,
-          carbs_g: null,
-          fat_g: null,
-          selected_flavour: flavour ?? null,
-        } as any
-      },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: todayLocal() }) });
-          toast({ title: flavour ? `Logged: ${item.name} (${flavour})` : "Set menu item logged!" });
-          setLocation("/dashboard");
-        }
-      }
-    );
-  };
+  function isMenuItemSelected(id: number) {
+    return selections.some(s => s.type === "menu_item" && s.menu_item_id === id);
+  }
+  function isDirectFlavourSelected(id: number) {
+    return selections.some(s => s.type === "direct_flavour" && s.ingredient_id === id);
+  }
 
-  const handleMenuItemTap = (item: CenterMenuItem) => {
-    const flavourList = item.flavours?.split(",").map(f => f.trim()).filter(Boolean) ?? [];
-    if (flavourList.length > 0) {
-      setPendingItem(pendingItem?.id === item.id ? null : item);
-    } else {
-      selectMenuItem(item);
+  function handleMenuItemToggle(item: CenterMenuItem) {
+    if (isMenuItemSelected(item.id)) {
+      setSelections(prev => prev.filter(s => !(s.type === "menu_item" && s.menu_item_id === item.id)));
+      setPendingFlavourFor(null);
+      return;
     }
-  };
+    if (selections.length >= 3) return;
+    const flavourList = (item.flavours ?? "").split(",").map(f => f.trim()).filter(Boolean);
+    if (flavourList.length > 0) {
+      setPendingFlavourFor({ item });
+    } else {
+      setSelections(prev => [...prev, { type: "menu_item", menu_item_id: item.id, name: item.name, selected_flavour: null }]);
+    }
+  }
+
+  function confirmMenuItemFlavour(flavour: string) {
+    if (!pendingFlavourFor) return;
+    const item = pendingFlavourFor.item;
+    setSelections(prev => [...prev, { type: "menu_item", menu_item_id: item.id, name: item.name, selected_flavour: flavour }]);
+    setPendingFlavourFor(null);
+  }
+
+  function handleDirectFlavourToggle(item: DirectFlavourItem) {
+    if (isDirectFlavourSelected(item.id)) {
+      setSelections(prev => prev.filter(s => !(s.type === "direct_flavour" && s.ingredient_id === item.id)));
+      return;
+    }
+    if (selections.length >= 3) return;
+    setSelections(prev => [...prev, { type: "direct_flavour", ingredient_id: item.id, name: item.name, flavour: item.flavour }]);
+  }
+
+  function removeSelection(sel: SelectionItem) {
+    if (sel.type === "menu_item") {
+      setSelections(prev => prev.filter(s => !(s.type === "menu_item" && s.menu_item_id === sel.menu_item_id)));
+    } else {
+      setSelections(prev => prev.filter(s => !(s.type === "direct_flavour" && s.ingredient_id === sel.ingredient_id)));
+    }
+  }
+
+  async function saveSelections() {
+    if (!MEMBER_ID) return;
+    setSavingSelections(true);
+    try {
+      const res = await fetch(`${BASE}/members/${MEMBER_ID}/checkin/selections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: selections }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast({ title: `${selections.length} item${selections.length !== 1 ? "s" : ""} saved for your visit` });
+    } catch {
+      toast({ title: "Could not save selections", variant: "destructive" });
+    } finally {
+      setSavingSelections(false);
+    }
+  }
+
+  const checkin = checkinOptions?.checkin ?? null;
+  const hasItems = (checkinOptions?.menuItems.length ?? 0) + (checkinOptions?.directFlavours.length ?? 0) > 0;
+  const allItems = [...(checkinOptions?.menuItems ?? []), ...(checkinOptions?.directFlavours ?? [])];
+  const totalCount = allItems.length;
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="p-4 space-y-6">
@@ -144,7 +183,140 @@ export function Log() {
         )}
       </header>
 
-      {/* Slot selector */}
+      {/* Check-in item selection — shown only when checked in and items exist */}
+      {checkin && hasItems && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Choose Visit Items
+            </h2>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${
+              selections.length === 3
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground"
+            }`}>
+              {selections.length} / 3
+            </span>
+          </div>
+
+          <div className="bg-card border border-border rounded-[12px] overflow-hidden">
+            {/* Menu items */}
+            {(checkinOptions?.menuItems ?? []).map((item, i) => {
+              const selected = isMenuItemSelected(item.id);
+              const isPendingFlavour = pendingFlavourFor?.item.id === item.id;
+              const flavourList = (item.flavours ?? "").split(",").map(f => f.trim()).filter(Boolean);
+              const selEntry = selections.find(s => s.type === "menu_item" && s.menu_item_id === item.id) as (Extract<SelectionItem, { type: "menu_item" }>) | undefined;
+              const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
+              const hasKcal = item.bom.some(b => b.kcal != null);
+              const isLast = i === totalCount - 1 && (checkinOptions?.directFlavours.length ?? 0) === 0;
+              return (
+                <div key={item.id} className={!isLast ? "border-b border-border" : ""}>
+                  <button
+                    onClick={() => handleMenuItemToggle(item)}
+                    disabled={!selected && selections.length >= 3}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors disabled:opacity-40 ${selected ? "bg-primary/5" : "hover:bg-muted/50"}`}
+                  >
+                    <span className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${selected ? "bg-primary border-primary" : "border-border"}`}>
+                      {selected && <Check className="w-3 h-3 text-primary-foreground" />}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">{item.name}</p>
+                      {selEntry?.selected_flavour && (
+                        <p className="text-xs text-primary font-medium">{selEntry.selected_flavour}</p>
+                      )}
+                      {item.description && !selEntry && (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.description}</p>
+                      )}
+                      {!selected && flavourList.length > 0 && (
+                        <p className="text-xs text-primary/70 mt-0.5">Tap to pick flavour</p>
+                      )}
+                    </div>
+                    {hasKcal && (
+                      <span className="text-xs font-semibold text-amber-600 flex-shrink-0">{Math.round(totalKcal)} kcal</span>
+                    )}
+                  </button>
+                  {isPendingFlavour && (
+                    <div className="px-4 pb-3 bg-primary/5 border-t border-primary/10">
+                      <p className="text-xs font-semibold text-primary mb-2 mt-2">Choose flavour:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {flavourList.map(f => (
+                          <button
+                            key={f}
+                            onClick={() => confirmMenuItemFlavour(f)}
+                            className="px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
+                          >
+                            {f}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setPendingFlavourFor(null)}
+                          className="px-3 py-1.5 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Direct-order flavoured items */}
+            {(checkinOptions?.directFlavours ?? []).map((item, i) => {
+              const selected = isDirectFlavourSelected(item.id);
+              const menuLen = checkinOptions?.menuItems.length ?? 0;
+              const isLast = menuLen + i === totalCount - 1;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleDirectFlavourToggle(item)}
+                  disabled={!selected && selections.length >= 3}
+                  className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors disabled:opacity-40 ${!isLast ? "border-b border-border" : ""} ${selected ? "bg-primary/5" : "hover:bg-muted/50"}`}
+                >
+                  <span className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${selected ? "bg-primary border-primary" : "border-border"}`}>
+                    {selected && <Check className="w-3 h-3 text-primary-foreground" />}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{item.name}</p>
+                    <p className="text-xs text-violet-600 font-medium">{item.flavour}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Selected items chips + save button */}
+          {selections.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {selections.map((s, idx) => {
+                  const label = s.type === "menu_item"
+                    ? `${s.name}${s.selected_flavour ? ` · ${s.selected_flavour}` : ""}`
+                    : `${s.name} · ${s.flavour}`;
+                  return (
+                    <span key={idx} className="inline-flex items-center gap-1.5 text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-2.5 py-1 font-medium">
+                      {label}
+                      <button onClick={() => removeSelection(s)} className="text-primary/50 hover:text-primary ml-0.5">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+              <button
+                onClick={saveSelections}
+                disabled={savingSelections}
+                className="w-full bg-primary text-primary-foreground font-medium py-2.5 rounded-lg text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {savingSelections && <Loader2 className="w-4 h-4 animate-spin" />}
+                Save Selections
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Slot selector — for custom entry */}
       <div className="flex gap-2 p-1 bg-muted rounded-lg">
         {slots.map((slot) => {
           const isActive = activeSlot === slot.id;
@@ -163,78 +335,7 @@ export function Log() {
         })}
       </div>
 
-      {/* Center set menu — shown only when checked in */}
-      {checkin && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            {checkin.center_name} Set Menu
-          </h2>
-          <div className="bg-card border border-border rounded-[12px] overflow-hidden">
-            {centerMenu.length > 0 ? centerMenu.map((item, i) => {
-              const flavourList = item.flavours?.split(",").map(f => f.trim()).filter(Boolean) ?? [];
-              const isPending = pendingItem?.id === item.id;
-              const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
-              const hasKcal = item.bom.some(b => b.kcal != null);
-              return (
-                <div key={item.id} className={i !== centerMenu.length - 1 ? "border-b border-border" : ""}>
-                  <button
-                    onClick={() => handleMenuItemTap(item)}
-                    disabled={createLog.isPending}
-                    className={`w-full text-left px-4 py-3 flex justify-between items-start hover:bg-muted/50 transition-colors disabled:opacity-50 ${isPending ? "bg-primary/5" : ""}`}
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{item.name}</p>
-                      {item.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                      )}
-                      {item.bom.length > 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {item.bom.map(b => `${b.ingredient} ${b.quantity}${b.unit}`).join(" · ")}
-                        </p>
-                      )}
-                      {flavourList.length > 0 && !isPending && (
-                        <p className="text-xs text-primary mt-1 font-medium">Tap to choose flavour</p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-0.5 ml-3 flex-shrink-0">
-                      {hasKcal ? (
-                        <span className="text-xs font-semibold text-amber-600">{Math.round(totalKcal)} kcal</span>
-                      ) : null}
-                      <span className="text-xs text-muted-foreground">{item.bom.length} ing.</span>
-                    </div>
-                  </button>
-                  {isPending && flavourList.length > 0 && (
-                    <div className="px-4 pb-3 bg-primary/5 border-t border-primary/10">
-                      <p className="text-xs font-semibold text-primary mb-2 mt-2">Choose flavour:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {flavourList.map(f => (
-                          <button
-                            key={f}
-                            onClick={() => { selectMenuItem(item, f); }}
-                            disabled={createLog.isPending}
-                            className="px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
-                          >
-                            {f}
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => setPendingItem(null)}
-                          className="px-3 py-1.5 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            }) : (
-              <p className="p-4 text-sm text-muted-foreground text-center">No menu items at this center yet</p>
-            )}
-          </div>
-        </section>
-      )}
-
+      {/* Custom entry */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Custom Entry</h2>
         <div className="space-y-3">

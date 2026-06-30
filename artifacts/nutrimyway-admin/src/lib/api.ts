@@ -95,6 +95,12 @@ export async function superFetch<T>(path: string, init?: RequestInit): Promise<T
   return res.json() as Promise<T>;
 }
 
+export interface OpenFlavour {
+  flavour: string;
+  ingredient_name: string;
+  ingredient_id: number;
+}
+
 export interface MenuItem {
   id: number;
   center_id: string;

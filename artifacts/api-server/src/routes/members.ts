@@ -241,6 +241,119 @@ router.post("/members/:id/checkout", async (req, res) => {
   res.json(rows[0]);
 });
 
+// GET /api/members/:id/checkin-options — menu items + direct-flavour items + current selections
+router.get("/members/:id/checkin-options", async (req, res) => {
+  const memberId = Number(req.params.id);
+
+  const { rows: checkinRows } = await pool.query(
+    `SELECT mci.id, mci.center_id, c.name AS center_name, mci.checked_in_at
+     FROM member_check_ins mci
+     JOIN centers c ON c.id = mci.center_id
+     WHERE mci.member_id = $1 AND mci.checked_out_at IS NULL LIMIT 1`,
+    [memberId]
+  );
+  if (!checkinRows[0]) {
+    res.json({ checkin: null, menuItems: [], directFlavours: [], selections: [] });
+    return;
+  }
+  const checkin = checkinRows[0] as { id: number; center_id: string; center_name: string; checked_in_at: string };
+  const centerId = checkin.center_id;
+
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayDay = dayNames[nowIst.getUTCDay()];
+
+  const { rows: menuItems } = await pool.query(
+    `SELECT mi.id, mi.name, mi.description, mi.flavours, mi.available_days,
+       COALESCE(
+         json_agg(
+           json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit, 'kcal', mib.kcal)
+           ORDER BY mib.id
+         ) FILTER (WHERE mib.id IS NOT NULL),
+         '[]'::json
+       ) AS bom
+     FROM menu_items mi
+     LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
+     WHERE mi.center_id = $1
+       AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
+     GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.available_days, mi.created_at
+     ORDER BY mi.created_at`,
+    [centerId, `%${todayDay}%`]
+  );
+
+  const { rows: directFlavours } = await pool.query(
+    `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.unit
+     FROM ingredients i
+     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
+     WHERE i.flavour IS NOT NULL AND i.flavour != ''
+       AND ib.center_id = $1 AND ib.status = 'open'
+     ORDER BY i.id, i.name`,
+    [centerId]
+  );
+
+  const { rows: menuSels } = await pool.query(
+    `SELECT vms.menu_item_id, mi.name, vms.selected_flavour
+     FROM visit_menu_selections vms
+     JOIN menu_items mi ON mi.id = vms.menu_item_id
+     WHERE vms.checkin_id = $1`,
+    [checkin.id]
+  );
+  const { rows: flavourSels } = await pool.query(
+    `SELECT vfs.ingredient_id, i.name, vfs.flavour
+     FROM visit_flavour_selections vfs
+     JOIN ingredients i ON i.id = vfs.ingredient_id
+     WHERE vfs.checkin_id = $1`,
+    [checkin.id]
+  );
+
+  const selections = [
+    ...menuSels.map(s => ({ type: "menu_item" as const, menu_item_id: s.menu_item_id as number, name: s.name as string, selected_flavour: s.selected_flavour as string | null })),
+    ...flavourSels.map(s => ({ type: "direct_flavour" as const, ingredient_id: s.ingredient_id as number, name: s.name as string, flavour: s.flavour as string })),
+  ];
+
+  res.json({ checkin: { id: checkin.id, center_id: centerId }, menuItems, directFlavours, selections });
+});
+
+// POST /api/members/:id/checkin/selections — save up to 3 item selections for current visit
+router.post("/members/:id/checkin/selections", async (req, res) => {
+  const memberId = Number(req.params.id);
+
+  const { rows: checkinRows } = await pool.query(
+    `SELECT id, center_id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
+    [memberId]
+  );
+  if (!checkinRows[0]) { res.status(409).json({ error: "No active check-in" }); return; }
+  const checkin = checkinRows[0] as { id: number; center_id: string };
+
+  type RawItem =
+    | { type: "menu_item"; menu_item_id: number; selected_flavour?: string | null }
+    | { type: "direct_flavour"; ingredient_id: number; flavour: string };
+  const { items } = req.body as { items?: RawItem[] };
+
+  if (!Array.isArray(items)) { res.status(400).json({ error: "items array required" }); return; }
+  if (items.length > 3) { res.status(400).json({ error: "Max 3 items allowed" }); return; }
+
+  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id = $1`, [checkin.id]);
+  await pool.query(`DELETE FROM visit_flavour_selections WHERE checkin_id = $1`, [checkin.id]);
+
+  for (const item of items) {
+    if (item.type === "menu_item") {
+      await pool.query(
+        `INSERT INTO visit_menu_selections (checkin_id, menu_item_id, selected_flavour) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+        [checkin.id, item.menu_item_id, item.selected_flavour ?? null]
+      );
+    } else if (item.type === "direct_flavour") {
+      await pool.query(
+        `INSERT INTO visit_flavour_selections (checkin_id, ingredient_id, flavour) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+        [checkin.id, item.ingredient_id, item.flavour]
+      );
+    }
+  }
+
+  res.json({ saved: items.length });
+});
+
 // GET /api/members/:id/checkin-logs — member's own visit history (last 30 entries)
 router.get("/members/:id/checkin-logs", async (req, res) => {
   const memberId = Number(req.params.id);

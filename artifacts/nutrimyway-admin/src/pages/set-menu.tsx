@@ -3,7 +3,7 @@ import { Plus, Trash2, Edit2, ChevronDown, ChevronUp, Loader2, Check, X, Utensil
 import { Nav } from "@/components/nav";
 import {
   apiGet, apiPost, apiPut, apiDelete, apiPatch, getAdminCenter, bomPutPath, bomDeletePath,
-  type MenuItem, type BomComponent, type Ingredient
+  type MenuItem, type BomComponent, type Ingredient, type OpenFlavour
 } from "@/lib/api";
 
 const UNITS = ["g", "ml", "mg", "kg", "L", "tsp", "tbsp", "cup", "oz", "pcs", "serving", "scoop"] as const;
@@ -246,17 +246,22 @@ function formatDays(selected: string[]): string {
   return selected.join(",");
 }
 
-function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
+function MenuItemCard({ item, ingredients, onUpdate, onDelete, centerId }: {
   item: MenuItem;
   ingredients: Ingredient[];
   onUpdate: (updated: MenuItem) => void;
   onDelete: (id: number) => void;
+  centerId: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description ?? "");
-  const [flavours, setFlavours] = useState(item.flavours ?? "");
+  const [selectedFlavours, setSelectedFlavours] = useState<string[]>(
+    (item.flavours ?? "").split(",").map(f => f.trim()).filter(Boolean)
+  );
+  const [openFlavours, setOpenFlavours] = useState<OpenFlavour[]>([]);
+  const [loadingFlavours, setLoadingFlavours] = useState(false);
   const [selectedDays, setSelectedDays] = useState<string[]>(parseDays(item.available_days ?? "all"));
   const [saving, setSaving] = useState(false);
   const [togglingMandatory, setTogglingMandatory] = useState(false);
@@ -287,7 +292,8 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
     setSaving(true);
     try {
       const updated = await apiPut<MenuItem>(`/admin/menu-items/${item.id}`, {
-        name, description, flavours,
+        name, description,
+        flavours: selectedFlavours.join(","),
         available_days: formatDays(selectedDays),
       });
       onUpdate({ ...updated, bom });
@@ -316,9 +322,37 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
               <input value={description} onChange={e => setDescription(e.target.value)}
                 className="h-8 px-3 text-xs rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
                 placeholder="Description (optional)" />
-              <input value={flavours} onChange={e => setFlavours(e.target.value)}
-                className="h-8 px-3 text-xs rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
-                placeholder="Flavours (comma-separated, e.g. Chocolate, Vanilla, Strawberry)" />
+              <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-input bg-background px-3 py-2 min-h-[2rem]">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mr-0.5">Flavours:</span>
+                {loadingFlavours ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                ) : openFlavours.length === 0 && selectedFlavours.filter(f => f).length === 0 ? (
+                  <span className="text-[11px] text-muted-foreground/60">No flavoured batches open at this center</span>
+                ) : (
+                  <>
+                    {openFlavours.map(({ flavour }) => {
+                      const active = selectedFlavours.includes(flavour);
+                      return (
+                        <button key={flavour} type="button"
+                          onClick={() => setSelectedFlavours(prev => active ? prev.filter(f => f !== flavour) : [...prev, flavour])}
+                          className={`h-5 px-2 rounded-full text-[10px] font-semibold border transition-colors ${active ? "bg-violet-600 text-white border-violet-600" : "border-border text-muted-foreground hover:border-violet-300 hover:text-violet-600"}`}
+                        >
+                          {flavour}
+                        </button>
+                      );
+                    })}
+                    {selectedFlavours.filter(f => f && !openFlavours.some(o => o.flavour === f)).map(f => (
+                      <button key={f} type="button"
+                        onClick={() => setSelectedFlavours(prev => prev.filter(x => x !== f))}
+                        title="No open batch — click to remove"
+                        className="h-5 px-2 rounded-full text-[10px] font-semibold border border-amber-300 text-amber-700 bg-amber-50 transition-colors"
+                      >
+                        {f} ✕
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mr-1">Days:</span>
                 <button
@@ -394,7 +428,13 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
             >
               <Lock className="w-4 h-4" />
             </button>
-            <button onClick={() => setEditing(true)} className="text-muted-foreground hover:text-primary transition-colors">
+            <button onClick={() => {
+              setEditing(true);
+              setLoadingFlavours(true);
+              apiGet<OpenFlavour[]>(`/admin/centers/${centerId}/open-flavours`)
+                .then(data => setOpenFlavours(data))
+                .finally(() => setLoadingFlavours(false));
+            }} className="text-muted-foreground hover:text-primary transition-colors">
               <Edit2 className="w-4 h-4" />
             </button>
             <button onClick={() => onDelete(item.id)} className="text-muted-foreground hover:text-destructive transition-colors">
@@ -540,6 +580,7 @@ export default function SetMenuPage() {
                 key={item.id}
                 item={item}
                 ingredients={ingredients}
+                centerId={center?.id ?? ""}
                 onUpdate={updated => setItems(prev => prev.map(i => i.id === updated.id ? updated : i))}
                 onDelete={deleteItem}
               />
