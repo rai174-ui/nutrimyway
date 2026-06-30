@@ -882,8 +882,13 @@ function MemberRow({ member, centerId, onRefresh }: {
     finally { setBusy(false); }
   }
 
+  const renewDaysLeft = member.valid_until
+    ? Math.ceil((new Date(member.valid_until).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+  const showRenew = renewDaysLeft !== null && renewDaysLeft <= 10;
+
   async function handleRenew() {
-    if (!confirm(`Renew ${member.name}'s membership by 32 days?`)) return;
+    if (!confirm(`Renew Membership for ${member.name} by 32 days?`)) return;
     setBusy(true);
     try {
       await apiPatch(`/admin/centers/${centerId}/members/${member.id}/renew`);
@@ -979,14 +984,16 @@ function MemberRow({ member, centerId, onRefresh }: {
               </button>
             </>
           )}
-          <button
-            onClick={() => void handleRenew()}
-            disabled={busy}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-colors border border-emerald-200"
-            title="Renew membership (+32 days from today)"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />Renew
-          </button>
+          {showRenew && (
+            <button
+              onClick={() => void handleRenew()}
+              disabled={busy}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-colors border border-emerald-200"
+              title="Renew Membership (+32 days from today)"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />Renew Membership
+            </button>
+          )}
           <button
             onClick={openEdit}
             className={`p-1.5 rounded-lg transition-colors ${showEditPanel ? "text-violet-600 bg-violet-100" : "text-muted-foreground hover:text-violet-600 hover:bg-violet-50"}`}
