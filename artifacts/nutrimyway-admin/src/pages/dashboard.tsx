@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Users, UtensilsCrossed, Flame, Activity, CalendarClock, ChevronRight } from "lucide-react";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LabelList,
 } from "recharts";
 import { Nav } from "@/components/nav";
 import { apiGet, getAdminCenter, type Dashboard } from "@/lib/api";
@@ -38,7 +39,7 @@ function StatCard({
   );
 }
 
-function MonthlyTrendChart({ data }: { data: { day: string; count: number }[] }) {
+function MonthlyCheckinChart({ data }: { data: { day: string; count: number }[] }) {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -59,50 +60,65 @@ function MonthlyTrendChart({ data }: { data: { day: string; count: number }[] })
   });
 
   const maxCount = Math.max(...days.map(d => d.count ?? 0), 1);
+  const yMax = maxCount + Math.ceil(maxCount * 0.2) + 1;
 
   return (
-    <div className="bg-card rounded-xl border border-border px-4 py-3">
-      <div className="flex items-center justify-between mb-2">
+    <div className="bg-card rounded-xl border border-border p-4">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-xs font-semibold text-foreground">Monthly check-ins</p>
-          <p className="text-[10px] text-muted-foreground">Unique members · {monthName} {year}</p>
+          <p className="text-sm font-semibold text-foreground">Member Check-ins by Day</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Unique members · {monthName} {year}
+          </p>
         </div>
-        <Activity className="w-3.5 h-3.5 text-muted-foreground/50" />
+        <Activity className="w-4 h-4 text-muted-foreground/40" />
       </div>
-      <ResponsiveContainer width="100%" height={90}>
-        <LineChart data={days} margin={{ top: 14, right: 4, left: -28, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={days} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+          <CartesianGrid
+            strokeDasharray="4 4"
+            stroke="var(--border)"
+            vertical={false}
+          />
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 8, fill: "var(--muted-foreground)" }}
+            tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
             axisLine={false}
             tickLine={false}
             interval={daysInMonth > 20 ? 4 : 1}
           />
-          <YAxis domain={[0, maxCount + 1]} hide />
+          <YAxis
+            domain={[0, yMax]}
+            tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+            axisLine={false}
+            tickLine={false}
+            width={28}
+            allowDecimals={false}
+          />
           <Tooltip
             contentStyle={{
               background: "var(--card)",
               border: "1px solid var(--border)",
-              borderRadius: 6,
-              fontSize: 11,
-              padding: "3px 8px",
+              borderRadius: 8,
+              fontSize: 12,
+              padding: "4px 10px",
             }}
             formatter={(v: unknown) => [typeof v === "number" ? v : 0, "members"]}
             labelFormatter={(l: unknown) => `Day ${String(l)}`}
           />
           <Line
-            type="monotone"
+            type="linear"
             dataKey="count"
-            stroke="var(--primary)"
-            strokeWidth={2}
-            dot={{ r: 2.5, fill: "var(--primary)", strokeWidth: 0 }}
-            activeDot={{ r: 4, strokeWidth: 0 }}
+            stroke="#2563eb"
+            strokeWidth={2.5}
+            dot={{ r: 4, fill: "#2563eb", strokeWidth: 0 }}
+            activeDot={{ r: 5.5, strokeWidth: 0 }}
             connectNulls={false}
           >
             <LabelList
               dataKey="count"
               position="top"
-              style={{ fontSize: 8, fill: "var(--muted-foreground)", fontWeight: 600 }}
+              style={{ fontSize: 10, fill: "#374151", fontWeight: 700 }}
               formatter={(v: unknown) => (typeof v === "number" && v > 0 ? v : "")}
             />
           </Line>
@@ -127,9 +143,9 @@ export default function DashboardPage() {
   }, [center?.id]);
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
+    <div className="min-h-screen bg-background">
       <Nav />
-      <main className="flex-1 flex flex-col gap-3 px-4 py-3 overflow-hidden max-w-6xl mx-auto w-full">
+      <main className="max-w-6xl mx-auto px-4 py-5 space-y-4">
 
         {/* Header */}
         <div>
@@ -139,7 +155,7 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Stat cards */}
+        {/* ── Stat cards ── */}
         {loading ? (
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
             {[...Array(5)].map((_, i) => (
@@ -147,78 +163,73 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : data ? (
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
-            <StatCard icon={Users} label="Total Members" value={data.member_count} color="bg-teal-base" onClick={() => navigate("/members")} />
-            <StatCard icon={Activity} label="Active Today" value={data.today_active_members} color="bg-teal-dark" onClick={() => navigate("/members")} />
-            <StatCard icon={Flame} label="kcal Today" value={Math.round(data.today_calories).toLocaleString()} color="bg-amber-500" onClick={() => navigate("/consumption")} />
-            <StatCard icon={UtensilsCrossed} label="Menu Items" value={data.menu_item_count} color="bg-teal-mid" onClick={() => navigate("/set-menu")} />
-            <StatCard
-              icon={CalendarClock}
-              label="Expiring (10 days)"
-              value={data.expiring_soon_count}
-              color={data.expiring_soon_count > 0 ? "bg-amber-500" : "bg-slate-400"}
-              onClick={data.expiring_soon_count > 0 ? () => navigate("/members?expiring_soon=true") : undefined}
-              badge={data.expiring_soon_count > 0 ? (
-                <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Renew Membership</span>
-              ) : undefined}
-            />
-          </div>
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+              <StatCard icon={Users} label="Total Members" value={data.member_count} color="bg-teal-base" onClick={() => navigate("/members")} />
+              <StatCard icon={Activity} label="Active Today" value={data.today_active_members} color="bg-teal-dark" onClick={() => navigate("/members")} />
+              <StatCard icon={Flame} label="kcal Today" value={Math.round(data.today_calories).toLocaleString()} color="bg-amber-500" onClick={() => navigate("/consumption")} />
+              <StatCard icon={UtensilsCrossed} label="Menu Items" value={data.menu_item_count} color="bg-teal-mid" onClick={() => navigate("/set-menu")} />
+              <StatCard
+                icon={CalendarClock}
+                label="Expiring (10 days)"
+                value={data.expiring_soon_count}
+                color={data.expiring_soon_count > 0 ? "bg-amber-500" : "bg-slate-400"}
+                onClick={data.expiring_soon_count > 0 ? () => navigate("/members?expiring_soon=true") : undefined}
+                badge={data.expiring_soon_count > 0 ? (
+                  <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Renew Membership</span>
+                ) : undefined}
+              />
+            </div>
+
+            {/* ── Quick-nav cards ── */}
+            <div className="grid grid-cols-3 gap-3">
+              <div
+                onClick={() => navigate("/set-menu")}
+                className="bg-card rounded-xl border border-border px-4 py-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
+                  <UtensilsCrossed className="w-4 h-4 text-teal-base" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Set Menu</p>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Food items & BOM components</p>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
+              </div>
+
+              <div
+                onClick={() => navigate("/consumption")}
+                className="bg-card rounded-xl border border-border px-4 py-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
+                  <Flame className="w-4 h-4 text-teal-base" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Consumption</p>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Member usage by date range</p>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
+              </div>
+
+              <div
+                onClick={() => navigate("/members")}
+                className="bg-card rounded-xl border border-border px-4 py-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
+                  <Users className="w-4 h-4 text-teal-base" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Members</p>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Check-ins, renewals & health</p>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
+              </div>
+            </div>
+
+            {/* ── Monthly check-in chart (full width) ── */}
+            <MonthlyCheckinChart data={data.monthly_checkins} />
+          </>
         ) : null}
-
-        {/* Mini trend + nav cards */}
-        {data && (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-
-            {/* Trend chart — 1 column */}
-            <div className="lg:col-span-1">
-              <MonthlyTrendChart data={data.monthly_checkins} />
-            </div>
-
-            {/* Nav cards — 3 columns */}
-            <div
-              onClick={() => navigate("/set-menu")}
-              className="bg-card rounded-xl border border-border px-4 py-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex items-center gap-3"
-            >
-              <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
-                <UtensilsCrossed className="w-4 h-4 text-teal-base" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Set Menu</p>
-                <p className="text-[11px] text-muted-foreground leading-tight">Food items & BOM components</p>
-              </div>
-              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
-            </div>
-
-            <div
-              onClick={() => navigate("/consumption")}
-              className="bg-card rounded-xl border border-border px-4 py-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex items-center gap-3"
-            >
-              <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
-                <Flame className="w-4 h-4 text-teal-base" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Consumption</p>
-                <p className="text-[11px] text-muted-foreground leading-tight">Member usage by date range</p>
-              </div>
-              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
-            </div>
-
-            <div
-              onClick={() => navigate("/members")}
-              className="bg-card rounded-xl border border-border px-4 py-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex items-center gap-3"
-            >
-              <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
-                <Users className="w-4 h-4 text-teal-base" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Members</p>
-                <p className="text-[11px] text-muted-foreground leading-tight">Check-ins, renewals & health</p>
-              </div>
-              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
-            </div>
-
-          </div>
-        )}
 
       </main>
     </div>
