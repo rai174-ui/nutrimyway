@@ -616,8 +616,9 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
     [centerId, from, to]
   );
 
-  // Logs breakdown: only entries that resolved to a THIS-center menu item
-  const { rows: logs } = await pool.query(
+  // Logs breakdown: ALL logs for this center in the date range.
+  // Each row carries a resolved menu_item_id+name (null = self-logged by member, not via check-in).
+  const { rows: logsRaw } = await pool.query(
     `SELECT cl.id, cl.member_id, m.name AS member_name, cl.logged_at, cl.meal_slot,
             cl.food_item, cl.quantity_g, cl.calories_kcal,
             COALESCE(
@@ -627,25 +628,25 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
                WHERE mi2.center_id = $1
                  AND LOWER(mi2.name) = LOWER(cl.food_item)
                LIMIT 1)
-            ) AS resolved_menu_item_id
+            ) AS menu_item_id,
+            COALESCE(
+              (SELECT mi.name FROM menu_items mi
+               WHERE mi.id = cl.menu_item_id AND mi.center_id = $1 LIMIT 1),
+              (SELECT mi2.name FROM menu_items mi2
+               WHERE mi2.center_id = $1
+                 AND LOWER(mi2.name) = LOWER(cl.food_item)
+               LIMIT 1)
+            ) AS menu_item_name
      FROM consumption_logs cl
      JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      JOIN members m ON m.id = cl.member_id
      WHERE mcm.center_id = $1
        AND DATE(cl.logged_at) BETWEEN $2 AND $3
-       AND (
-         EXISTS (SELECT 1 FROM menu_items mi WHERE mi.id = cl.menu_item_id AND mi.center_id = $1)
-         OR EXISTS (
-           SELECT 1 FROM menu_items mi3
-           WHERE mi3.center_id = $1
-             AND LOWER(mi3.name) = LOWER(cl.food_item)
-         )
-       )
      ORDER BY cl.logged_at DESC`,
     [centerId, from, to]
   );
 
-  res.json({ from, to, by_component: byComponent, logs });
+  res.json({ from, to, by_component: byComponent, logs: logsRaw });
 });
 
 // ---------------------------------------------------------------------------

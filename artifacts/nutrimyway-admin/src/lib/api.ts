@@ -183,11 +183,24 @@ export interface CenterMember {
   already_consumed_today: boolean;
 }
 
+export interface ConsumptionLog {
+  id: number;
+  member_id: number;
+  member_name: string;
+  logged_at: string;
+  meal_slot: string;
+  food_item: string;
+  quantity_g: number | null;
+  calories_kcal: number | null;
+  menu_item_id: number | null;
+  menu_item_name: string | null;
+}
+
 export interface ConsumptionReport {
   from: string;
   to: string;
   by_component: { ingredient: string; unit: string; total_quantity: number; member_count: number; log_count: number }[];
-  logs: { id: number; member_id: number; member_name: string; logged_at: string; meal_slot: string; food_item: string; quantity_g: number; calories_kcal: number }[];
+  logs: ConsumptionLog[];
 }
 
 export function saveAuth(token: string, centerId: string, centerName: string) {

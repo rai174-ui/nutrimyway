@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { BarChart3, Calendar, Users, Package, FileDown, Archive } from "lucide-react";
 import { Nav } from "@/components/nav";
-import { apiGet, getAdminCenter, type ConsumptionReport, type IngredientBatch } from "@/lib/api";
+import { apiGet, getAdminCenter, type ConsumptionReport, type ConsumptionLog, type IngredientBatch } from "@/lib/api";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
@@ -31,9 +31,10 @@ function exportComponentsXlsx(data: ConsumptionReport) {
   XLSX.writeFile(wb, `consumption-by-component-${data.from}-to-${data.to}.xlsx`);
 }
 
-function exportLogsXlsx(data: ConsumptionReport) {
-  const rows = data.logs.map(l => ({
+function exportLogsXlsx(data: ConsumptionReport, logs: ConsumptionLog[]) {
+  const rows = logs.map(l => ({
     Member: l.member_name,
+    "Menu Item": l.menu_item_name ?? "Self-logged",
     "Food Item": l.food_item,
     Slot: l.meal_slot,
     "Qty (g)": l.quantity_g ?? "",
@@ -73,6 +74,7 @@ export default function ConsumptionPage() {
   const [loading, setLoading] = useState(false);
   const [batchesLoading, setBatchesLoading] = useState(true);
   const [tab, setTab] = useState<"components" | "logs" | "batches">("components");
+  const [logFilter, setLogFilter] = useState<"all" | "matched" | "self">("all");
 
   const load = useCallback(async () => {
     if (!center) return;
@@ -139,7 +141,7 @@ export default function ConsumptionPage() {
 
         {/* Summary cards — date-filtered tabs only */}
         {data && tab !== "batches" && (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div className="bg-card rounded-2xl border border-border p-4 flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-teal-pale flex items-center justify-center">
                 <Package className="w-5 h-5 text-teal-base" />
@@ -163,8 +165,17 @@ export default function ConsumptionPage() {
                 <Calendar className="w-5 h-5 text-teal-base" />
               </div>
               <div>
-                <p className="text-xl font-bold">{data.logs.length}</p>
-                <p className="text-xs text-muted-foreground">Total Log Entries</p>
+                <p className="text-xl font-bold">{data.logs.filter(l => l.menu_item_id).length}</p>
+                <p className="text-xs text-muted-foreground">Via Check-in</p>
+              </div>
+            </div>
+            <div className="bg-card rounded-2xl border border-border p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                <Calendar className="w-5 h-5 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-xl font-bold">{data.logs.filter(l => !l.menu_item_id).length}</p>
+                <p className="text-xs text-muted-foreground">Self-logged</p>
               </div>
             </div>
           </div>
@@ -200,7 +211,10 @@ export default function ConsumptionPage() {
             </button>
           )}
           {tab === "logs" && data && data.logs.length > 0 && (
-            <button onClick={() => exportLogsXlsx(data)}
+            <button onClick={() => {
+              const visible = logFilter === "matched" ? data.logs.filter(l => l.menu_item_id) : logFilter === "self" ? data.logs.filter(l => !l.menu_item_id) : data.logs;
+              exportLogsXlsx(data, visible);
+            }}
               className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 text-xs font-medium transition-colors">
               <FileDown className="w-3.5 h-3.5" />
               Export Excel
@@ -267,36 +281,78 @@ export default function ConsumptionPage() {
               <p className="font-medium">No logs</p>
               <p className="text-sm mt-1">No consumption logs for the selected period</p>
             </div>
-          ) : (
-            <div className="bg-card rounded-2xl border border-border overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Member</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Food Item</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Slot</th>
-                    <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Qty (g)</th>
-                    <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">kcal</th>
-                    <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.logs.map(log => (
-                    <tr key={log.id} className="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
-                      <td className="px-5 py-3 text-sm font-medium text-foreground">{log.member_name}</td>
-                      <td className="px-5 py-3 text-sm text-foreground">{log.food_item}</td>
-                      <td className="px-5 py-3 text-sm text-muted-foreground">{log.meal_slot}</td>
-                      <td className="px-5 py-3 text-sm text-right tabular-nums">{log.quantity_g ?? "–"}</td>
-                      <td className="px-5 py-3 text-sm text-right tabular-nums">{log.calories_kcal ? Math.round(log.calories_kcal) : "–"}</td>
-                      <td className="px-5 py-3 text-sm text-right text-muted-foreground">
-                        {new Date(log.logged_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                      </td>
-                    </tr>
+          ) : (() => {
+            const visibleLogs = logFilter === "matched"
+              ? data.logs.filter(l => l.menu_item_id)
+              : logFilter === "self"
+              ? data.logs.filter(l => !l.menu_item_id)
+              : data.logs;
+            const matchedCount = data.logs.filter(l => l.menu_item_id).length;
+            const selfCount    = data.logs.filter(l => !l.menu_item_id).length;
+            return (
+              <>
+                {/* Filter pills */}
+                <div className="flex gap-2 mb-3 flex-wrap">
+                  {([
+                    { key: "all",     label: `All (${data.logs.length})` },
+                    { key: "matched", label: `Via Check-in (${matchedCount})` },
+                    { key: "self",    label: `Self-logged (${selfCount})` },
+                  ] as const).map(({ key, label }) => (
+                    <button key={key} onClick={() => setLogFilter(key)}
+                      className={`h-7 px-3 rounded-full text-xs font-medium border transition-colors ${
+                        logFilter === key
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "border-border text-muted-foreground hover:text-foreground hover:border-primary/40"
+                      }`}>
+                      {label}
+                    </button>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )
+                </div>
+
+                {visibleLogs.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground bg-card border border-border rounded-2xl">
+                    <p className="text-sm">No {logFilter === "matched" ? "check-in" : "self-"} logs for this period</p>
+                  </div>
+                ) : (
+                  <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/30">
+                          <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Member</th>
+                          <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Menu Item</th>
+                          <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Food Logged</th>
+                          <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Slot</th>
+                          <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Qty (g)</th>
+                          <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">kcal</th>
+                          <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleLogs.map(log => (
+                          <tr key={log.id} className="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                            <td className="px-5 py-3 text-sm font-medium text-foreground">{log.member_name}</td>
+                            <td className="px-5 py-3 text-sm">
+                              {log.menu_item_name
+                                ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-pale text-teal-dark">{log.menu_item_name}</span>
+                                : <span className="text-[11px] text-muted-foreground/60 italic">Self-logged</span>
+                              }
+                            </td>
+                            <td className="px-5 py-3 text-sm text-foreground">{log.food_item}</td>
+                            <td className="px-5 py-3 text-sm text-muted-foreground">{log.meal_slot}</td>
+                            <td className="px-5 py-3 text-sm text-right tabular-nums">{log.quantity_g ?? "–"}</td>
+                            <td className="px-5 py-3 text-sm text-right tabular-nums">{log.calories_kcal ? Math.round(log.calories_kcal) : "–"}</td>
+                            <td className="px-5 py-3 text-sm text-right text-muted-foreground">
+                              {new Date(log.logged_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            );
+          })()
         )}
 
         {tab === "batches" && (
