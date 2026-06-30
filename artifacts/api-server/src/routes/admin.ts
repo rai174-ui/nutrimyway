@@ -197,9 +197,9 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
     const batchRow = batches[0] as { id: number; total_qty: number; serving_qty: number };
     const foodLabel = `${fsel.name as string} – ${fsel.flavour as string}`;
     await pool.query(
-      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, calories_kcal, checkin_id, logged_at)
-       VALUES ($1, $3, $2, NULL, $4, NOW())`,
-      [memberId, foodLabel, slotForNowIST(), checkinId]
+      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, quantity_g, calories_kcal, checkin_id, logged_at)
+       VALUES ($1, $3, $2, $4, NULL, $5, NOW())`,
+      [memberId, foodLabel, slotForNowIST(), batchRow.serving_qty, checkinId]
     );
     // Deduct serving qty from the open batch
     await pool.query(
