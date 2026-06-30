@@ -783,6 +783,56 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
   res.status(201).json(member);
 });
 
+// PATCH /api/admin/centers/:centerId/members/:memberId — update member details
+router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
+
+  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until } = req.body as {
+    name?: string; mobile?: string | null; email?: string | null; membership_no?: string | null;
+    height_cm?: number | null; date_of_joining?: string | null;
+    dob?: string | null; age_at_joining?: number | null; valid_until?: string | null;
+  };
+  if (name !== undefined && !name?.trim()) { res.status(400).json({ error: "name cannot be blank" }); return; }
+  if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
+    res.status(400).json({ error: "age_at_joining must be between 0 and 100" }); return;
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE members SET
+       name           = COALESCE($1, name),
+       mobile         = $2,
+       email          = $3,
+       membership_no  = $4,
+       height_cm      = $5,
+       date_of_joining= $6,
+       dob            = $7,
+       age_at_joining = $8,
+       valid_until    = $9
+     WHERE id = $10 RETURNING *`,
+    [
+      name?.trim() ?? null,
+      mobile?.trim() || null,
+      email?.trim() || null,
+      membership_no?.trim() || null,
+      height_cm ?? null,
+      date_of_joining ?? null,
+      dob?.trim() || null,
+      age_at_joining ?? null,
+      valid_until ?? null,
+      Number(memberId),
+    ]
+  );
+  res.json(rows[0]);
+});
+
 // PATCH /api/admin/centers/:centerId/members/:memberId/renew — extend validity by 32 days
 router.patch("/admin/centers/:centerId/members/:memberId/renew", requireAdmin, async (req, res) => {
   const { centerId, memberId } = req.params;

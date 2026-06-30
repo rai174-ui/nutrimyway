@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   UserPlus, LogIn, LogOut, Trash2, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
-  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus, Hash, RotateCcw, CalendarClock,
+  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus, Hash, RotateCcw, CalendarClock, Pencil, Save,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
@@ -773,8 +773,60 @@ function MemberRow({ member, centerId, onRefresh }: {
   const [showWeightForm, setShowWeightForm] = useState(false);
   const [weightKg, setWeightKg] = useState("");
   const [showHealthPanel, setShowHealthPanel] = useState(false);
+  const [showEditPanel, setShowEditPanel] = useState(false);
+  // edit fields
+  const [editName, setEditName]               = useState("");
+  const [editMobile, setEditMobile]           = useState("");
+  const [editEmail, setEditEmail]             = useState("");
+  const [editMembershipNo, setEditMembershipNo] = useState("");
+  const [editHeight, setEditHeight]           = useState("");
+  const [editDoj, setEditDoj]                 = useState("");
+  const [editDobDay, setEditDobDay]           = useState("");
+  const [editDobMonth, setEditDobMonth]       = useState("");
+  const [editAge, setEditAge]                 = useState("");
+  const [editValidUntil, setEditValidUntil]   = useState("");
+  const [editSaving, setEditSaving]           = useState(false);
+  const [editError, setEditError]             = useState("");
+
   const isCheckedIn = !!member.checkin_id;
   const mins = isCheckedIn ? minutesSince(member.checked_in_at!) : 0;
+
+  function openEdit() {
+    const [dobDay = "", dobMonth = ""] = (member.dob ?? "").split(" ");
+    setEditName(member.name);
+    setEditMobile(member.mobile ?? "");
+    setEditEmail(member.email ?? "");
+    setEditMembershipNo(member.membership_no ?? "");
+    setEditHeight(member.height_cm != null ? String(member.height_cm) : "");
+    setEditDoj(member.date_of_joining ? member.date_of_joining.slice(0, 10) : "");
+    setEditDobDay(dobDay);
+    setEditDobMonth(dobMonth);
+    setEditAge(member.age_at_joining != null ? String(member.age_at_joining) : "");
+    setEditValidUntil(member.valid_until ? member.valid_until.slice(0, 10) : "");
+    setEditError("");
+    setShowEditPanel(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!editName.trim()) { setEditError("Name is required"); return; }
+    setEditSaving(true); setEditError("");
+    try {
+      await apiPatch(`/admin/centers/${centerId}/members/${member.id}`, {
+        name: editName.trim(),
+        mobile: editMobile.trim() || null,
+        email: editEmail.trim() || null,
+        membership_no: editMembershipNo.trim() || null,
+        height_cm: editHeight ? Number(editHeight) : null,
+        date_of_joining: editDoj || null,
+        dob: editDobDay && editDobMonth ? `${editDobDay} ${editDobMonth}` : null,
+        age_at_joining: editAge ? Number(editAge) : null,
+        valid_until: editValidUntil || null,
+      });
+      setShowEditPanel(false);
+      onRefresh();
+    } catch (e) { setEditError(e instanceof Error ? e.message : "Save failed"); }
+    finally { setEditSaving(false); }
+  }
 
   async function handleRenew() {
     if (!confirm(`Renew ${member.name}'s membership by 32 days?`)) return;
@@ -892,6 +944,13 @@ function MemberRow({ member, centerId, onRefresh }: {
             <RotateCcw className="w-3.5 h-3.5" />Renew
           </button>
           <button
+            onClick={openEdit}
+            className={`p-1.5 rounded-lg transition-colors ${showEditPanel ? "text-violet-600 bg-violet-100" : "text-muted-foreground hover:text-violet-600 hover:bg-violet-50"}`}
+            title="Edit member"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          <button
             onClick={() => setShowHealthPanel(v => !v)}
             className={`p-1.5 rounded-lg transition-colors ${showHealthPanel ? "text-sky-600 bg-sky-100" : "text-muted-foreground hover:text-sky-600 hover:bg-sky-50"}`}
             title="Health records"
@@ -911,6 +970,83 @@ function MemberRow({ member, centerId, onRefresh }: {
       {/* Expanded visit panel for checked-in members */}
       {isCheckedIn && (
         <VisitPanel member={member} centerId={centerId} onCheckout={onRefresh} />
+      )}
+      {showEditPanel && (
+        <div className="border-t border-violet-100 bg-violet-50/40 px-5 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-violet-700">Edit Member</p>
+            <button onClick={() => setShowEditPanel(false)} className="p-1 rounded text-muted-foreground hover:text-foreground">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="sm:col-span-2">
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Name *</label>
+              <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Full name"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Mobile</label>
+              <input value={editMobile} onChange={e => setEditMobile(e.target.value)} placeholder="+91 ..." type="tel"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Email</label>
+              <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="member@email.com" type="email"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Member ID</label>
+              <input value={editMembershipNo} onChange={e => setEditMembershipNo(e.target.value)} placeholder="MEM-001"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Height (cm)</label>
+              <input type="number" value={editHeight} onChange={e => setEditHeight(e.target.value)} placeholder="165"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Date of Joining</label>
+              <input type="date" value={editDoj} onChange={e => setEditDoj(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Birth Day</label>
+              <input type="number" min="1" max="31" value={editDobDay} onChange={e => setEditDobDay(e.target.value)} placeholder="1–31"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Birth Month</label>
+              <select value={editDobMonth} onChange={e => setEditDobMonth(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                <option value="">Month</option>
+                {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Age at Joining</label>
+              <input type="number" step="0.5" min="1" max="100" value={editAge} onChange={e => setEditAge(e.target.value)} placeholder="35.5"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Membership Valid Until</label>
+              <input type="date" value={editValidUntil} onChange={e => setEditValidUntil(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+          </div>
+          {editError && (
+            <p className="mt-2 text-xs text-destructive bg-destructive/8 rounded-lg px-3 py-2">{editError}</p>
+          )}
+          <div className="flex justify-end mt-3">
+            <button onClick={() => void handleSaveEdit()} disabled={editSaving}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">
+              {editSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Save Changes
+            </button>
+          </div>
+        </div>
       )}
       {showHealthPanel && (
         <HealthPanel memberId={member.id} centerId={centerId} onClose={() => setShowHealthPanel(false)} />
