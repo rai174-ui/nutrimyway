@@ -20,6 +20,14 @@ function minutesSince(iso: string) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
 }
 
+function fmtDateDMY(iso: string) {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
 // ── Add Member Form (unchanged) ─────────────────────────────────────────────
 
 type LookupStep = "search" | "found" | "notfound" | "creating" | "healthrecord";
@@ -642,9 +650,7 @@ function HealthPanel({ memberId, centerId, onClose }: {
   }
 
   function fmt(v: number | null, dec = 1) { return v != null ? v.toFixed(dec) : "—"; }
-  function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  }
+  function fmtDate(iso: string) { return fmtDateDMY(iso); }
 
   const fieldCls = "w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50";
   const labelCls = "block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1";
@@ -781,7 +787,7 @@ function validityBadge(valid_until: string | null) {
   const now = new Date();
   const exp = new Date(valid_until);
   const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  const label = exp.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  const label = fmtDateDMY(valid_until);
   if (daysLeft <= 0) {
     return (
       <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-300 rounded-full px-2 py-0.5">
@@ -798,7 +804,7 @@ function validityBadge(valid_until: string | null) {
   }
   return (
     <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-      <CalendarClock className="w-3 h-3" />Valid until {label}
+      <CalendarClock className="w-3 h-3" />Valid to {label}
     </span>
   );
 }
