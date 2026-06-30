@@ -117,8 +117,13 @@ router.post("/auth/verify-otp", async (req, res) => {
   res.json({ token: partialToken, member_id: null, is_new_user: true });
 });
 
-// POST /api/auth/register
-router.post("/auth/register", async (req, res) => {
+// POST /api/auth/register — disabled: member onboarding is center-only
+router.post("/auth/register", async (_req, res) => {
+  res.status(403).json({ error: "Self-registration is disabled. Please contact your wellness center to get registered." });
+});
+
+// POST /api/auth/register_legacy (kept for reference only, never called)
+router.post("/auth/register_legacy", async (req, res) => {
   const { token, name, center_ids } = req.body as {
     token?: string; name?: string; center_ids?: string[];
   };

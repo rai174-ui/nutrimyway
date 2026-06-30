@@ -732,6 +732,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
   const { rows } = await pool.query(
     `SELECT
        m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
+       m.dob, m.age_at_joining, m.valid_until,
        ci.id          AS checkin_id,
        ci.checked_in_at,
        ci.checked_out_at,
@@ -758,17 +759,21 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, height_cm, date_of_joining, mobile, email, membership_no } = req.body as {
+  const { name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining } = req.body as {
     name?: string; height_cm?: number | null; date_of_joining?: string | null;
     mobile?: string | null; email?: string | null; membership_no?: string | null;
+    dob?: string | null; age_at_joining?: number | null;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   if (!mobile?.trim() && !email?.trim()) { res.status(400).json({ error: "mobile or email is required" }); return; }
+  if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
+    res.status(400).json({ error: "age_at_joining must be between 0 and 100" }); return;
+  }
 
   const { rows: memberRows } = await pool.query(
-    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null]
+    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null]
   );
   const member = memberRows[0];
   await pool.query(
@@ -776,6 +781,25 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
     [member.id, centerId]
   );
   res.status(201).json(member);
+});
+
+// PATCH /api/admin/centers/:centerId/members/:memberId/renew — extend validity by 32 days
+router.patch("/admin/centers/:centerId/members/:memberId/renew", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
+
+  const { rows } = await pool.query(
+    `UPDATE members SET valid_until = CURRENT_DATE + INTERVAL '32 days' WHERE id = $1 RETURNING valid_until`,
+    [Number(memberId)]
+  );
+  res.json({ valid_until: rows[0].valid_until });
 });
 
 // DELETE /api/admin/centers/:centerId/members/:memberId — unlink member from center

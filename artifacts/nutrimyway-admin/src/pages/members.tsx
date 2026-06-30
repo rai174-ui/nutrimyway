@@ -2,11 +2,11 @@ import { useEffect, useState, useCallback } from "react";
 import {
   UserPlus, LogIn, LogOut, Trash2, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
-  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus, Hash,
+  Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus, Hash, RotateCcw, CalendarClock,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
-  apiGet, apiPost, apiDelete, getAdminCenter,
+  apiGet, apiPost, apiPatch, apiDelete, getAdminCenter,
   type CenterMember, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord,
 } from "@/lib/api";
 
@@ -37,6 +37,9 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   const [height, setHeight] = useState("");
   const [doj, setDoj] = useState("");
   const [membershipNo, setMembershipNo] = useState("");
+  const [dobDay, setDobDay] = useState("");
+  const [dobMonth, setDobMonth] = useState("");
+  const [ageAtJoining, setAgeAtJoining] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Health record step
@@ -55,6 +58,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   function reset() {
     setStep("search"); setQuery(""); setFound(null); setError("");
     setName(""); setEmail(""); setMobile(""); setHeight(""); setDoj(""); setMembershipNo("");
+    setDobDay(""); setDobMonth(""); setAgeAtJoining("");
     setLinkedMemberId(null);
     setHrDate(new Date().toISOString().slice(0, 10));
     setHrWeight(""); setHrBmi(""); setHrBodyFat(""); setHrVisceralFat("");
@@ -102,6 +106,8 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
         name: name.trim(), mobile: mobile.trim() || null, email: email.trim() || null,
         height_cm: height ? Number(height) : null, date_of_joining: doj || null,
         membership_no: membershipNo.trim() || null,
+        dob: dobDay && dobMonth ? `${dobDay} ${dobMonth}` : null,
+        age_at_joining: ageAtJoining ? Number(ageAtJoining) : null,
       });
       setLinkedMemberId(member.id);
       setStep("healthrecord");
@@ -236,6 +242,23 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
             <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-muted-foreground mb-1">Date of Joining</label>
               <input type="date" value={doj} onChange={e => setDoj(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Birth Day</label>
+              <input type="number" min="1" max="31" value={dobDay} onChange={e => setDobDay(e.target.value)} placeholder="1–31" className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Birth Month</label>
+              <select value={dobMonth} onChange={e => setDobMonth(e.target.value)} className={inputCls}>
+                <option value="">Month</option>
+                {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Age at Joining</label>
+              <input type="number" step="0.5" min="1" max="100" value={ageAtJoining} onChange={e => setAgeAtJoining(e.target.value)} placeholder="e.g. 35.5" className={inputCls} />
             </div>
           </div>
           <p className="text-[10px] text-amber-600">* Mobile or email is required (at least one)</p>
@@ -727,6 +750,16 @@ function HealthPanel({ memberId, centerId, onClose }: {
 
 // ── Member Row ──────────────────────────────────────────────────────────────
 
+function validityBadge(valid_until: string | null) {
+  if (!valid_until) return null;
+  const exp = new Date(valid_until);
+  const expired = exp < new Date();
+  const label = exp.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return expired
+    ? <span className="inline-flex items-center gap-1 text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5"><CalendarClock className="w-3 h-3" />Expired {label}</span>
+    : <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><CalendarClock className="w-3 h-3" />Valid until {label}</span>;
+}
+
 function MemberRow({ member, centerId, onRefresh }: {
   member: CenterMember; centerId: string; onRefresh: () => void;
 }) {
@@ -736,6 +769,16 @@ function MemberRow({ member, centerId, onRefresh }: {
   const [showHealthPanel, setShowHealthPanel] = useState(false);
   const isCheckedIn = !!member.checkin_id;
   const mins = isCheckedIn ? minutesSince(member.checked_in_at!) : 0;
+
+  async function handleRenew() {
+    if (!confirm(`Renew ${member.name}'s membership by 32 days?`)) return;
+    setBusy(true);
+    try {
+      await apiPatch(`/admin/centers/${centerId}/members/${member.id}/renew`);
+      onRefresh();
+    } catch (e) { alert(e instanceof Error ? e.message : "Renewal failed"); }
+    finally { setBusy(false); }
+  }
 
   async function handleCheckin() {
     const w = Number(weightKg);
@@ -778,8 +821,9 @@ function MemberRow({ member, centerId, onRefresh }: {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 mt-0.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
             {member.mobile && <p className="text-xs text-muted-foreground">{member.mobile}</p>}
+            {validityBadge(member.valid_until)}
             {isCheckedIn && member.checked_in_at && (
               <p className={`text-xs flex items-center gap-1 ${mins >= 150 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
                 <Clock className="w-3 h-3" />
@@ -833,6 +877,14 @@ function MemberRow({ member, centerId, onRefresh }: {
               </button>
             </>
           )}
+          <button
+            onClick={() => void handleRenew()}
+            disabled={busy}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+            title="Renew membership (+32 days)"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
           <button
             onClick={() => setShowHealthPanel(v => !v)}
             className={`p-1.5 rounded-lg transition-colors ${showHealthPanel ? "text-sky-600 bg-sky-100" : "text-muted-foreground hover:text-sky-600 hover:bg-sky-50"}`}

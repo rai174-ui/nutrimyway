@@ -270,65 +270,31 @@ export function Login() {
             </motion.div>
           )}
 
-          {/* ── STEP 3: Register ── */}
+          {/* ── STEP 3: Not registered ── */}
           {step === "register" && (
             <motion.div key="register" {...slide} className="flex flex-col gap-6">
               <div>
-                <h1 className="text-2xl font-bold">Create your profile</h1>
-                <p className="text-muted-foreground text-sm mt-1">Almost there — just a few details</p>
+                <h1 className="text-2xl font-bold">Account not found</h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  This number / email isn&apos;t registered yet
+                </p>
               </div>
 
-              <div className="space-y-2">
-                <label htmlFor="name" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Full Name
-                </label>
-                <input
-                  id="name"
-                  type="text"
-                  placeholder="e.g. Priya Sharma"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  className="w-full h-13 px-4 py-3.5 rounded-[12px] border border-input bg-card text-base placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Your Center(s)
-                  </label>
-                  <p className="text-xs text-muted-foreground mt-0.5">Select at least one</p>
+              <div className="rounded-[16px] bg-teal-dark/6 border border-teal-dark/15 px-5 py-6 flex flex-col items-center gap-3 text-center">
+                <div className="w-12 h-12 rounded-full bg-teal-dark/10 flex items-center justify-center">
+                  <Phone className="w-5 h-5 text-teal-dark" />
                 </div>
-                <div className="space-y-2">
-                  {centers.length === 0 && (
-                    <p className="text-sm text-muted-foreground py-2 text-center">Loading…</p>
-                  )}
-                  {centers.map(c => {
-                    const on = selected.has(c.id);
-                    return (
-                      <button key={c.id} onClick={() => toggleCenter(c.id)}
-                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-[12px] border text-sm font-medium transition-all ${
-                          on
-                            ? "bg-primary/8 border-primary text-primary"
-                            : "bg-card border-border text-foreground hover:border-primary/40"
-                        }`}>
-                        <span>{c.name}</span>
-                        <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                          on ? "bg-primary border-primary" : "border-muted-foreground/30"
-                        }`}>
-                          {on && <Check className="w-3 h-3 text-primary-foreground" />}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <p className="text-sm font-semibold text-foreground leading-snug">
+                  Contact your wellness center
+                </p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  New memberships are set up by your center. Ask a staff member to
+                  add you — you&apos;ll be able to log in right away with the same
+                  mobile number or email.
+                </p>
               </div>
 
               {error && <ErrorBanner msg={error} />}
-
-              <PrimaryButton onClick={register} disabled={!canSubmitRegister} loading={loading}>
-                Get Started <ArrowRight className="w-4 h-4 ml-1.5" />
-              </PrimaryButton>
             </motion.div>
           )}
         </AnimatePresence>

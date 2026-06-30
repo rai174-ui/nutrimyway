@@ -173,6 +173,9 @@ export interface CenterMember {
   mobile: string | null;
   email: string | null;
   membership_no: string | null;
+  dob: string | null;
+  age_at_joining: number | null;
+  valid_until: string | null;
   checkin_id: number | null;
   checked_in_at: string | null;
   checked_out_at: string | null;

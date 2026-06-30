@@ -497,6 +497,13 @@ async function migrateAdminTables6(): Promise<void> {
   `);
 }
 
+async function migrateAdminTables9(): Promise<void> {
+  // Member DOB (day + month only, e.g. "15 Mar"), age at joining (decimal), and validity date
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS dob TEXT`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS age_at_joining REAL`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS valid_until DATE`);
+}
+
 async function migrateAdminTables8(): Promise<void> {
   // Center access validity date — blocks login after this date when set
   await pool.query(`ALTER TABLE center_auth ADD COLUMN IF NOT EXISTS valid_until DATE`);
@@ -540,6 +547,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables6();
   await migrateAdminTables7();
   await migrateAdminTables8();
+  await migrateAdminTables9();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
