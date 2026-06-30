@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, ChevronRight, ExternalLink, Sparkles } from "lucide-react";
+import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, ChevronRight, ExternalLink, Sparkles, Flame } from "lucide-react";
 import { useCreateConsumptionLog, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -76,6 +76,7 @@ export function Log() {
   const [selections, setSelections] = useState<SelectionItem[]>([]);
   const [pendingFlavourFor, setPendingFlavourFor] = useState<{ item: CenterMenuItem } | null>(null);
   const [savingSelections, setSavingSelections] = useState(false);
+  const [flavourOnly, setFlavourOnly] = useState(false);
 
   // AI scan state
   const [hasGeminiKey, setHasGeminiKey] = useState(false);
@@ -289,9 +290,12 @@ export function Log() {
   }
 
   const checkin = checkinOptions?.checkin ?? null;
-  const hasItems = (checkinOptions?.menuItems.length ?? 0) + (checkinOptions?.directFlavours.length ?? 0) > 0;
-  const allItems = [...(checkinOptions?.menuItems ?? []), ...(checkinOptions?.directFlavours ?? [])];
-  const totalCount = allItems.length;
+  const allMenuItems = checkinOptions?.menuItems ?? [];
+  const directFlavours = checkinOptions?.directFlavours ?? [];
+  const visibleMenuItems = flavourOnly ? [] : allMenuItems;
+  const hasItems = allMenuItems.length + directFlavours.length > 0;
+  const hasFlavourItems = directFlavours.length > 0;
+  const totalCount = visibleMenuItems.length + directFlavours.length;
 
   return (
     <>
@@ -313,24 +317,40 @@ export function Log() {
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Choose Visit Items
               </h2>
-              <span className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${
-                selections.length === 3
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground"
-              }`}>
-                {selections.length} / 3
-              </span>
+              <div className="flex items-center gap-2">
+                {hasFlavourItems && (
+                  <button
+                    onClick={() => setFlavourOnly(v => !v)}
+                    className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                      flavourOnly
+                        ? "bg-violet-600 text-white border-violet-600"
+                        : "bg-background text-muted-foreground border-border hover:border-violet-400 hover:text-violet-600"
+                    }`}
+                    title="Show only flavoured items from open batches"
+                  >
+                    <Flame className="w-3 h-3" />
+                    Flavour only
+                  </button>
+                )}
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${
+                  selections.length === 3
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  {selections.length} / 3
+                </span>
+              </div>
             </div>
 
             <div className="bg-card border border-border rounded-[12px] overflow-hidden">
-              {(checkinOptions?.menuItems ?? []).map((item, i) => {
+              {visibleMenuItems.map((item, i) => {
                 const selected = isMenuItemSelected(item.id);
                 const isPendingFlavour = pendingFlavourFor?.item.id === item.id;
                 const flavourList = (item.flavours ?? "").split(",").map(f => f.trim()).filter(Boolean);
                 const selEntry = selections.find(s => s.type === "menu_item" && s.menu_item_id === item.id) as (Extract<SelectionItem, { type: "menu_item" }>) | undefined;
                 const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
                 const hasKcal = item.bom.some(b => b.kcal != null);
-                const isLast = i === totalCount - 1 && (checkinOptions?.directFlavours.length ?? 0) === 0;
+                const isLast = i === totalCount - 1 && directFlavours.length === 0;
                 return (
                   <div key={item.id} className={!isLast ? "border-b border-border" : ""}>
                     <button
@@ -383,10 +403,9 @@ export function Log() {
                 );
               })}
 
-              {(checkinOptions?.directFlavours ?? []).map((item, i) => {
+              {directFlavours.map((item, i) => {
                 const selected = isDirectFlavourSelected(item.id);
-                const menuLen = checkinOptions?.menuItems.length ?? 0;
-                const isLast = menuLen + i === totalCount - 1;
+                const isLast = visibleMenuItems.length + i === totalCount - 1;
                 return (
                   <button
                     key={item.id}
