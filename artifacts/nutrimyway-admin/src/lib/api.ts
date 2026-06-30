@@ -102,6 +102,7 @@ export interface MenuItem {
   description: string | null;
   is_mandatory: boolean;
   is_available: boolean;
+  flavours: string;
   created_at: string;
   bom: BomComponent[];
 }
@@ -184,6 +185,7 @@ export interface CenterMember {
 }
 
 export interface ConsumptionLog {
+  selected_flavour?: string | null;
   id: number;
   member_id: number;
   member_name: string;
@@ -231,6 +233,9 @@ export interface Ingredient {
   name: string;
   pack_size: number;
   pack_unit: string;
+  material_code: string | null;
+  description: string | null;
+  flavour: string | null;
   created_at: string;
 }
 

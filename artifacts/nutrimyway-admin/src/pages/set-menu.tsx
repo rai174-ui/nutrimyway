@@ -244,6 +244,7 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description ?? "");
+  const [flavours, setFlavours] = useState(item.flavours ?? "");
   const [saving, setSaving] = useState(false);
   const [togglingMandatory, setTogglingMandatory] = useState(false);
   const [bom, setBom] = useState<BomComponent[]>(item.bom);
@@ -260,7 +261,7 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const updated = await apiPut<MenuItem>(`/admin/menu-items/${item.id}`, { name, description });
+      const updated = await apiPut<MenuItem>(`/admin/menu-items/${item.id}`, { name, description, flavours });
       onUpdate({ ...updated, bom });
       setEditing(false);
     } finally { setSaving(false); }
@@ -283,6 +284,9 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
               <input value={description} onChange={e => setDescription(e.target.value)}
                 className="h-8 px-3 text-xs rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
                 placeholder="Description (optional)" />
+              <input value={flavours} onChange={e => setFlavours(e.target.value)}
+                className="h-8 px-3 text-xs rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                placeholder="Flavours (comma-separated, e.g. Chocolate, Vanilla, Strawberry)" />
             </div>
             <button onClick={saveItem} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
@@ -303,6 +307,13 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
                 )}
               </div>
               {item.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.description}</p>}
+              {item.flavours && item.flavours.trim() && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {item.flavours.split(",").filter(f => f.trim()).map(f => (
+                    <span key={f} className="text-[10px] bg-violet-100 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5 font-medium">{f.trim()}</span>
+                  ))}
+                </div>
+              )}
             </div>
             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
               {bom.length} component{bom.length !== 1 ? "s" : ""}

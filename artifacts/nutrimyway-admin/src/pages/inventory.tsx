@@ -9,7 +9,7 @@ import {
 } from "@/lib/api";
 import {
   Plus, X, Loader2, Trash2, FileDown,
-  PackageOpen, PackageCheck, ChevronDown, ChevronRight,
+  PackageOpen, PackageCheck,
   ClipboardList, MinusCircle, AlertTriangle, PackagePlus,
 } from "lucide-react";
 
@@ -539,20 +539,35 @@ function BatchInventory({
 }) {
   const [addingBatch, setAddingBatch] = useState(false);
   const [pendingIngredientId, setPendingIngredientId] = useState<number | undefined>();
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
-  // Only show new/open batches in inventory — consumed batches move to Consumption page
   const activeBatches = useMemo(() => batches.filter(b => b.status !== "consumed"), [batches]);
 
-  const grouped = useMemo(() => {
-    const map = new Map<number, { ingredient: Ingredient; batches: IngredientBatch[] }>();
-    for (const ing of ingredients) map.set(ing.id, { ingredient: ing, batches: [] });
+  // Open Batches: one entry per ingredient that currently has an open pack
+  const openGroups = useMemo(() => {
+    const map = new Map<number, { ingredient: Ingredient; openBatch: IngredientBatch; reserveCount: number }>();
     for (const b of activeBatches) {
-      const g = map.get(b.ingredient_id);
-      if (g) g.batches.push(b);
+      if (b.status === "open") {
+        const ing = ingredients.find(i => i.id === b.ingredient_id);
+        if (ing) map.set(ing.id, { ingredient: ing, openBatch: b, reserveCount: 0 });
+      }
     }
-    return [...map.values()].filter(g => g.batches.length > 0);
-  }, [ingredients, activeBatches]);
+    for (const b of activeBatches) {
+      if (b.status === "new") {
+        const entry = map.get(b.ingredient_id);
+        if (entry) entry.reserveCount++;
+      }
+    }
+    return [...map.values()];
+  }, [activeBatches, ingredients]);
+
+  // New Batches: flat list of all sealed / unopened batches
+  const newBatches = useMemo(() =>
+    activeBatches
+      .filter(b => b.status === "new")
+      .map(b => ({ ...b, ingredient: ingredients.find(i => i.id === b.ingredient_id) }))
+      .filter(b => b.ingredient),
+    [activeBatches, ingredients]
+  );
 
   async function openBatch(id: number) { await apiPatch(`/admin/ingredient-batches/${id}/open`); onRefresh(); }
   async function consumeBatch(id: number) { await apiPatch(`/admin/ingredient-batches/${id}/consume`); onRefresh(); }
@@ -565,21 +580,18 @@ function BatchInventory({
     setAddingBatch(true);
   }
 
-  function toggleCollapse(id: number) {
-    setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  }
-
   return (
-    <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <div className="flex items-center gap-2">
-          <PackageOpen className="w-5 h-5 text-primary" />
-          <h2 className="text-base font-semibold text-foreground">Batch Inventory</h2>
-          <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
-            {activeBatches.length} active
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="space-y-4">
+      {/* ── Open Batches ──────────────────────────────────────────── */}
+      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <PackageOpen className="w-5 h-5 text-emerald-600" />
+            <h2 className="text-base font-semibold text-foreground">Open Batches</h2>
+            <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+              {openGroups.length} in use
+            </span>
+          </div>
           {activeBatches.length > 0 && (
             <button
               onClick={() => exportInventoryXlsx(activeBatches)}
@@ -589,149 +601,155 @@ function BatchInventory({
               Export
             </button>
           )}
+        </div>
+
+        {openGroups.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+            No open packs — open a batch from New Batches to start tracking consumption.
+          </p>
+        ) : (
+          <div className="divide-y divide-border">
+            {openGroups.map(({ ingredient, openBatch, reserveCount }) => {
+              const req = requirements.find(r => r.ingredient_id === ingredient.id);
+              const consumed = Number(openBatch.consumed_qty);
+              const remaining = Math.max(0, openBatch.pack_size - consumed);
+              const minNeeded = req ? Number(req.min_serving_qty) : 0;
+              const isLow = minNeeded > 0 && remaining < minNeeded;
+              const pct = Math.min(100, (consumed / openBatch.pack_size) * 100);
+              return (
+                <div key={ingredient.id} className="px-5 py-3 flex items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span className="font-medium text-sm text-foreground">{ingredient.name}</span>
+                      {ingredient.material_code && (
+                        <span className="text-[10px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{ingredient.material_code}</span>
+                      )}
+                      {reserveCount > 0 && (
+                        <span className="text-[10px] text-sky-700 bg-sky-100 border border-sky-200 px-1.5 py-0.5 rounded-full font-semibold">{reserveCount} in reserve</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${isLow ? "bg-red-500" : "bg-emerald-500"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className={`text-xs font-semibold tabular-nums whitespace-nowrap ${isLow ? "text-red-600" : "text-emerald-700"}`}>
+                        {remaining} {ingredient.pack_unit} left
+                      </span>
+                    </div>
+                  </div>
+                  {isLow ? (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <AlertTriangle className="w-4 h-4 text-red-500" />
+                      <button
+                        onClick={() => void openNewPack(openBatch.id, ingredient.id)}
+                        className="flex items-center gap-1 h-7 px-2.5 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
+                      >
+                        <PackagePlus className="w-3 h-3" />
+                        Open New Pack
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => void consumeBatch(openBatch.id)}
+                      title="Mark pack as fully consumed"
+                      className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <MinusCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ── New Batches ──────────────────────────────────────────── */}
+      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <PackageCheck className="w-5 h-5 text-sky-600" />
+            <h2 className="text-base font-semibold text-foreground">New Batches</h2>
+            <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+              {newBatches.length} sealed
+            </span>
+          </div>
           <button
             onClick={() => { setAddingBatch(v => !v); setPendingIngredientId(undefined); }}
             disabled={ingredients.length === 0}
             className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-            title={ingredients.length === 0 ? "Add ingredients to the master list first" : undefined}
+            title={ingredients.length === 0 ? "Add items in Item Master first" : undefined}
           >
             <Plus className="w-3.5 h-3.5" />
             Add Batch
           </button>
         </div>
-      </div>
 
-      {addingBatch && (
-        <AddBatchForm
-          centerId={centerId}
-          ingredients={ingredients}
-          defaultIngredientId={pendingIngredientId}
-          onAdded={() => { onRefresh(); setAddingBatch(false); setPendingIngredientId(undefined); }}
-          onCancel={() => { setAddingBatch(false); setPendingIngredientId(undefined); }}
-        />
-      )}
+        {addingBatch && (
+          <AddBatchForm
+            centerId={centerId}
+            ingredients={ingredients}
+            defaultIngredientId={pendingIngredientId}
+            onAdded={() => { onRefresh(); setAddingBatch(false); setPendingIngredientId(undefined); }}
+            onCancel={() => { setAddingBatch(false); setPendingIngredientId(undefined); }}
+          />
+        )}
 
-      {grouped.length === 0 && (
-        <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-          No batch records yet. Use "Add Batch" to register a received pack.
-        </p>
-      )}
-
-      <div className="divide-y divide-border">
-        {grouped.map(({ ingredient, batches: grpBatches }) => {
-          const currentOpenBatch = grpBatches.find(b => b.status === "open");
-          const req = requirements.find(r => r.ingredient_id === ingredient.id);
-          const consumed = currentOpenBatch ? Number(currentOpenBatch.consumed_qty) : 0;
-          const remaining = currentOpenBatch ? Math.max(0, currentOpenBatch.pack_size - consumed) : 0;
-          const minNeeded = req ? Number(req.min_serving_qty) : 0;
-          const isLow = !!currentOpenBatch && minNeeded > 0 && remaining < minNeeded;
-          const hasNoOpen = !currentOpenBatch;
-          const pct = currentOpenBatch ? Math.min(100, (consumed / currentOpenBatch.pack_size) * 100) : 0;
-
-          const isCollapsed = collapsed.has(ingredient.id);
-          const newCount = grpBatches.filter(b => b.status === "new").length;
-
-          return (
-            <div key={ingredient.id}>
-              <button
-                onClick={() => toggleCollapse(ingredient.id)}
-                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors text-left"
-              >
-                {isCollapsed
-                  ? <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                <span className="flex-1 font-medium text-sm text-foreground">{ingredient.name}</span>
-                <span className="text-xs text-muted-foreground">{ingredient.pack_size} {ingredient.pack_unit}/pack</span>
-
-                {currentOpenBatch && !isLow && (
-                  <span className="text-xs font-semibold tabular-nums text-emerald-700">
-                    {remaining} {ingredient.pack_unit} left
-                  </span>
-                )}
-                {isLow && (
-                  <span className="flex items-center gap-0.5 text-xs font-semibold text-red-600">
-                    <AlertTriangle className="w-3 h-3" />
-                    {remaining} {ingredient.pack_unit} left
-                  </span>
-                )}
-                {hasNoOpen && (
-                  <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600">
-                    <AlertTriangle className="w-3 h-3" />
-                    No open pack
-                  </span>
-                )}
-                {newCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 text-xs font-semibold border border-sky-200">
-                    {newCount} new
-                  </span>
-                )}
-              </button>
-
-              {!isCollapsed && (
-                <div className="border-t border-border/50">
-                  {/* No open pack callout */}
-                  {hasNoOpen && (
-                    <div className="mx-4 mt-2.5 mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                      <p className="text-xs text-amber-800 flex-1">
-                        <strong>No open pack</strong> — open one of the batches below to start recording consumption for this ingredient.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Low-stock callout */}
-                  {currentOpenBatch && isLow && (
-                    <div className="mx-4 mt-2.5 mb-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                      <p className="text-xs text-red-700 flex-1">
-                        Only <strong>{remaining} {currentOpenBatch.pack_unit}</strong> remaining — not enough for one serving ({minNeeded} {currentOpenBatch.pack_unit} needed).
-                      </p>
-                      <button
-                        onClick={() => void openNewPack(currentOpenBatch.id, ingredient.id)}
-                        className="flex items-center gap-1 h-6 px-2.5 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700 shrink-0"
-                      >
-                        <PackagePlus className="w-3.5 h-3.5" />
-                        Open New Pack
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Batch table */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border/60 bg-muted/40">
-                          <th className="py-2 pl-5 pr-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Batch #</th>
-                          <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Status</th>
-                          <th className="py-2 px-3 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Consumed</th>
-                          <th className="py-2 px-3 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Balance</th>
-                          <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Inventory Level</th>
-                          <th className="py-2 pl-3 pr-4 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/40">
-                        {grpBatches.map(b => (
-                          <BatchTableRow
-                            key={b.id}
-                            batch={b}
-                            minNeeded={minNeeded}
-                            onOpen={openBatch}
-                            onConsume={consumeBatch}
-                            onDelete={deleteBatch}
-                          />
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </section>
+        {newBatches.length === 0 && !addingBatch ? (
+          <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+            No sealed batches. Use "Add Batch" to register a received pack.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/40">
+                  <th className="py-2 pl-5 pr-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Ingredient</th>
+                  <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Batch #</th>
+                  <th className="py-2 px-3 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Size</th>
+                  <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Added</th>
+                  <th className="py-2 pl-3 pr-5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {newBatches.map(b => (
+                  <tr key={b.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="py-2.5 pl-5 pr-3 font-medium text-foreground">{b.ingredient_name}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground font-mono text-xs">{b.batch_number}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums">{b.pack_size} {b.pack_unit}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground text-xs">{fmt(b.created_at)}</td>
+                    <td className="py-2.5 pl-3 pr-5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => void openBatch(b.id)}
+                          className="flex items-center gap-1 h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90"
+                        >
+                          <PackageOpen className="w-3 h-3" />
+                          Open
+                        </button>
+                        <button
+                          onClick={() => void deleteBatch(b.id)}
+                          className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          title="Delete batch"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
+
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 

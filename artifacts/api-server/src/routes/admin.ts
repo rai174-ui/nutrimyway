@@ -380,7 +380,7 @@ router.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res)
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const { rows: items } = await pool.query(
-    `SELECT mi.id, mi.center_id, mi.name, mi.description, mi.is_mandatory, mi.created_at,
+    `SELECT mi.id, mi.center_id, mi.name, mi.description, mi.is_mandatory, mi.flavours, mi.created_at,
        NOT EXISTS (
          SELECT 1 FROM menu_item_bom mb
          WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
@@ -411,12 +411,12 @@ router.post("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, description } = req.body as { name?: string; description?: string };
+  const { name, description, flavours } = req.body as { name?: string; description?: string; flavours?: string };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
 
   const { rows } = await pool.query(
-    "INSERT INTO menu_items (center_id, name, description) VALUES ($1,$2,$3) RETURNING *",
-    [centerId, name.trim(), description?.trim() ?? null]
+    "INSERT INTO menu_items (center_id, name, description, flavours) VALUES ($1,$2,$3,$4) RETURNING *",
+    [centerId, name.trim(), description?.trim() ?? null, flavours?.trim() ?? ""]
   );
   res.status(201).json({ ...rows[0], bom: [] });
 });
@@ -430,12 +430,12 @@ router.put("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
   if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
   if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, description } = req.body as { name?: string; description?: string };
+  const { name, description, flavours } = req.body as { name?: string; description?: string; flavours?: string };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
 
   const { rows } = await pool.query(
-    "UPDATE menu_items SET name=$1, description=$2 WHERE id=$3 RETURNING *",
-    [name.trim(), description?.trim() ?? null, itemId]
+    "UPDATE menu_items SET name=$1, description=$2, flavours=$3 WHERE id=$4 RETURNING *",
+    [name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", itemId]
   );
   res.json(rows[0]);
 });
@@ -1055,18 +1055,21 @@ router.post("/admin/centers/:centerId/members/:memberId/health-records", require
 // GET /api/admin/ingredients
 router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
   const { rows } = await pool.query(
-    "SELECT id, name, pack_size, pack_unit, created_at FROM ingredients ORDER BY name"
+    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, created_at FROM ingredients ORDER BY name"
   );
   res.json(rows);
 });
 
 // POST /api/admin/ingredients
 router.post("/admin/ingredients", requireAdmin, async (req, res) => {
-  const { name, pack_size, pack_unit } = req.body as { name?: string; pack_size?: number; pack_unit?: string };
+  const { name, pack_size, pack_unit, material_code, description, flavour } = req.body as {
+    name?: string; pack_size?: number; pack_unit?: string;
+    material_code?: string; description?: string; flavour?: string;
+  };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   const { rows } = await pool.query(
-    "INSERT INTO ingredients (name, pack_size, pack_unit) VALUES ($1,$2,$3) RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g"]
+    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null]
   );
   res.status(201).json(rows[0]);
 });
@@ -1074,11 +1077,14 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
 // PUT /api/admin/ingredients/:ingredientId
 router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
   const { ingredientId } = req.params;
-  const { name, pack_size, pack_unit } = req.body as { name?: string; pack_size?: number; pack_unit?: string };
+  const { name, pack_size, pack_unit, material_code, description, flavour } = req.body as {
+    name?: string; pack_size?: number; pack_unit?: string;
+    material_code?: string; description?: string; flavour?: string;
+  };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   const { rows } = await pool.query(
-    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3 WHERE id=$4 RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", Number(ingredientId)]
+    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6 WHERE id=$7 RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, Number(ingredientId)]
   );
   if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   res.json(rows[0]);

@@ -1,25 +1,34 @@
-import { useState, useEffect } from "react";
-import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
 import { apiPost, apiGet, apiPut, apiDelete, getAdminCenter, type Ingredient, type CenterMember } from "@/lib/api";
 
 const UNITS = ["g", "kg", "ml", "L", "pcs", "oz", "lb"];
 
-// ── Ingredient Master ─────────────────────────────────────────────────────────
+// ── Item Master ───────────────────────────────────────────────────────────────
 
-function IngredientMaster() {
+function ItemMaster() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const [newName, setNewName] = useState("");
   const [newSize, setNewSize] = useState("1");
   const [newUnit, setNewUnit] = useState("g");
-  const [saving, setSaving] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
+  const [newMaterialCode, setNewMaterialCode] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newFlavour, setNewFlavour] = useState("");
+
   const [editName, setEditName] = useState("");
   const [editSize, setEditSize] = useState("");
   const [editUnit, setEditUnit] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [editMaterialCode, setEditMaterialCode] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editFlavour, setEditFlavour] = useState("");
 
   async function load() {
     try {
@@ -35,9 +44,16 @@ function IngredientMaster() {
     setSaving(true); setError(null);
     try {
       await apiPost<Ingredient>("/admin/ingredients", {
-        name: newName.trim(), pack_size: Number(newSize) || 1, pack_unit: newUnit,
+        name: newName.trim(),
+        pack_size: Number(newSize) || 1,
+        pack_unit: newUnit,
+        material_code: newMaterialCode.trim() || null,
+        description: newDescription.trim() || null,
+        flavour: newFlavour.trim() || null,
       });
-      setNewName(""); setNewSize("1"); setNewUnit("g"); setAdding(false);
+      setNewName(""); setNewSize("1"); setNewUnit("g");
+      setNewMaterialCode(""); setNewDescription(""); setNewFlavour("");
+      setAdding(false);
       void load();
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -48,7 +64,12 @@ function IngredientMaster() {
     setSaving(true); setError(null);
     try {
       await apiPut<Ingredient>(`/admin/ingredients/${id}`, {
-        name: editName.trim(), pack_size: Number(editSize) || 1, pack_unit: editUnit,
+        name: editName.trim(),
+        pack_size: Number(editSize) || 1,
+        pack_unit: editUnit,
+        material_code: editMaterialCode.trim() || null,
+        description: editDescription.trim() || null,
+        flavour: editFlavour.trim() || null,
       });
       setEditId(null);
       void load();
@@ -57,7 +78,7 @@ function IngredientMaster() {
   }
 
   async function deleteIngredient(id: number) {
-    if (!confirm("Delete this ingredient? All batch records for this ingredient will also be removed.")) return;
+    if (!confirm("Delete this item? All batch records for it will also be removed.")) return;
     try {
       await apiDelete(`/admin/ingredients/${id}`);
       void load();
@@ -69,6 +90,9 @@ function IngredientMaster() {
     setEditName(ing.name);
     setEditSize(String(ing.pack_size));
     setEditUnit(ing.pack_unit);
+    setEditMaterialCode(ing.material_code ?? "");
+    setEditDescription(ing.description ?? "");
+    setEditFlavour(ing.flavour ?? "");
   }
 
   return (
@@ -79,8 +103,8 @@ function IngredientMaster() {
             <Package className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <h2 className="font-semibold text-foreground leading-tight">Ingredient Master</h2>
-            <p className="text-xs text-muted-foreground">Define ingredients and pack sizes used in BOM &amp; inventory</p>
+            <h2 className="font-semibold text-foreground leading-tight">Item Master</h2>
+            <p className="text-xs text-muted-foreground">Define items with material code, flavour and pack sizes used in BOM &amp; inventory</p>
           </div>
           <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
             {ingredients.length}
@@ -100,39 +124,61 @@ function IngredientMaster() {
       )}
 
       {adding && (
-        <div className="px-5 py-3 border-b border-dashed border-border bg-muted/30 flex flex-wrap items-center gap-2">
+        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              className="flex-1 min-w-[160px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Item name *"
+              onKeyDown={e => e.key === "Enter" && void addIngredient()}
+              autoFocus
+            />
+            <input
+              value={newMaterialCode}
+              onChange={e => setNewMaterialCode(e.target.value)}
+              className="w-36 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Material code"
+            />
+            <input
+              value={newFlavour}
+              onChange={e => setNewFlavour(e.target.value)}
+              className="w-32 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Flavour"
+            />
+          </div>
           <input
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            className="flex-1 min-w-[160px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder="Ingredient name…"
-            onKeyDown={e => e.key === "Enter" && void addIngredient()}
-            autoFocus
+            value={newDescription}
+            onChange={e => setNewDescription(e.target.value)}
+            className="w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="Description (optional)"
           />
-          <input
-            value={newSize}
-            onChange={e => setNewSize(e.target.value)}
-            type="number" min="0" step="any"
-            className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder="Pack size"
-          />
-          <select
-            value={newUnit}
-            onChange={e => setNewUnit(e.target.value)}
-            className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            {UNITS.map(u => <option key={u}>{u}</option>)}
-          </select>
-          <button
-            onClick={() => void addIngredient()}
-            disabled={!newName.trim() || saving}
-            className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-          >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
-          </button>
-          <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              value={newSize}
+              onChange={e => setNewSize(e.target.value)}
+              type="number" min="0" step="any"
+              className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Pack size"
+            />
+            <select
+              value={newUnit}
+              onChange={e => setNewUnit(e.target.value)}
+              className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {UNITS.map(u => <option key={u}>{u}</option>)}
+            </select>
+            <button
+              onClick={() => void addIngredient()}
+              disabled={!newName.trim() || saving}
+              className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
+            </button>
+            <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -144,64 +190,154 @@ function IngredientMaster() {
         <div className="divide-y divide-border">
           {ingredients.length === 0 && (
             <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-              No ingredients yet. Add one above — BOM and inventory can only use ingredients from this list.
+              No items yet. Add one above — BOM and inventory can only use items from this list.
             </p>
           )}
           {ingredients.map(ing => (
-            <div key={ing.id} className="flex items-center gap-3 px-5 py-3 group">
+            <div key={ing.id} className="group">
               {editId === ing.id ? (
-                <>
+                <div className="px-5 py-3 space-y-2 bg-muted/20">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className="flex-1 min-w-[140px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      placeholder="Item name *"
+                    />
+                    <input
+                      value={editMaterialCode}
+                      onChange={e => setEditMaterialCode(e.target.value)}
+                      className="w-32 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      placeholder="Material code"
+                    />
+                    <input
+                      value={editFlavour}
+                      onChange={e => setEditFlavour(e.target.value)}
+                      className="w-28 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      placeholder="Flavour"
+                    />
+                  </div>
                   <input
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={editDescription}
+                    onChange={e => setEditDescription(e.target.value)}
+                    className="w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Description"
                   />
-                  <input
-                    value={editSize}
-                    onChange={e => setEditSize(e.target.value)}
-                    type="number" min="0" step="any"
-                    className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <select
-                    value={editUnit}
-                    onChange={e => setEditUnit(e.target.value)}
-                    className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    {UNITS.map(u => <option key={u}>{u}</option>)}
-                  </select>
-                  <button
-                    onClick={() => void saveEdit(ing.id)}
-                    disabled={saving}
-                    className="text-primary hover:text-primary/80 disabled:opacity-40"
-                  >
-                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  </button>
-                  <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground">
-                    <X className="w-4 h-4" />
-                  </button>
-                </>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={editSize}
+                      onChange={e => setEditSize(e.target.value)}
+                      type="number" min="0" step="any"
+                      className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <select
+                      value={editUnit}
+                      onChange={e => setEditUnit(e.target.value)}
+                      className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      {UNITS.map(u => <option key={u}>{u}</option>)}
+                    </select>
+                    <button
+                      onClick={() => void saveEdit(ing.id)}
+                      disabled={saving}
+                      className="text-primary hover:text-primary/80 disabled:opacity-40"
+                    >
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <>
-                  <span className="flex-1 text-sm font-medium text-foreground">{ing.name}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">{ing.pack_size} {ing.pack_unit} / pack</span>
-                  <button
-                    onClick={() => startEdit(ing)}
-                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => void deleteIngredient(ing.id)}
-                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </>
+                <div className="flex items-start gap-3 px-5 py-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-foreground">{ing.name}</span>
+                      {ing.material_code && (
+                        <span className="text-[10px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{ing.material_code}</span>
+                      )}
+                      {ing.flavour && (
+                        <span className="text-[10px] bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full">{ing.flavour}</span>
+                      )}
+                    </div>
+                    {ing.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{ing.description}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">{ing.pack_size} {ing.pack_unit} / pack</p>
+                  </div>
+                  <div className="flex items-center gap-1 pt-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <button onClick={() => startEdit(ing)} className="text-muted-foreground hover:text-primary">
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => void deleteIngredient(ing.id)} className="text-muted-foreground hover:text-destructive">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Center QR Code ─────────────────────────────────────────────────────────────
+
+function CenterQRCode() {
+  const center = getAdminCenter();
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  if (!center) return null;
+
+  function downloadQR() {
+    const canvas = canvasRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const url = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `checkin-qr-${center!.id}.png`;
+    a.click();
+  }
+
+  return (
+    <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <QrCode className="w-4 h-4 text-primary" />
+        </div>
+        <div>
+          <h2 className="font-semibold text-foreground leading-tight">Check-In QR Code</h2>
+          <p className="text-xs text-muted-foreground">Members scan this QR to check in to your center</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center gap-4">
+        <div ref={canvasRef} className="p-4 bg-white rounded-2xl border border-border shadow-sm">
+          <QRCodeCanvas
+            value={center.id}
+            size={200}
+            level="M"
+            includeMargin={false}
+          />
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-foreground">{center.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Center ID: {center.id}</p>
+        </div>
+        <button
+          onClick={downloadQR}
+          className="flex items-center gap-2 h-9 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
+        >
+          <Download className="w-4 h-4" />
+          Download QR
+        </button>
+        <p className="text-xs text-muted-foreground text-center max-w-xs">
+          Print this QR and place it at your center entrance. Members tap "Scan QR" in the app to check in instantly.
+        </p>
+      </div>
     </div>
   );
 }
@@ -347,10 +483,12 @@ export default function SettingsPage() {
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-          <p className="text-muted-foreground text-sm mt-1">Manage ingredients master and center admin password</p>
+          <p className="text-muted-foreground text-sm mt-1">Manage item master, center QR code, and admin password</p>
         </div>
 
-        <IngredientMaster />
+        <ItemMaster />
+
+        <CenterQRCode />
 
         <MemberManager />
 

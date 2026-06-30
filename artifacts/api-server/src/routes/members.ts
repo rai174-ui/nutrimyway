@@ -173,7 +173,7 @@ router.get("/members/:id/center-menu", async (req, res) => {
 
   const centerId = checkin[0].center_id as string;
   const { rows } = await pool.query(
-    `SELECT mi.id, mi.name, mi.description,
+    `SELECT mi.id, mi.name, mi.description, mi.flavours,
        COALESCE(
          json_agg(
            json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit, 'kcal', mib.kcal)
@@ -184,7 +184,7 @@ router.get("/members/:id/center-menu", async (req, res) => {
      FROM menu_items mi
      LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
      WHERE mi.center_id = $1
-     GROUP BY mi.id, mi.name, mi.description, mi.created_at
+     GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.created_at
      ORDER BY mi.created_at`,
     [centerId]
   );

@@ -509,6 +509,23 @@ async function migrateAdminTables10(): Promise<void> {
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
 }
 
+async function migrateAdminTables11(): Promise<void> {
+  // Item Master: material code, item description, flavour on ingredients
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS material_code TEXT`);
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS description TEXT`);
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS flavour TEXT`);
+}
+
+async function migrateAdminTables12(): Promise<void> {
+  // Menu item flavour variants — comma-separated list of available flavours per item
+  await pool.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS flavours TEXT NOT NULL DEFAULT ''`);
+}
+
+async function migrateAdminTables13(): Promise<void> {
+  // Track selected flavour on each consumption log entry
+  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS selected_flavour TEXT`);
+}
+
 async function migrateAdminTables8(): Promise<void> {
   // Center access validity date — blocks login after this date when set
   await pool.query(`ALTER TABLE center_auth ADD COLUMN IF NOT EXISTS valid_until DATE`);
@@ -554,6 +571,9 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables8();
   await migrateAdminTables9();
   await migrateAdminTables10();
+  await migrateAdminTables11();
+  await migrateAdminTables12();
+  await migrateAdminTables13();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }

@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetMember, getGetMemberQueryKey, useGetDailySummary, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { Plus, LogIn, LogOut, MapPin } from "lucide-react";
+import { Plus, LogIn, LogOut, MapPin, Camera, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
+import { Html5Qrcode } from "html5-qrcode";
 
 const TODAY = new Date().toISOString().split('T')[0];
 const BASE = "/api";
@@ -51,6 +52,111 @@ function useMemberCenters(memberId: number | null) {
   return centers;
 }
 
+// ── QR Scanner Modal ──────────────────────────────────────────────────────────
+
+function QrScannerModal({ onScanned, onClose }: { onScanned: (centerId: string) => void; onClose: () => void }) {
+  const [err, setErr] = useState<string | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const didScan = useRef(false);
+
+  useEffect(() => {
+    const scanner = new Html5Qrcode("nmw-qr-container");
+    scannerRef.current = scanner;
+
+    scanner.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      (decoded) => {
+        if (didScan.current) return;
+        didScan.current = true;
+        void scanner.stop().catch(() => {}).then(() => onScanned(decoded));
+      },
+      () => { /* per-frame errors are normal */ }
+    ).catch(() => setErr("Camera access denied. Please allow camera access in your browser settings and try again."));
+
+    return () => { void scannerRef.current?.stop().catch(() => {}); };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex flex-col items-center justify-center p-4">
+      <div className="bg-card rounded-2xl overflow-hidden w-full max-w-sm shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <h3 className="font-semibold text-foreground text-sm">Scan Check-In QR</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div id="nmw-qr-container" className="w-full" />
+        {err && <p className="px-4 pt-2 pb-1 text-xs text-destructive text-center">{err}</p>}
+        <p className="text-xs text-muted-foreground text-center py-3 px-4">
+          Point your camera at the QR code posted at the wellness center entrance
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Weight Prompt Modal ───────────────────────────────────────────────────────
+
+function WeightPromptModal({ memberId, onDone }: { memberId: number; onDone: () => void }) {
+  const [weight, setWeight] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function saveWeight() {
+    if (weight && Number(weight) > 0) {
+      setSaving(true);
+      try {
+        await fetch(`${BASE}/members/${memberId}/health-records`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ weight_kg: Number(weight) }),
+        });
+      } catch { /* ignore */ } finally { setSaving(false); }
+    }
+    onDone();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center p-4">
+      <div className="bg-card rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+            <span className="text-emerald-600 text-lg">✓</span>
+          </div>
+          <h3 className="font-semibold text-foreground">Checked In!</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-5 ml-11">Record your weight for today? (optional)</p>
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0" step="0.1"
+          value={weight}
+          onChange={e => setWeight(e.target.value)}
+          placeholder="Weight in kg, e.g. 72.5"
+          className="w-full h-11 px-3 rounded-xl border border-input bg-background text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-primary/40"
+          autoFocus
+        />
+        <div className="flex gap-2">
+          <button
+            onClick={() => void saveWeight()}
+            disabled={saving}
+            className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
+          >
+            {saving ? "Saving…" : weight ? "Save Weight" : "Skip"}
+          </button>
+          {weight ? (
+            <button onClick={onDone} className="h-11 px-4 rounded-xl border border-border text-sm text-muted-foreground">
+              Skip
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Check-In Card ─────────────────────────────────────────────────────────────
+
 function CheckInCard({ memberId, checkin, centers, onRefresh }: {
   memberId: number;
   checkin: CheckIn | null | undefined;
@@ -59,19 +165,33 @@ function CheckInCard({ memberId, checkin, centers, onRefresh }: {
 }) {
   const [busy, setBusy] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState("");
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [showWeightPrompt, setShowWeightPrompt] = useState(false);
 
-  async function handleCheckin() {
-    const cid = selectedCenter || centers[0]?.id;
-    if (!cid) return;
+  async function doCheckin(centerId: string) {
     setBusy(true);
     try {
       await fetch(`${BASE}/members/${memberId}/checkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ center_id: cid }),
+        body: JSON.stringify({ center_id: centerId }),
       });
-      onRefresh();
     } catch { /* ignore */ } finally { setBusy(false); }
+  }
+
+  async function handleCheckin() {
+    const cid = selectedCenter || centers[0]?.id;
+    if (!cid) return;
+    await doCheckin(cid);
+    onRefresh();
+  }
+
+  function handleQrScanned(centerId: string) {
+    setScannerOpen(false);
+    void doCheckin(centerId).then(() => {
+      onRefresh();
+      setShowWeightPrompt(true);
+    });
   }
 
   async function handleCheckout() {
@@ -116,29 +236,53 @@ function CheckInCard({ memberId, checkin, centers, onRefresh }: {
   }
 
   return (
-    <section className="bg-card border border-border rounded-[12px] p-5">
-      <p className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-        <MapPin className="w-4 h-4 text-primary" />
-        Check In to a Center
-      </p>
-      <div className="flex gap-2">
-        <select
-          value={selectedCenter}
-          onChange={e => setSelectedCenter(e.target.value)}
-          className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-        >
-          {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+    <>
+      <section className="bg-card border border-border rounded-[12px] p-5">
+        <p className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-primary" />
+          Check In to a Center
+        </p>
+        <div className="flex gap-2 mb-2">
+          <select
+            value={selectedCenter}
+            onChange={e => setSelectedCenter(e.target.value)}
+            className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <button
+            onClick={handleCheckin}
+            disabled={busy || centers.length === 0}
+            className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            <LogIn className="w-4 h-4" />
+            {busy ? "…" : "Check In"}
+          </button>
+        </div>
         <button
-          onClick={handleCheckin}
-          disabled={busy || centers.length === 0}
-          className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          onClick={() => setScannerOpen(true)}
+          disabled={busy}
+          className="w-full flex items-center justify-center gap-2 border border-border rounded-lg px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors disabled:opacity-50"
         >
-          <LogIn className="w-4 h-4" />
-          {busy ? "..." : "Check In"}
+          <Camera className="w-4 h-4" />
+          Scan QR Code
         </button>
-      </div>
-    </section>
+      </section>
+
+      {scannerOpen && (
+        <QrScannerModal
+          onScanned={handleQrScanned}
+          onClose={() => setScannerOpen(false)}
+        />
+      )}
+
+      {showWeightPrompt && (
+        <WeightPromptModal
+          memberId={memberId}
+          onDone={() => { setShowWeightPrompt(false); }}
+        />
+      )}
+    </>
   );
 }
 

@@ -36,6 +36,7 @@ interface CenterMenuItem {
   id: number;
   name: string;
   description: string | null;
+  flavours?: string | null;
   bom: BomComponent[];
 }
 
@@ -48,6 +49,7 @@ export function Log() {
   const [foodItem, setFoodItem] = useState("");
   const [checkin, setCheckin] = useState<ActiveCheckin | null>(null);
   const [centerMenu, setCenterMenu] = useState<CenterMenuItem[]>([]);
+  const [pendingItem, setPendingItem] = useState<CenterMenuItem | null>(null);
 
   useEffect(() => {
     if (!MEMBER_ID) return;
@@ -89,7 +91,7 @@ export function Log() {
     );
   };
 
-  const selectMenuItem = (item: CenterMenuItem) => {
+  const selectMenuItem = (item: CenterMenuItem, flavour?: string) => {
     const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
     const hasKcal = item.bom.some(b => b.kcal != null);
     createLog.mutate(
@@ -104,16 +106,26 @@ export function Log() {
           protein_g: null,
           carbs_g: null,
           fat_g: null,
+          selected_flavour: flavour ?? null,
         } as any
       },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) });
-          toast({ title: "Set menu item logged!" });
+          toast({ title: flavour ? `Logged: ${item.name} (${flavour})` : "Set menu item logged!" });
           setLocation("/dashboard");
         }
       }
     );
+  };
+
+  const handleMenuItemTap = (item: CenterMenuItem) => {
+    const flavourList = item.flavours?.split(",").map(f => f.trim()).filter(Boolean) ?? [];
+    if (flavourList.length > 0) {
+      setPendingItem(pendingItem?.id === item.id ? null : item);
+    } else {
+      selectMenuItem(item);
+    }
   };
 
   return (
@@ -154,38 +166,65 @@ export function Log() {
             {checkin.center_name} Set Menu
           </h2>
           <div className="bg-card border border-border rounded-[12px] overflow-hidden">
-            {centerMenu.length > 0 ? centerMenu.map((item, i) => (
-              <button
-                key={item.id}
-                onClick={() => selectMenuItem(item)}
-                disabled={createLog.isPending}
-                className={`w-full text-left px-4 py-3 flex justify-between items-start hover:bg-muted/50 transition-colors disabled:opacity-50 ${
-                  i !== centerMenu.length - 1 ? "border-b border-border" : ""
-                }`}
-              >
-                <div className="flex-1">
-                  <p className="font-medium text-sm">{item.name}</p>
-                  {item.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                  )}
-                  {item.bom.length > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {item.bom.map(b => `${b.ingredient} ${b.quantity}${b.unit}`).join(" · ")}
-                    </p>
+            {centerMenu.length > 0 ? centerMenu.map((item, i) => {
+              const flavourList = item.flavours?.split(",").map(f => f.trim()).filter(Boolean) ?? [];
+              const isPending = pendingItem?.id === item.id;
+              const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
+              const hasKcal = item.bom.some(b => b.kcal != null);
+              return (
+                <div key={item.id} className={i !== centerMenu.length - 1 ? "border-b border-border" : ""}>
+                  <button
+                    onClick={() => handleMenuItemTap(item)}
+                    disabled={createLog.isPending}
+                    className={`w-full text-left px-4 py-3 flex justify-between items-start hover:bg-muted/50 transition-colors disabled:opacity-50 ${isPending ? "bg-primary/5" : ""}`}
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{item.name}</p>
+                      {item.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                      )}
+                      {item.bom.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {item.bom.map(b => `${b.ingredient} ${b.quantity}${b.unit}`).join(" · ")}
+                        </p>
+                      )}
+                      {flavourList.length > 0 && !isPending && (
+                        <p className="text-xs text-primary mt-1 font-medium">Tap to choose flavour</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5 ml-3 flex-shrink-0">
+                      {hasKcal ? (
+                        <span className="text-xs font-semibold text-amber-600">{Math.round(totalKcal)} kcal</span>
+                      ) : null}
+                      <span className="text-xs text-muted-foreground">{item.bom.length} ing.</span>
+                    </div>
+                  </button>
+                  {isPending && flavourList.length > 0 && (
+                    <div className="px-4 pb-3 bg-primary/5 border-t border-primary/10">
+                      <p className="text-xs font-semibold text-primary mb-2 mt-2">Choose flavour:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {flavourList.map(f => (
+                          <button
+                            key={f}
+                            onClick={() => { selectMenuItem(item, f); }}
+                            disabled={createLog.isPending}
+                            className="px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+                          >
+                            {f}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setPendingItem(null)}
+                          className="px-3 py-1.5 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
-                <div className="flex flex-col items-end gap-0.5 ml-3 flex-shrink-0">
-                  {(() => {
-                    const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
-                    const hasKcal = item.bom.some(b => b.kcal != null);
-                    return hasKcal ? (
-                      <span className="text-xs font-semibold text-amber-600">{Math.round(totalKcal)} kcal</span>
-                    ) : null;
-                  })()}
-                  <span className="text-xs text-muted-foreground">{item.bom.length} ing.</span>
-                </div>
-              </button>
-            )) : (
+              );
+            }) : (
               <p className="p-4 text-sm text-muted-foreground text-center">No menu items at this center yet</p>
             )}
           </div>
