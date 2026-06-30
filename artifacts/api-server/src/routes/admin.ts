@@ -366,8 +366,8 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
     pool.query(
       `SELECT COALESCE(SUM(cl.calories_kcal), 0) AS total_calories
        FROM consumption_logs cl
-       JOIN menu_items mi ON mi.id = cl.menu_item_id
-       WHERE mi.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2`,
+       JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+       WHERE mcm.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2`,
       [centerId, today]
     ),
     pool.query(
