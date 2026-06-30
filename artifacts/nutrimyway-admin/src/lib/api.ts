@@ -241,7 +241,6 @@ export interface CenterFlavour {
   id: number;
   center_id: string;
   name: string;
-  serving_qty: number;
   available_days: string;
   created_at: string;
 }

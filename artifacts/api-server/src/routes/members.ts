@@ -253,13 +253,18 @@ router.post("/members/:id/checkout", async (req, res) => {
   for (const fsel of flavourSels) {
     const { rows: batches } = await pool.query(
       `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty,
-              COALESCE(cf.serving_qty, i.serving_qty, 1) AS serving_qty
+              COALESCE(
+                (SELECT mb.quantity FROM menu_item_bom mb
+                 JOIN visit_menu_selections vms ON vms.menu_item_id = mb.menu_item_id
+                 WHERE vms.checkin_id = $3 AND mb.ingredient_id = $1 LIMIT 1),
+                i.serving_qty,
+                1
+              ) AS serving_qty
        FROM ingredient_batches ib
        JOIN ingredients i ON i.id = ib.ingredient_id
-       LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $2
        WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
        ORDER BY ib.opened_at ASC LIMIT 1`,
-      [fsel.ingredient_id as number, checkin.center_id]
+      [fsel.ingredient_id as number, checkin.center_id, checkin.id]
     );
     if (!batches[0]) continue;
     const batchRow = batches[0] as { id: number; total_qty: number; serving_qty: number };

@@ -53,13 +53,11 @@ function FlavourMaster() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newServingQty, setNewServingQty] = useState("1");
   const [newDays, setNewDays] = useState<Day[]>([...ALL_DAYS]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [editId, setEditId] = useState<number | null>(null);
-  const [editServingQty, setEditServingQty] = useState("1");
   const [editDays, setEditDays] = useState<Day[]>([...ALL_DAYS]);
 
   async function load() {
@@ -78,10 +76,9 @@ function FlavourMaster() {
     try {
       await apiPost(`/admin/centers/${center.id}/flavours`, {
         name: newName.trim(),
-        serving_qty: Number(newServingQty) || 1,
         available_days: formatDays(newDays),
       });
-      setNewName(""); setNewServingQty("1"); setNewDays([...ALL_DAYS]); setAdding(false);
+      setNewName(""); setNewDays([...ALL_DAYS]); setAdding(false);
       void load();
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -89,7 +86,6 @@ function FlavourMaster() {
 
   function startEdit(f: CenterFlavour) {
     setEditId(f.id);
-    setEditServingQty(String(f.serving_qty ?? 1));
     setEditDays(parseDays(f.available_days ?? "all"));
   }
 
@@ -98,7 +94,6 @@ function FlavourMaster() {
     setSaving(true); setError(null);
     try {
       await apiPatch(`/admin/centers/${center.id}/flavours/${id}`, {
-        serving_qty: Number(editServingQty) || 1,
         available_days: formatDays(editDays),
       });
       setEditId(null);
@@ -132,7 +127,7 @@ function FlavourMaster() {
           </span>
         </div>
         <button
-          onClick={() => { setAdding(v => !v); setError(null); setNewName(""); setNewServingQty("1"); setNewDays([...ALL_DAYS]); }}
+          onClick={() => { setAdding(v => !v); setError(null); setNewName(""); setNewDays([...ALL_DAYS]); }}
           className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-xs font-medium"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -155,15 +150,6 @@ function FlavourMaster() {
               placeholder="Flavour name e.g. Chocolate"
               className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-violet-500"
             />
-            <div className="flex items-center gap-1">
-              <label className="text-xs text-muted-foreground whitespace-nowrap">Qty/serve</label>
-              <input
-                type="number" min="0.1" step="0.1"
-                value={newServingQty}
-                onChange={e => setNewServingQty(e.target.value)}
-                className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-violet-500"
-              />
-            </div>
             <button
               onClick={() => void addFlavour()}
               disabled={!newName.trim() || saving}
@@ -198,15 +184,6 @@ function FlavourMaster() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground flex-1">{f.name}</span>
-                    <div className="flex items-center gap-1">
-                      <label className="text-xs text-muted-foreground whitespace-nowrap">Qty/serve</label>
-                      <input
-                        type="number" min="0.1" step="0.1"
-                        value={editServingQty}
-                        onChange={e => setEditServingQty(e.target.value)}
-                        className="w-16 h-7 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-violet-500"
-                      />
-                    </div>
                     <button
                       onClick={() => void saveEdit(f.id)}
                       disabled={saving}
@@ -228,9 +205,6 @@ function FlavourMaster() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-violet-700">{f.name}</span>
-                      <span className="text-[10px] bg-orange-50 text-orange-600 border border-orange-200 px-1.5 py-0.5 rounded-full">
-                        {f.serving_qty} /serve
-                      </span>
                       {f.available_days && f.available_days !== "all" ? (
                         f.available_days.split(",").map(d => (
                           <span key={d} className="text-[10px] bg-violet-50 text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded-full">{d.trim()}</span>
