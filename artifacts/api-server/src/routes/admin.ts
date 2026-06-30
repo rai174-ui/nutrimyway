@@ -179,9 +179,11 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
   );
   for (const fsel of flavourSels) {
     const { rows: batches } = await pool.query(
-      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty, i.serving_qty
+      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty,
+              COALESCE(cf.serving_qty, i.serving_qty, 1) AS serving_qty
        FROM ingredient_batches ib
        JOIN ingredients i ON i.id = ib.ingredient_id
+       LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $2
        WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
        ORDER BY ib.opened_at ASC LIMIT 1`,
       [fsel.ingredient_id as number, centerId]
@@ -1268,7 +1270,7 @@ router.get("/admin/centers/:centerId/flavours", requireAdmin, async (req, res) =
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
   const { rows } = await pool.query(
-    "SELECT id, center_id, name, created_at FROM center_flavours WHERE center_id = $1 ORDER BY name",
+    "SELECT id, center_id, name, serving_qty, available_days, created_at FROM center_flavours WHERE center_id = $1 ORDER BY name",
     [centerId]
   );
   res.json(rows);
@@ -1279,14 +1281,32 @@ router.post("/admin/centers/:centerId/flavours", requireAdmin, async (req, res) 
   const { centerId } = req.params;
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
-  const { name } = req.body as { name?: string };
+  const { name, serving_qty, available_days } = req.body as { name?: string; serving_qty?: number; available_days?: string };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   const { rows } = await pool.query(
-    "INSERT INTO center_flavours (center_id, name) VALUES ($1, $2) ON CONFLICT (center_id, name) DO NOTHING RETURNING *",
-    [centerId, name.trim()]
+    "INSERT INTO center_flavours (center_id, name, serving_qty, available_days) VALUES ($1, $2, $3, $4) ON CONFLICT (center_id, name) DO NOTHING RETURNING *",
+    [centerId, name.trim(), serving_qty ?? 1, available_days ?? "all"]
   );
   if (!rows[0]) { res.status(409).json({ error: "Flavour already exists" }); return; }
   res.status(201).json(rows[0]);
+});
+
+// PATCH /api/admin/centers/:centerId/flavours/:flavourId
+router.patch("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, async (req, res) => {
+  const { centerId, flavourId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { serving_qty, available_days } = req.body as { serving_qty?: number; available_days?: string };
+  const { rows } = await pool.query(
+    `UPDATE center_flavours
+     SET serving_qty   = COALESCE($1, serving_qty),
+         available_days = COALESCE($2, available_days)
+     WHERE id = $3 AND center_id = $4
+     RETURNING *`,
+    [serving_qty ?? null, available_days ?? null, Number(flavourId), centerId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(rows[0]);
 });
 
 // DELETE /api/admin/centers/:centerId/flavours/:flavourId

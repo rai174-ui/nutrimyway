@@ -2,9 +2,48 @@ import { useState, useEffect, useRef } from "react";
 import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
-import { apiPost, apiGet, apiPut, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember } from "@/lib/api";
+import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember } from "@/lib/api";
 
 const UNITS = ["g", "kg", "ml", "L", "pcs", "oz", "lb"];
+const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+type Day = typeof ALL_DAYS[number];
+
+function parseDays(val: string): Day[] {
+  if (!val || val === "all") return [...ALL_DAYS];
+  return val.split(",").map(d => d.trim()).filter((d): d is Day => ALL_DAYS.includes(d as Day));
+}
+function formatDays(days: Day[]): string {
+  if (days.length === ALL_DAYS.length) return "all";
+  return days.join(",");
+}
+
+function DayPicker({ value, onChange }: { value: Day[]; onChange: (v: Day[]) => void }) {
+  function toggle(day: Day) {
+    onChange(
+      value.includes(day)
+        ? value.filter(d => d !== day)
+        : [...value, day].sort((a, b) => ALL_DAYS.indexOf(a) - ALL_DAYS.indexOf(b))
+    );
+  }
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {ALL_DAYS.map(day => (
+        <button
+          key={day}
+          type="button"
+          onClick={() => toggle(day)}
+          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
+            value.includes(day)
+              ? "bg-violet-600 text-white"
+              : "bg-muted text-muted-foreground hover:bg-violet-100 hover:text-violet-600"
+          }`}
+        >
+          {day}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ── Flavour Master ────────────────────────────────────────────────────────────
 
@@ -14,8 +53,14 @@ function FlavourMaster() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newServingQty, setNewServingQty] = useState("1");
+  const [newDays, setNewDays] = useState<Day[]>([...ALL_DAYS]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editServingQty, setEditServingQty] = useState("1");
+  const [editDays, setEditDays] = useState<Day[]>([...ALL_DAYS]);
 
   async function load() {
     if (!center) return;
@@ -31,8 +76,32 @@ function FlavourMaster() {
     if (!center || !newName.trim()) return;
     setSaving(true); setError(null);
     try {
-      await apiPost(`/admin/centers/${center.id}/flavours`, { name: newName.trim() });
-      setNewName(""); setAdding(false);
+      await apiPost(`/admin/centers/${center.id}/flavours`, {
+        name: newName.trim(),
+        serving_qty: Number(newServingQty) || 1,
+        available_days: formatDays(newDays),
+      });
+      setNewName(""); setNewServingQty("1"); setNewDays([...ALL_DAYS]); setAdding(false);
+      void load();
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  function startEdit(f: CenterFlavour) {
+    setEditId(f.id);
+    setEditServingQty(String(f.serving_qty ?? 1));
+    setEditDays(parseDays(f.available_days ?? "all"));
+  }
+
+  async function saveEdit(id: number) {
+    if (!center) return;
+    setSaving(true); setError(null);
+    try {
+      await apiPatch(`/admin/centers/${center.id}/flavours/${id}`, {
+        serving_qty: Number(editServingQty) || 1,
+        available_days: formatDays(editDays),
+      });
+      setEditId(null);
       void load();
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -56,14 +125,14 @@ function FlavourMaster() {
           </div>
           <div>
             <h2 className="font-semibold text-foreground leading-tight">Flavour Master</h2>
-            <p className="text-xs text-muted-foreground">Define flavour options available in Item Master</p>
+            <p className="text-xs text-muted-foreground">Set serving qty and available days per flavour</p>
           </div>
           <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
             {flavours.length}
           </span>
         </div>
         <button
-          onClick={() => { setAdding(v => !v); setError(null); setNewName(""); }}
+          onClick={() => { setAdding(v => !v); setError(null); setNewName(""); setNewServingQty("1"); setNewDays([...ALL_DAYS]); }}
           className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-xs font-medium"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -76,16 +145,25 @@ function FlavourMaster() {
       )}
 
       {adding && (
-        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30">
+        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-2">
           <div className="flex items-center gap-2">
             <input
               value={newName}
               onChange={e => setNewName(e.target.value)}
               onKeyDown={e => e.key === "Enter" && void addFlavour()}
               autoFocus
-              placeholder="Flavour name e.g. Chocolate, Vanilla"
+              placeholder="Flavour name e.g. Chocolate"
               className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-violet-500"
             />
+            <div className="flex items-center gap-1">
+              <label className="text-xs text-muted-foreground whitespace-nowrap">Qty/serve</label>
+              <input
+                type="number" min="0.1" step="0.1"
+                value={newServingQty}
+                onChange={e => setNewServingQty(e.target.value)}
+                className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-violet-500"
+              />
+            </div>
             <button
               onClick={() => void addFlavour()}
               disabled={!newName.trim() || saving}
@@ -96,6 +174,10 @@ function FlavourMaster() {
             <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
               <X className="w-4 h-4" />
             </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted-foreground whitespace-nowrap">Available</label>
+            <DayPicker value={newDays} onChange={setNewDays} />
           </div>
         </div>
       )}
@@ -109,14 +191,66 @@ function FlavourMaster() {
           No flavours yet. Add some above — they'll appear as a dropdown in Item Master.
         </p>
       ) : (
-        <div className="flex flex-wrap gap-2 px-5 py-4">
+        <div className="divide-y divide-border">
           {flavours.map(f => (
-            <span key={f.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-sm">
-              {f.name}
-              <button onClick={() => void deleteFlavour(f.id)} className="text-violet-400 hover:text-red-500 transition-colors">
-                <X className="w-3 h-3" />
-              </button>
-            </span>
+            <div key={f.id} className="group px-5 py-3">
+              {editId === f.id ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground flex-1">{f.name}</span>
+                    <div className="flex items-center gap-1">
+                      <label className="text-xs text-muted-foreground whitespace-nowrap">Qty/serve</label>
+                      <input
+                        type="number" min="0.1" step="0.1"
+                        value={editServingQty}
+                        onChange={e => setEditServingQty(e.target.value)}
+                        className="w-16 h-7 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                    </div>
+                    <button
+                      onClick={() => void saveEdit(f.id)}
+                      disabled={saving}
+                      className="text-violet-600 hover:text-violet-700 disabled:opacity-40"
+                    >
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground whitespace-nowrap">Available</label>
+                    <DayPicker value={editDays} onChange={setEditDays} />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-violet-700">{f.name}</span>
+                      <span className="text-[10px] bg-orange-50 text-orange-600 border border-orange-200 px-1.5 py-0.5 rounded-full">
+                        {f.serving_qty} /serve
+                      </span>
+                      {f.available_days && f.available_days !== "all" ? (
+                        f.available_days.split(",").map(d => (
+                          <span key={d} className="text-[10px] bg-violet-50 text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded-full">{d.trim()}</span>
+                        ))
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">All days</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <button onClick={() => startEdit(f)} className="text-muted-foreground hover:text-violet-600">
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => void deleteFlavour(f.id)} className="text-muted-foreground hover:text-destructive">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}

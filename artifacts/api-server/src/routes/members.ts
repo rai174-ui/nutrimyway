@@ -252,9 +252,11 @@ router.post("/members/:id/checkout", async (req, res) => {
   );
   for (const fsel of flavourSels) {
     const { rows: batches } = await pool.query(
-      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty, i.serving_qty
+      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty,
+              COALESCE(cf.serving_qty, i.serving_qty, 1) AS serving_qty
        FROM ingredient_batches ib
        JOIN ingredients i ON i.id = ib.ingredient_id
+       LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $2
        WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
        ORDER BY ib.opened_at ASC LIMIT 1`,
       [fsel.ingredient_id as number, checkin.center_id]
@@ -333,10 +335,12 @@ router.get("/members/:id/checkin-options", async (req, res) => {
     `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.unit
      FROM ingredients i
      JOIN ingredient_batches ib ON ib.ingredient_id = i.id
+     LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
      WHERE i.flavour IS NOT NULL AND i.flavour != ''
        AND ib.center_id = $1 AND ib.status = 'open'
+       AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
      ORDER BY i.id, i.name`,
-    [centerId]
+    [centerId, `%${todayDay}%`]
   );
 
   const { rows: menuSels } = await pool.query(

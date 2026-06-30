@@ -610,6 +610,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables19();
   await migrateAdminTables20();
   await migrateAdminTables21();
+  await migrateAdminTables22();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -623,6 +624,12 @@ async function migrateAdminTables20(): Promise<void> {
 async function migrateAdminTables21(): Promise<void> {
   // Serving quantity per visit for flavoured items — how many units are consumed per member checkout
   await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS serving_qty REAL NOT NULL DEFAULT 1`);
+}
+
+async function migrateAdminTables22(): Promise<void> {
+  // Serving qty and day-of-week availability are now managed per flavour in the Flavour Master
+  await pool.query(`ALTER TABLE center_flavours ADD COLUMN IF NOT EXISTS serving_qty REAL NOT NULL DEFAULT 1`);
+  await pool.query(`ALTER TABLE center_flavours ADD COLUMN IF NOT EXISTS available_days TEXT NOT NULL DEFAULT 'all'`);
 }
 
 async function migrateAdminTables19(): Promise<void> {
