@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useGetMember, getGetMemberQueryKey, useGetDailySummary, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { Plus, LogIn, LogOut, MapPin, Camera, X } from "lucide-react";
+import { Plus, LogOut, MapPin, Camera, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -158,14 +158,12 @@ function WeightPromptModal({ memberId, onDone }: { memberId: number; onDone: () 
 
 // ── Check-In Card ─────────────────────────────────────────────────────────────
 
-function CheckInCard({ memberId, checkin, centers, onRefresh }: {
+function CheckInCard({ memberId, checkin, onRefresh }: {
   memberId: number;
   checkin: CheckIn | null | undefined;
-  centers: Center[];
   onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [selectedCenter, setSelectedCenter] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [showWeightPrompt, setShowWeightPrompt] = useState(false);
 
@@ -178,13 +176,6 @@ function CheckInCard({ memberId, checkin, centers, onRefresh }: {
         body: JSON.stringify({ center_id: centerId }),
       });
     } catch { /* ignore */ } finally { setBusy(false); }
-  }
-
-  async function handleCheckin() {
-    const cid = selectedCenter || centers[0]?.id;
-    if (!cid) return;
-    await doCheckin(cid);
-    onRefresh();
   }
 
   function handleQrScanned(centerId: string) {
@@ -238,35 +229,21 @@ function CheckInCard({ memberId, checkin, centers, onRefresh }: {
 
   return (
     <>
-      <section className="bg-card border border-border rounded-[12px] p-5">
-        <p className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-primary" />
-          Check In to a Center
-        </p>
-        <div className="flex gap-2 mb-2">
-          <select
-            value={selectedCenter}
-            onChange={e => setSelectedCenter(e.target.value)}
-            className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <button
-            onClick={handleCheckin}
-            disabled={busy || centers.length === 0}
-            className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            <LogIn className="w-4 h-4" />
-            {busy ? "…" : "Check In"}
-          </button>
+      <section className="bg-card border border-border rounded-[12px] p-4 flex items-center gap-4">
+        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <Camera className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-foreground">Not checked in</p>
+          <p className="text-xs text-muted-foreground">Scan the QR at your wellness center</p>
         </div>
         <button
           onClick={() => setScannerOpen(true)}
           disabled={busy}
-          className="w-full flex items-center justify-center gap-2 border border-border rounded-lg px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-medium px-3 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors flex-shrink-0"
         >
           <Camera className="w-4 h-4" />
-          Scan QR Code
+          Scan QR
         </button>
       </section>
 
@@ -280,7 +257,7 @@ function CheckInCard({ memberId, checkin, centers, onRefresh }: {
       {showWeightPrompt && (
         <WeightPromptModal
           memberId={memberId}
-          onDone={() => { setShowWeightPrompt(false); }}
+          onDone={() => setShowWeightPrompt(false)}
         />
       )}
     </>
@@ -300,7 +277,6 @@ export function Dashboard() {
   });
 
   const { checkin, reload: reloadCheckin } = useActiveCheckin(MEMBER_ID);
-  const centers = useMemberCenters(MEMBER_ID);
 
   function handleCheckinChange() {
     reloadCheckin();
@@ -359,7 +335,6 @@ export function Dashboard() {
         <CheckInCard
           memberId={MEMBER_ID}
           checkin={checkin}
-          centers={centers}
           onRefresh={handleCheckinChange}
         />
       )}

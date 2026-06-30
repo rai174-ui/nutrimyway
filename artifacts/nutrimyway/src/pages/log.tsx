@@ -9,6 +9,15 @@ import { useAuth } from "@/contexts/auth-context";
 function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
 const BASE = "/api";
 
+function autoSlot(): string {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const h = new Date(Date.now() + IST_OFFSET_MS).getUTCHours();
+  if (h < 12) return "Breakfast";
+  if (h < 15) return "Lunch";
+  if (h < 18) return "Snack";
+  return "Dinner";
+}
+
 const slots = [
   { id: "Breakfast", icon: Sunrise },
   { id: "Lunch", icon: Sun },
@@ -54,7 +63,7 @@ export function Log() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { memberId: MEMBER_ID } = useAuth();
-  const [activeSlot, setActiveSlot] = useState("Breakfast");
+  const [activeSlot, setActiveSlot] = useState(autoSlot);
   const [foodItem, setFoodItem] = useState("");
   const [customKcal, setCustomKcal] = useState("");
 

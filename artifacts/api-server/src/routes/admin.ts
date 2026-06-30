@@ -86,6 +86,14 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction): voi
 const AUTO_CHECKOUT_MINUTES = 180;
 
 // Shared helper: book consumption for all selections and mark check-in as checked out
+function slotForNowIST(): string {
+  const h = new Date(Date.now() + 5.5 * 60 * 60 * 1000).getUTCHours();
+  if (h < 12) return "Breakfast";
+  if (h < 15) return "Lunch";
+  if (h < 18) return "Snack";
+  return "Dinner";
+}
+
 async function bookAndCheckout(checkinId: number, memberId: number, centerId: string): Promise<void> {
   // Fetch all selections (mandatory + optional) for this visit
   const { rows: selections } = await pool.query(
@@ -118,11 +126,11 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
     );
     const totalKcal = Number((kcalRows[0] as { total_kcal: number }).total_kcal) || null;
 
-    // Log consumption
+    // Log consumption under the time-appropriate meal slot
     await pool.query(
       `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, calories_kcal, logged_at)
-       VALUES ($1, 'center_visit', $2, $3, $4, NOW())`,
-      [memberId, sel.name as string, sel.menu_item_id as number, totalKcal]
+       VALUES ($1, $5, $2, $3, $4, NOW())`,
+      [memberId, sel.name as string, sel.menu_item_id as number, totalKcal, slotForNowIST()]
     );
     // Deduct BOM quantities from the open ingredient batch (oldest open batch first)
     const { rows: bom } = await pool.query(
@@ -180,8 +188,8 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
     const foodLabel = `${fsel.name as string} – ${fsel.flavour as string}`;
     await pool.query(
       `INSERT INTO consumption_logs (member_id, meal_slot, food_item, calories_kcal, logged_at)
-       VALUES ($1, 'center_visit', $2, NULL, NOW())`,
-      [memberId, foodLabel]
+       VALUES ($1, $3, $2, NULL, NOW())`,
+      [memberId, foodLabel, slotForNowIST()]
     );
   }
   // Mark check-in as checked out
@@ -830,10 +838,11 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        ci.checked_in_at,
        ci.checked_out_at,
        EXISTS (
-         SELECT 1 FROM consumption_logs cl
-         WHERE cl.member_id = m.id
-           AND cl.meal_slot = 'center_visit'
-           AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+         SELECT 1 FROM member_check_ins mci2
+         WHERE mci2.member_id = m.id
+           AND mci2.center_id = $1
+           AND DATE(mci2.checked_in_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+           AND mci2.checked_out_at IS NOT NULL
        ) AS already_consumed_today
      FROM members m
      JOIN member_center_mapping mcm ON mcm.member_id = m.id
@@ -1038,14 +1047,15 @@ router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, 
     );
   }
 
-  // Check if the member already had a center_visit consumption booked today
+  // Check if the member already completed a center visit today (to avoid re-adding mandatory items)
   const { rows: todayLogs } = await pool.query(
-    `SELECT 1 FROM consumption_logs
+    `SELECT 1 FROM member_check_ins
      WHERE member_id = $1
-       AND meal_slot = 'center_visit'
-       AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+       AND center_id = $2
+       AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+       AND checked_out_at IS NOT NULL
      LIMIT 1`,
-    [Number(memberId)]
+    [Number(memberId), centerId]
   );
   const alreadyConsumedToday = !!todayLogs[0];
 
