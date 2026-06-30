@@ -103,6 +103,7 @@ export interface MenuItem {
   is_mandatory: boolean;
   is_available: boolean;
   flavours: string;
+  available_days: string;
   created_at: string;
   bom: BomComponent[];
 }

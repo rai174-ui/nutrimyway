@@ -234,6 +234,18 @@ function AddBomForm({ menuItemId, ingredients, onAdded }: {
   );
 }
 
+const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+function parseDays(val: string): string[] {
+  if (!val || val === "all") return [];
+  return val.split(",").map(d => d.trim()).filter(Boolean);
+}
+
+function formatDays(selected: string[]): string {
+  if (selected.length === 0 || selected.length === 7) return "all";
+  return selected.join(",");
+}
+
 function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
   item: MenuItem;
   ingredients: Ingredient[];
@@ -245,9 +257,22 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description ?? "");
   const [flavours, setFlavours] = useState(item.flavours ?? "");
+  const [selectedDays, setSelectedDays] = useState<string[]>(parseDays(item.available_days ?? "all"));
   const [saving, setSaving] = useState(false);
   const [togglingMandatory, setTogglingMandatory] = useState(false);
   const [bom, setBom] = useState<BomComponent[]>(item.bom);
+
+  const isAllDays = selectedDays.length === 0;
+
+  function toggleDay(day: string) {
+    setSelectedDays(prev => {
+      if (prev.includes(day)) {
+        const next = prev.filter(d => d !== day);
+        return next;
+      }
+      return [...prev, day].sort((a, b) => ALL_DAYS.indexOf(a as typeof ALL_DAYS[number]) - ALL_DAYS.indexOf(b as typeof ALL_DAYS[number]));
+    });
+  }
 
   async function toggleMandatory() {
     setTogglingMandatory(true);
@@ -261,7 +286,10 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const updated = await apiPut<MenuItem>(`/admin/menu-items/${item.id}`, { name, description, flavours });
+      const updated = await apiPut<MenuItem>(`/admin/menu-items/${item.id}`, {
+        name, description, flavours,
+        available_days: formatDays(selectedDays),
+      });
       onUpdate({ ...updated, bom });
       setEditing(false);
     } finally { setSaving(false); }
@@ -271,6 +299,10 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
     await apiDelete(bomDeletePath(item.id, bomId));
     setBom(prev => prev.filter(b => b.id !== bomId));
   }
+
+  const displayDays = item.available_days && item.available_days !== "all"
+    ? item.available_days.split(",").map(d => d.trim()).filter(Boolean)
+    : null;
 
   return (
     <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
@@ -287,6 +319,37 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
               <input value={flavours} onChange={e => setFlavours(e.target.value)}
                 className="h-8 px-3 text-xs rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
                 placeholder="Flavours (comma-separated, e.g. Chocolate, Vanilla, Strawberry)" />
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mr-1">Days:</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDays([])}
+                  className={`h-6 px-2.5 rounded-full text-[11px] font-semibold border transition-colors ${
+                    isAllDays
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  }`}
+                >
+                  All
+                </button>
+                {ALL_DAYS.map(day => {
+                  const active = selectedDays.includes(day);
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleDay(day)}
+                      className={`h-6 w-9 rounded-full text-[11px] font-semibold border transition-colors ${
+                        active
+                          ? "bg-indigo-600 text-white border-indigo-600"
+                          : "border-border text-muted-foreground hover:border-indigo-300 hover:text-indigo-600"
+                      }`}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <button onClick={saveItem} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
@@ -298,7 +361,7 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
         ) : (
           <>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-semibold text-foreground truncate">{item.name}</p>
                 {item.is_mandatory && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-teal-100 text-teal-700 rounded-full px-2 py-0.5 flex-shrink-0">
@@ -307,13 +370,18 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete }: {
                 )}
               </div>
               {item.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.description}</p>}
-              {item.flavours && item.flavours.trim() && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {item.flavours.split(",").filter(f => f.trim()).map(f => (
-                    <span key={f} className="text-[10px] bg-violet-100 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5 font-medium">{f.trim()}</span>
-                  ))}
-                </div>
-              )}
+              <div className="flex flex-wrap gap-1 mt-1">
+                {displayDays ? (
+                  displayDays.map(d => (
+                    <span key={d} className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-1.5 py-0.5 font-semibold">{d}</span>
+                  ))
+                ) : (
+                  <span className="text-[10px] text-muted-foreground/60">All days</span>
+                )}
+                {item.flavours && item.flavours.trim() && item.flavours.split(",").filter(f => f.trim()).map(f => (
+                  <span key={f} className="text-[10px] bg-violet-100 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5 font-medium">{f.trim()}</span>
+                ))}
+              </div>
             </div>
             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
               {bom.length} component{bom.length !== 1 ? "s" : ""}

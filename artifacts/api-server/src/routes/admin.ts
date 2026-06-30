@@ -418,7 +418,7 @@ router.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res)
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const { rows: items } = await pool.query(
-    `SELECT mi.id, mi.center_id, mi.name, mi.description, mi.is_mandatory, mi.flavours, mi.created_at,
+    `SELECT mi.id, mi.center_id, mi.name, mi.description, mi.is_mandatory, mi.flavours, mi.available_days, mi.created_at,
        NOT EXISTS (
          SELECT 1 FROM menu_item_bom mb
          WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
@@ -449,12 +449,12 @@ router.post("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, description, flavours } = req.body as { name?: string; description?: string; flavours?: string };
+  const { name, description, flavours, available_days } = req.body as { name?: string; description?: string; flavours?: string; available_days?: string };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
 
   const { rows } = await pool.query(
-    "INSERT INTO menu_items (center_id, name, description, flavours) VALUES ($1,$2,$3,$4) RETURNING *",
-    [centerId, name.trim(), description?.trim() ?? null, flavours?.trim() ?? ""]
+    "INSERT INTO menu_items (center_id, name, description, flavours, available_days) VALUES ($1,$2,$3,$4,$5) RETURNING *",
+    [centerId, name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all"]
   );
   res.status(201).json({ ...rows[0], bom: [] });
 });
@@ -468,12 +468,12 @@ router.put("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
   if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
   if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, description, flavours } = req.body as { name?: string; description?: string; flavours?: string };
+  const { name, description, flavours, available_days } = req.body as { name?: string; description?: string; flavours?: string; available_days?: string };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
 
   const { rows } = await pool.query(
-    "UPDATE menu_items SET name=$1, description=$2, flavours=$3 WHERE id=$4 RETURNING *",
-    [name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", itemId]
+    "UPDATE menu_items SET name=$1, description=$2, flavours=$3, available_days=$4 WHERE id=$5 RETURNING *",
+    [name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all", itemId]
   );
   res.json(rows[0]);
 });

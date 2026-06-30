@@ -176,8 +176,15 @@ router.get("/members/:id/center-menu", async (req, res) => {
   if (!checkin[0]) { res.json([]); return; }
 
   const centerId = checkin[0].center_id as string;
+
+  // Determine today's day abbreviation in IST (Asia/Kolkata = UTC+5:30)
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayDay = dayNames[nowIst.getUTCDay()];
+
   const { rows } = await pool.query(
-    `SELECT mi.id, mi.name, mi.description, mi.flavours,
+    `SELECT mi.id, mi.name, mi.description, mi.flavours, mi.available_days,
        COALESCE(
          json_agg(
            json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit, 'kcal', mib.kcal)
@@ -188,9 +195,10 @@ router.get("/members/:id/center-menu", async (req, res) => {
      FROM menu_items mi
      LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
      WHERE mi.center_id = $1
-     GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.created_at
+       AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
+     GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.available_days, mi.created_at
      ORDER BY mi.created_at`,
-    [centerId]
+    [centerId, `%${todayDay}%`]
   );
   res.json(rows);
 });

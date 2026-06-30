@@ -604,6 +604,12 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables13();
   await migrateAdminTables14();
   await migrateAdminTables15();
+  await migrateAdminTables16();
   await seedCenterPasswords();
   await seedSuperAdmin();
+}
+
+async function migrateAdminTables16(): Promise<void> {
+  // Day-of-week availability for menu items: 'all' or comma-separated e.g. 'Mon,Wed,Fri'
+  await pool.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS available_days TEXT NOT NULL DEFAULT 'all'`);
 }
