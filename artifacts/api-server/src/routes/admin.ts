@@ -732,7 +732,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
   const { rows } = await pool.query(
     `SELECT
        m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
-       m.dob, m.age_at_joining, m.valid_until,
+       m.dob, m.age_at_joining, m.valid_until, m.is_active,
        ci.id          AS checkin_id,
        ci.checked_in_at,
        ci.checked_out_at,
@@ -831,6 +831,51 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
     ]
   );
   res.json(rows[0]);
+});
+
+// PATCH /api/admin/centers/:centerId/members/:memberId/status — toggle active/inactive
+router.patch("/admin/centers/:centerId/members/:memberId/status", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
+
+  const { rows } = await pool.query(
+    `UPDATE members SET is_active = NOT is_active WHERE id = $1 RETURNING id, is_active`,
+    [Number(memberId)]
+  );
+  res.json(rows[0]);
+});
+
+// DELETE /api/admin/centers/:centerId/members/:memberId/hard-delete — permanently delete member
+router.delete("/admin/centers/:centerId/members/:memberId/hard-delete", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const mid = Number(memberId);
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [mid, centerId]
+  );
+  if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
+
+  // Delete in dependency order to avoid FK violations
+  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id IN (SELECT id FROM member_check_ins WHERE member_id = $1)`, [mid]);
+  await pool.query(`DELETE FROM member_check_ins WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM consumption_logs WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM issuances WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM health_records WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM member_center_mapping WHERE member_id = $1`, [mid]);
+  // Remove user_auth entries matching this member
+  await pool.query(`DELETE FROM user_auth WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM members WHERE id = $1`, [mid]);
+  res.status(204).send();
 });
 
 // PATCH /api/admin/centers/:centerId/members/:memberId/renew — extend validity by 32 days

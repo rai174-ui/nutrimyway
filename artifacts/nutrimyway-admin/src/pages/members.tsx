@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  UserPlus, LogIn, LogOut, Trash2, Users, Clock,
+  UserPlus, LogIn, LogOut, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
   Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus, Hash, RotateCcw, CalendarClock, Pencil, Save,
 } from "lucide-react";
@@ -828,6 +828,15 @@ function MemberRow({ member, centerId, onRefresh }: {
     finally { setEditSaving(false); }
   }
 
+  async function handleToggleStatus() {
+    setBusy(true);
+    try {
+      await apiPatch(`/admin/centers/${centerId}/members/${member.id}/status`);
+      onRefresh();
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy(false); }
+  }
+
   async function handleRenew() {
     if (!confirm(`Renew ${member.name}'s membership by 32 days?`)) return;
     setBusy(true);
@@ -851,18 +860,8 @@ function MemberRow({ member, centerId, onRefresh }: {
     finally { setBusy(false); }
   }
 
-  async function handleRemove() {
-    if (!confirm(`Remove ${member.name} from this center?`)) return;
-    setBusy(true);
-    try {
-      await apiDelete(`/admin/centers/${centerId}/members/${member.id}`);
-      onRefresh();
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
-    finally { setBusy(false); }
-  }
-
   return (
-    <div className={`border-b border-border last:border-0 ${isCheckedIn ? "bg-green-50/30" : ""}`}>
+    <div className={`border-b border-border last:border-0 ${isCheckedIn ? "bg-green-50/30" : ""} ${!member.is_active ? "opacity-55 bg-muted/20" : ""}`}>
       <div className="flex items-center gap-4 px-5 py-4">
         <div className="w-9 h-9 rounded-full bg-teal-pale flex items-center justify-center flex-shrink-0">
           <span className="text-sm font-bold text-teal-dark">
@@ -958,12 +957,12 @@ function MemberRow({ member, centerId, onRefresh }: {
             <Activity className="w-4 h-4" />
           </button>
           <button
-            onClick={handleRemove}
+            onClick={() => void handleToggleStatus()}
             disabled={busy}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors"
-            title="Remove from center"
+            className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${member.is_active ? "text-muted-foreground hover:text-amber-600 hover:bg-amber-50" : "text-amber-600 bg-amber-50 hover:bg-amber-100"}`}
+            title={member.is_active ? "Deactivate member" : "Activate member"}
           >
-            <Trash2 className="w-4 h-4" />
+            {member.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
           </button>
         </div>
       </div>
@@ -1061,6 +1060,7 @@ export default function MembersPage() {
   const center = getAdminCenter();
   const [members, setMembers] = useState<CenterMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
 
   function load() {
     if (!center) return;
@@ -1073,22 +1073,51 @@ export default function MembersPage() {
 
   useEffect(() => { load(); }, [center?.id]);
 
-  const checkedIn = members.filter(m => m.checkin_id);
-  const notCheckedIn = members.filter(m => !m.checkin_id);
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? members.filter(m =>
+        m.name.toLowerCase().includes(q) ||
+        m.mobile?.toLowerCase().includes(q) ||
+        m.email?.toLowerCase().includes(q) ||
+        m.membership_no?.toLowerCase().includes(q)
+      )
+    : members;
+
+  const checkedIn    = filtered.filter(m => m.checkin_id);
+  const notCheckedIn = filtered.filter(m => !m.checkin_id);
 
   return (
     <div className="min-h-screen bg-background">
       <Nav />
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Members</h1>
             <p className="text-muted-foreground text-sm mt-1">
-              {members.length} member{members.length !== 1 ? "s" : ""} · {checkedIn.length} checked in
+              {members.length} member{members.length !== 1 ? "s" : ""} · {members.filter(m => m.checkin_id).length} checked in
             </p>
           </div>
           {center && <AddMemberForm centerId={center.id} onAdded={load} />}
         </div>
+
+        {/* Search bar */}
+        {members.length > 0 && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by name, mobile, email or member ID…"
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-input bg-card text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="bg-card border border-border rounded-2xl p-6 text-center text-muted-foreground animate-pulse">Loading…</div>
@@ -1097,6 +1126,11 @@ export default function MembersPage() {
             <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
             <p className="font-medium text-foreground">No members yet</p>
             <p className="text-sm text-muted-foreground mt-1">Use "Onboard Member" to add the first member.</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center">
+            <Search className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No members match "<span className="font-medium text-foreground">{search}</span>"</p>
           </div>
         ) : (
           <>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2 } from "lucide-react";
+import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle } from "lucide-react";
 import { Nav } from "@/components/nav";
-import { apiPost, apiGet, apiPut, apiDelete, type Ingredient } from "@/lib/api";
+import { apiPost, apiGet, apiPut, apiDelete, getAdminCenter, type Ingredient, type CenterMember } from "@/lib/api";
 
 const UNITS = ["g", "kg", "ml", "L", "pcs", "oz", "lb"];
 
@@ -206,6 +206,100 @@ function IngredientMaster() {
   );
 }
 
+// ── Member Manager (permanent delete) ─────────────────────────────────────────
+
+function MemberManager() {
+  const center = getAdminCenter();
+  const [members, setMembers] = useState<CenterMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    if (!center) return;
+    setLoading(true);
+    try {
+      const data = await apiGet<CenterMember[]>(`/admin/centers/${center.id}/members`);
+      setMembers(data);
+    } finally { setLoading(false); }
+  }
+
+  useEffect(() => { void load(); }, [center?.id]);
+
+  async function handleDelete(m: CenterMember) {
+    if (!center) return;
+    if (!confirm(`Permanently delete ${m.name}?\n\nThis removes all their health records, meal logs, and login access. This cannot be undone.`)) return;
+    setDeletingId(m.id);
+    setError(null);
+    try {
+      await apiDelete(`/admin/centers/${center.id}/members/${m.id}/hard-delete`);
+      void load();
+    } catch (e) { setError((e as Error).message); }
+    finally { setDeletingId(null); }
+  }
+
+  return (
+    <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+          <Users className="w-4 h-4 text-red-500" />
+        </div>
+        <div>
+          <h2 className="font-semibold text-foreground leading-tight">Delete Member</h2>
+          <p className="text-xs text-muted-foreground">Permanently remove a member and all their data</p>
+        </div>
+      </div>
+
+      <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <p className="text-xs text-amber-800 leading-relaxed">
+          Deleting a member is permanent and cannot be undone. It removes their profile, all health records, meal logs, and login credentials.
+        </p>
+      </div>
+
+      {error && (
+        <div className="mb-4 text-sm text-destructive bg-destructive/8 border border-destructive/20 rounded-xl px-4 py-3">{error}</div>
+      )}
+
+      {loading ? (
+        <div className="text-center py-6 text-muted-foreground animate-pulse text-sm">Loading members…</div>
+      ) : members.length === 0 ? (
+        <div className="text-center py-6 text-muted-foreground text-sm">No members in this center</div>
+      ) : (
+        <div className="divide-y divide-border border border-border rounded-xl overflow-hidden">
+          {members.map(m => (
+            <div key={m.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-muted-foreground">
+                  {m.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{m.name}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {m.membership_no && <span className="mr-2">{m.membership_no}</span>}
+                  {m.mobile ?? m.email ?? "—"}
+                </p>
+              </div>
+              {!m.is_active && (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">Inactive</span>
+              )}
+              <button
+                onClick={() => void handleDelete(m)}
+                disabled={deletingId === m.id}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors flex-shrink-0"
+                title="Permanently delete member"
+              >
+                {deletingId === m.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -257,6 +351,8 @@ export default function SettingsPage() {
         </div>
 
         <IngredientMaster />
+
+        <MemberManager />
 
         <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
           <div className="flex items-center gap-3 mb-5">

@@ -176,6 +176,7 @@ export interface CenterMember {
   dob: string | null;
   age_at_joining: number | null;
   valid_until: string | null;
+  is_active: boolean;
   checkin_id: number | null;
   checked_in_at: string | null;
   checked_out_at: string | null;
