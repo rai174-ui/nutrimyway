@@ -371,6 +371,7 @@ function VisitPanel({
   const [busy, setBusy] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"checkout" | "cancel" | null>(null);
   const [, forceUpdate] = useState(0);
 
   // Refresh time display every minute
@@ -623,30 +624,74 @@ function VisitPanel({
       )}
 
       {/* Checkout footer */}
-      <div className="flex items-center justify-between pt-2 border-t border-border/50 gap-3 flex-wrap">
-        <p className="text-xs text-muted-foreground flex-1">
-          {selectionCount > 0
-            ? `${selectionCount} item${selectionCount !== 1 ? "s" : ""} will be logged at checkout`
-            : "No items selected — consumption will not be logged"}
-        </p>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => void handleCancelCheckin()}
-            disabled={checkingOut}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/5 disabled:opacity-50 transition-colors"
-            title="Check out without recording any consumption"
-          >
-            {checkingOut ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
-            Cancel Check-in
-          </button>
-          <button
-            onClick={() => void handleCheckout()}
-            disabled={checkingOut}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
-          >
-            {checkingOut ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
-            Check Out & Book
-          </button>
+      <div className="pt-2 border-t border-border/50 space-y-2">
+        {/* Confirmation prompt */}
+        {pendingAction && (
+          <div className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border ${
+            pendingAction === "cancel"
+              ? "bg-red-50 border-red-200"
+              : "bg-amber-50 border-amber-200"
+          }`}>
+            <p className={`text-xs font-medium flex-1 ${pendingAction === "cancel" ? "text-red-800" : "text-amber-800"}`}>
+              {pendingAction === "cancel"
+                ? `Cancel ${member.name}'s check-in? No consumption will be recorded.`
+                : selectionCount > 0
+                  ? `Check out ${member.name} and log ${selectionCount} item${selectionCount !== 1 ? "s" : ""}?`
+                  : `Check out ${member.name}? No items are selected — nothing will be logged.`}
+            </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setPendingAction(null)}
+                disabled={checkingOut}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                Go back
+              </button>
+              <button
+                onClick={() => {
+                  if (pendingAction === "cancel") void handleCancelCheckin();
+                  else void handleCheckout();
+                  setPendingAction(null);
+                }}
+                disabled={checkingOut}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50 transition-colors ${
+                  pendingAction === "cancel"
+                    ? "bg-red-500 hover:bg-red-600"
+                    : "bg-amber-500 hover:bg-amber-600"
+                }`}
+              >
+                {checkingOut ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                {pendingAction === "cancel" ? "Yes, cancel" : "Yes, check out"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-muted-foreground flex-1">
+            {selectionCount > 0
+              ? `${selectionCount} item${selectionCount !== 1 ? "s" : ""} will be logged at checkout`
+              : "No items selected — consumption will not be logged"}
+          </p>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setPendingAction("cancel")}
+              disabled={checkingOut || pendingAction === "cancel"}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/5 disabled:opacity-50 transition-colors"
+              title="Cancel this check-in without recording any consumption"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              Cancel Check-in
+            </button>
+            <button
+              onClick={() => setPendingAction("checkout")}
+              disabled={checkingOut || pendingAction === "checkout"}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+            >
+              {checkingOut ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+              Check Out & Book
+            </button>
+          </div>
         </div>
       </div>
     </div>
