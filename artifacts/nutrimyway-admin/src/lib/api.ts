@@ -255,6 +255,7 @@ export interface Ingredient {
   description: string | null;
   flavour: string | null;
   serving_qty: number;
+  kcal_per_serving: number | null;
   created_at: string;
 }
 

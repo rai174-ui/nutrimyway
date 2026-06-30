@@ -250,6 +250,7 @@ function ItemMaster() {
   const [newDescription, setNewDescription] = useState("");
   const [newFlavour, setNewFlavour] = useState("");
   const [newServingQty, setNewServingQty] = useState("1");
+  const [newKcalPerServing, setNewKcalPerServing] = useState("");
 
   const [editName, setEditName] = useState("");
   const [editUnit, setEditUnit] = useState("");
@@ -257,6 +258,7 @@ function ItemMaster() {
   const [editDescription, setEditDescription] = useState("");
   const [editFlavour, setEditFlavour] = useState("");
   const [editServingQty, setEditServingQty] = useState("1");
+  const [editKcalPerServing, setEditKcalPerServing] = useState("");
 
   async function load() {
     try {
@@ -283,9 +285,10 @@ function ItemMaster() {
         description: newDescription.trim() || null,
         flavour: newFlavour.trim() || null,
         serving_qty: Number(newServingQty) || 1,
+        kcal_per_serving: newKcalPerServing.trim() ? Number(newKcalPerServing) : null,
       });
       setNewName(""); setNewUnit("g");
-      setNewMaterialCode(""); setNewDescription(""); setNewFlavour(""); setNewServingQty("1");
+      setNewMaterialCode(""); setNewDescription(""); setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing("");
       setAdding(false);
       void load();
     } catch (e) { setError((e as Error).message); }
@@ -305,6 +308,7 @@ function ItemMaster() {
         description: editDescription.trim() || null,
         flavour: editFlavour.trim() || null,
         serving_qty: Number(editServingQty) || 1,
+        kcal_per_serving: editKcalPerServing.trim() ? Number(editKcalPerServing) : null,
       });
       setEditId(null);
       void load();
@@ -328,6 +332,7 @@ function ItemMaster() {
     setEditDescription(ing.description ?? "");
     setEditFlavour(ing.flavour ?? "");
     setEditServingQty(String(ing.serving_qty ?? 1));
+    setEditKcalPerServing(ing.kcal_per_serving != null ? String(ing.kcal_per_serving) : "");
   }
 
   return (
@@ -390,7 +395,7 @@ function ItemMaster() {
             className="w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder="Description (optional)"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <select
               value={newUnit}
               onChange={e => setNewUnit(e.target.value)}
@@ -406,6 +411,18 @@ function ItemMaster() {
                 step="0.1"
                 value={newServingQty}
                 onChange={e => setNewServingQty(e.target.value)}
+                className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <label className="text-xs text-muted-foreground whitespace-nowrap">kcal/serve</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={newKcalPerServing}
+                onChange={e => setNewKcalPerServing(e.target.value)}
+                placeholder="—"
                 className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -466,7 +483,7 @@ function ItemMaster() {
                     className="w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="Description"
                   />
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <select
                       value={editUnit}
                       onChange={e => setEditUnit(e.target.value)}
@@ -482,6 +499,18 @@ function ItemMaster() {
                         step="0.1"
                         value={editServingQty}
                         onChange={e => setEditServingQty(e.target.value)}
+                        className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <label className="text-xs text-muted-foreground whitespace-nowrap">kcal/serve</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={editKcalPerServing}
+                        onChange={e => setEditKcalPerServing(e.target.value)}
+                        placeholder="—"
                         className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                     </div>
@@ -510,6 +539,9 @@ function ItemMaster() {
                       )}
                       {ing.flavour && (
                         <span className="text-[10px] bg-orange-50 text-orange-600 border border-orange-200 px-1.5 py-0.5 rounded-full">{ing.serving_qty} {ing.pack_unit}/serve</span>
+                      )}
+                      {ing.flavour && ing.kcal_per_serving != null && (
+                        <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full">{ing.kcal_per_serving} kcal/serve</span>
                       )}
                     </div>
                     {ing.description && (

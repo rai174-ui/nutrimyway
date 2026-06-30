@@ -612,6 +612,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables21();
   await migrateAdminTables22();
   await migrateAdminTables23();
+  await migrateAdminTables24();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -631,6 +632,13 @@ async function migrateAdminTables23(): Promise<void> {
   // Link consumption log entries back to the check-in visit that generated them
   await pool.query(
     `ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS checkin_id INTEGER REFERENCES member_check_ins(id) ON DELETE SET NULL`
+  );
+}
+
+async function migrateAdminTables24(): Promise<void> {
+  // Kcal per serving for direct-flavour ingredients so checkout can log calories
+  await pool.query(
+    `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS kcal_per_serving REAL`
   );
 }
 

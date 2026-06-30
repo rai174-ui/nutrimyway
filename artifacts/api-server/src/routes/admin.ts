@@ -196,10 +196,16 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
     if (!batches[0]) continue;
     const batchRow = batches[0] as { id: number; total_qty: number; serving_qty: number };
     const foodLabel = `${fsel.name as string} – ${fsel.flavour as string}`;
+    // Look up kcal_per_serving for this ingredient to log calories
+    const { rows: kcalIngRows } = await pool.query(
+      `SELECT kcal_per_serving FROM ingredients WHERE id = $1`,
+      [fsel.ingredient_id as number]
+    );
+    const kcalPerServing = (kcalIngRows[0] as { kcal_per_serving: number | null } | undefined)?.kcal_per_serving ?? null;
     await pool.query(
       `INSERT INTO consumption_logs (member_id, meal_slot, food_item, quantity_g, calories_kcal, checkin_id, logged_at)
-       VALUES ($1, $3, $2, $4, NULL, $5, NOW())`,
-      [memberId, foodLabel, slotForNowIST(), batchRow.serving_qty, checkinId]
+       VALUES ($1, $3, $2, $4, $5, $6, NOW())`,
+      [memberId, foodLabel, slotForNowIST(), batchRow.serving_qty, kcalPerServing, checkinId]
     );
     // Deduct serving qty from the open batch
     await pool.query(
@@ -1325,21 +1331,21 @@ router.delete("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, asyn
 // GET /api/admin/ingredients
 router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
   const { rows } = await pool.query(
-    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, created_at FROM ingredients ORDER BY name"
+    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, created_at FROM ingredients ORDER BY name"
   );
   res.json(rows);
 });
 
 // POST /api/admin/ingredients
 router.post("/admin/ingredients", requireAdmin, async (req, res) => {
-  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty } = req.body as {
+  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving } = req.body as {
     name?: string; pack_size?: number; pack_unit?: string;
-    material_code?: string; description?: string; flavour?: string; serving_qty?: number;
+    material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   const { rows } = await pool.query(
-    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1]
+    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null]
   );
   res.status(201).json(rows[0]);
 });
@@ -1347,14 +1353,14 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
 // PUT /api/admin/ingredients/:ingredientId
 router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
   const { ingredientId } = req.params;
-  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty } = req.body as {
+  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving } = req.body as {
     name?: string; pack_size?: number; pack_unit?: string;
-    material_code?: string; description?: string; flavour?: string; serving_qty?: number;
+    material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   const { rows } = await pool.query(
-    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6, serving_qty=$7 WHERE id=$8 RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, Number(ingredientId)]
+    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6, serving_qty=$7, kcal_per_serving=$8 WHERE id=$9 RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, Number(ingredientId)]
   );
   if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   res.json(rows[0]);
