@@ -337,7 +337,7 @@ router.get("/members/:id/checkin-options", async (req, res) => {
   );
 
   const { rows: directFlavours } = await pool.query(
-    `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.unit
+    `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.pack_unit AS unit
      FROM ingredients i
      JOIN ingredient_batches ib ON ib.ingredient_id = i.id
      LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
