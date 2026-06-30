@@ -254,6 +254,16 @@ export interface IngredientBatch {
   consumed_at: string | null;
   created_at: string;
   consumed_qty: number;
+  assigned_member_id?: number | null;
+  assigned_member_name?: string | null;
+}
+
+export interface BatchAdjustment {
+  id: number;
+  batch_id: number;
+  qty_change: number;
+  note: string | null;
+  adjusted_at: string;
 }
 
 export interface IngredientRequirement {

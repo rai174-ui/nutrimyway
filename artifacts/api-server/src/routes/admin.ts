@@ -1108,10 +1108,15 @@ router.get("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (r
   const { rows } = await pool.query(
     `SELECT ib.id, ib.ingredient_id, i.name AS ingredient_name, i.pack_size, i.pack_unit,
             ib.center_id, ib.batch_number, ib.status, ib.opened_at, ib.consumed_at, ib.created_at,
+            ib.assigned_member_id, ib.assigned_member_name,
             COALESCE((
               SELECT SUM(bcl.quantity)
               FROM batch_consumption_logs bcl
               WHERE bcl.batch_id = ib.id
+            ), 0) + COALESCE((
+              SELECT SUM(ba.qty_change)
+              FROM batch_adjustments ba
+              WHERE ba.batch_id = ib.id
             ), 0) AS consumed_qty
      FROM ingredient_batches ib
      JOIN ingredients i ON i.id = ib.ingredient_id
@@ -1148,14 +1153,23 @@ router.post("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { ingredient_id, batch_number } = req.body as { ingredient_id?: number; batch_number?: string };
+  const { ingredient_id, batch_number, assigned_member_id, assigned_member_name } =
+    req.body as { ingredient_id?: number; batch_number?: string; assigned_member_id?: number; assigned_member_name?: string };
   if (!ingredient_id) { res.status(400).json({ error: "ingredient_id is required" }); return; }
   if (!batch_number?.trim()) { res.status(400).json({ error: "batch_number is required" }); return; }
 
+  // Member packs are immediately opened (they're "in use" by the member right away)
+  const isMemberPack = assigned_member_id != null;
   const { rows } = await pool.query(
-    `INSERT INTO ingredient_batches (ingredient_id, center_id, batch_number, status)
-     VALUES ($1, $2, $3, 'new') RETURNING *`,
-    [ingredient_id, centerId, batch_number.trim()]
+    `INSERT INTO ingredient_batches (ingredient_id, center_id, batch_number, status, opened_at, assigned_member_id, assigned_member_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [
+      ingredient_id, centerId, batch_number.trim(),
+      isMemberPack ? "open" : "new",
+      isMemberPack ? new Date() : null,
+      assigned_member_id ?? null,
+      assigned_member_name?.trim() ?? null,
+    ]
   );
   res.status(201).json(rows[0]);
 });
@@ -1172,14 +1186,16 @@ router.patch("/admin/ingredient-batches/:batchId/open", requireAdmin, async (req
   if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
   if (existing[0].status !== "new") { res.status(409).json({ error: "Only a 'new' batch can be opened" }); return; }
 
-  // Enforce: no other open batch for this ingredient at this center
-  const { rows: openCheck } = await pool.query(
-    "SELECT id FROM ingredient_batches WHERE ingredient_id=$1 AND center_id=$2 AND status='open'",
-    [existing[0].ingredient_id, existing[0].center_id]
-  );
-  if (openCheck.length > 0) {
-    res.status(409).json({ error: "There is already an open batch for this ingredient. Mark it as consumed first." });
-    return;
+  // Enforce: no other open center-stock batch for this ingredient (member packs are exempt)
+  if (!existing[0].assigned_member_id) {
+    const { rows: openCheck } = await pool.query(
+      "SELECT id FROM ingredient_batches WHERE ingredient_id=$1 AND center_id=$2 AND status='open' AND assigned_member_id IS NULL",
+      [existing[0].ingredient_id, existing[0].center_id]
+    );
+    if (openCheck.length > 0) {
+      res.status(409).json({ error: "There is already an open batch for this ingredient. Mark it as consumed first." });
+      return;
+    }
   }
 
   const { rows } = await pool.query(
@@ -1260,6 +1276,45 @@ router.post("/admin/ingredient-batches/:batchId/consumption-logs", requireAdmin,
     [Number(batchId), quantity, notes?.trim() ?? null]
   );
   res.status(201).json(rows[0]);
+});
+
+// ── Batch Adjustments ──────────────────────────────────────────────────────────
+
+// POST /api/admin/ingredient-batches/:batchId/adjust  — log a ± adjustment
+router.post("/admin/ingredient-batches/:batchId/adjust", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  if (!batch[0]) { res.status(404).json({ error: "Batch not found" }); return; }
+  if (batch[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (batch[0].status !== "open") { res.status(409).json({ error: "Adjustments can only be made to open batches" }); return; }
+
+  const { qty_change, note } = req.body as { qty_change?: number; note?: string };
+  if (qty_change === undefined || qty_change === null) { res.status(400).json({ error: "qty_change is required" }); return; }
+  if (qty_change === 0) { res.status(400).json({ error: "qty_change must be non-zero" }); return; }
+
+  const { rows } = await pool.query(
+    "INSERT INTO batch_adjustments (batch_id, qty_change, note) VALUES ($1,$2,$3) RETURNING *",
+    [Number(batchId), qty_change, note?.trim() ?? null]
+  );
+  res.status(201).json(rows[0]);
+});
+
+// GET /api/admin/ingredient-batches/:batchId/adjustments  — list adjustments
+router.get("/admin/ingredient-batches/:batchId/adjustments", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req as AdminRequest;
+
+  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  if (!batch[0]) { res.status(404).json({ error: "Batch not found" }); return; }
+  if (batch[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    "SELECT id, batch_id, qty_change, note, adjusted_at FROM batch_adjustments WHERE batch_id=$1 ORDER BY adjusted_at DESC",
+    [Number(batchId)]
+  );
+  res.json(rows);
 });
 
 // DELETE /api/admin/consumption-logs/:logId

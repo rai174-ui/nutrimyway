@@ -526,6 +526,29 @@ async function migrateAdminTables13(): Promise<void> {
   await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS selected_flavour TEXT`);
 }
 
+async function migrateAdminTables14(): Promise<void> {
+  // Member-assigned batches: a pack issued directly to a specific member
+  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS assigned_member_id INTEGER REFERENCES members(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS assigned_member_name TEXT`);
+  // Relax the one-open-per-ingredient constraint so member packs can coexist with center-stock
+  await pool.query(`DROP INDEX IF EXISTS uidx_ingredient_batches_open`);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uidx_ingredient_batches_open_center
+    ON ingredient_batches (ingredient_id, center_id)
+    WHERE status = 'open' AND assigned_member_id IS NULL
+  `);
+  // Batch adjustments: ± corrections on open batches with mandatory note
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS batch_adjustments (
+      id SERIAL PRIMARY KEY,
+      batch_id INTEGER NOT NULL REFERENCES ingredient_batches(id) ON DELETE CASCADE,
+      qty_change NUMERIC(10,3) NOT NULL,
+      note TEXT,
+      adjusted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
 async function migrateAdminTables8(): Promise<void> {
   // Center access validity date — blocks login after this date when set
   await pool.query(`ALTER TABLE center_auth ADD COLUMN IF NOT EXISTS valid_until DATE`);
@@ -574,6 +597,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables11();
   await migrateAdminTables12();
   await migrateAdminTables13();
+  await migrateAdminTables14();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }

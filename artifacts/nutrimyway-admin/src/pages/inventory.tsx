@@ -6,11 +6,13 @@ import {
   getAdminCenter,
   type Ingredient, type IngredientBatch, type BatchStatus,
   type BatchConsumptionLog, type IngredientRequirement,
+  type CenterMember, type BatchAdjustment,
 } from "@/lib/api";
 import {
   Plus, X, Loader2, Trash2, FileDown,
   PackageOpen, PackageCheck,
   ClipboardList, MinusCircle, AlertTriangle, PackagePlus,
+  SlidersHorizontal, Users,
 } from "lucide-react";
 
 function exportInventoryXlsx(batches: IngredientBatch[]) {
@@ -62,10 +64,11 @@ function StatusChip({ status }: { status: BatchStatus }) {
 // ── Quick Receipt Form ────────────────────────────────────────────────────────
 
 function QuickReceiptForm({
-  centerId, ingredients, onSuccess,
+  centerId, ingredients, members, onSuccess,
 }: {
   centerId: string;
   ingredients: Ingredient[];
+  members: CenterMember[];
   onSuccess: () => void;
 }) {
   const [ingredientId, setIngredientId] = useState<string>(
@@ -73,22 +76,35 @@ function QuickReceiptForm({
   );
   const [batchNumber, setBatchNumber] = useState("");
   const [openNow, setOpenNow] = useState(true);
+  const [assignMemberId, setAssignMemberId] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastReceived, setLastReceived] = useState<{ batch: string; opened: boolean } | null>(null);
+  const [lastReceived, setLastReceived] = useState<{ batch: string; member: string | null } | null>(null);
+
+  const isMemberPack = assignMemberId !== "";
+  const selectedMember = members.find(m => String(m.id) === assignMemberId);
 
   async function receive() {
     if (!ingredientId || !batchNumber.trim()) return;
     setSaving(true); setError(null); setLastReceived(null);
     try {
+      const body: Record<string, unknown> = {
+        ingredient_id: Number(ingredientId),
+        batch_number: batchNumber.trim(),
+      };
+      if (isMemberPack && selectedMember) {
+        body.assigned_member_id = selectedMember.id;
+        body.assigned_member_name = selectedMember.name;
+      }
       const batch = await apiPost<IngredientBatch>(
         `/admin/centers/${centerId}/ingredient-batches`,
-        { ingredient_id: Number(ingredientId), batch_number: batchNumber.trim() }
+        body
       );
-      if (openNow) {
+      // For center-stock packs, respect the "Open now?" toggle
+      if (!isMemberPack && openNow) {
         await apiPatch(`/admin/ingredient-batches/${batch.id}/open`);
       }
-      setLastReceived({ batch: batchNumber.trim(), opened: openNow });
+      setLastReceived({ batch: batchNumber.trim(), member: selectedMember?.name ?? null });
       setBatchNumber("");
       onSuccess();
     } catch (e) { setError((e as Error).message); }
@@ -103,7 +119,7 @@ function QuickReceiptForm({
         <PackagePlus className="w-5 h-5 text-primary" />
         <div>
           <h2 className="text-base font-semibold text-foreground leading-tight">Receive Stock</h2>
-          <p className="text-xs text-muted-foreground">Log an incoming pack for any ingredient</p>
+          <p className="text-xs text-muted-foreground">Log an incoming pack — assign to center stock or directly to a member</p>
         </div>
       </div>
 
@@ -113,7 +129,8 @@ function QuickReceiptForm({
         )}
         {lastReceived && !error && (
           <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium">
-            ✓ Batch &ldquo;{lastReceived.batch}&rdquo; received{lastReceived.opened ? " and opened for consumption" : " (sealed)"}.
+            ✓ Batch &ldquo;{lastReceived.batch}&rdquo; received
+            {lastReceived.member ? ` and assigned to ${lastReceived.member}` : (openNow ? " and opened for consumption" : " (sealed)")}.
           </div>
         )}
 
@@ -148,20 +165,40 @@ function QuickReceiptForm({
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Open now?
-            </label>
-            <label className="flex items-center gap-2 h-9 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={openNow}
-                onChange={e => setOpenNow(e.target.checked)}
-                className="w-4 h-4 rounded accent-primary"
-              />
-              <span className="text-sm text-foreground">Open for consumption</span>
-            </label>
-          </div>
+          {members.length > 0 && (
+            <div className="flex flex-col gap-1 min-w-[180px] flex-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Assign To
+              </label>
+              <select
+                value={assignMemberId}
+                onChange={e => setAssignMemberId(e.target.value)}
+                className="h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">— Center Stock —</option>
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {!isMemberPack && (
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Open now?
+              </label>
+              <label className="flex items-center gap-2 h-9 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={openNow}
+                  onChange={e => setOpenNow(e.target.checked)}
+                  className="w-4 h-4 rounded accent-primary"
+                />
+                <span className="text-sm text-foreground">Open for consumption</span>
+              </label>
+            </div>
+          )}
 
           <button
             onClick={() => void receive()}
@@ -169,7 +206,7 @@ function QuickReceiptForm({
             className="flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackagePlus className="w-4 h-4" />}
-            Receive
+            {isMemberPack ? "Assign to Member" : "Receive"}
           </button>
         </div>
       </div>
@@ -349,6 +386,110 @@ function ConsumptionPanel({
               >
                 <MinusCircle className="w-3.5 h-3.5" />
               </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Adjust Batch Form ─────────────────────────────────────────────────────────
+
+function AdjustBatchForm({
+  batch,
+  onDone,
+}: {
+  batch: IngredientBatch;
+  onDone: () => void;
+}) {
+  const [qty, setQty] = useState("");
+  const [sign, setSign] = useState<"+" | "-">("+");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [adjustments, setAdjustments] = useState<BatchAdjustment[]>([]);
+
+  useEffect(() => {
+    apiGet<BatchAdjustment[]>(`/admin/ingredient-batches/${batch.id}/adjustments`)
+      .then(setAdjustments)
+      .catch(() => {});
+  }, [batch.id]);
+
+  async function save() {
+    const q = Number(qty);
+    if (!q || q <= 0) { setError("Enter a positive number"); return; }
+    setSaving(true); setError(null);
+    const qtyChange = sign === "+" ? q : -q;
+    try {
+      const adj = await apiPost<BatchAdjustment>(
+        `/admin/ingredient-batches/${batch.id}/adjust`,
+        { qty_change: qtyChange, note: note.trim() || undefined }
+      );
+      setAdjustments(prev => [adj, ...prev]);
+      setQty(""); setNote("");
+      onDone();
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="px-5 py-3 bg-amber-50/50 border-t border-amber-200/70 space-y-2">
+      <p className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
+        <SlidersHorizontal className="w-3.5 h-3.5" />
+        Adjust Quantity — {batch.ingredient_name}
+      </p>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-lg border border-input overflow-hidden">
+          <button
+            onClick={() => setSign("+")}
+            className={`px-3 h-8 text-sm font-bold transition-colors ${sign === "+" ? "bg-emerald-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+          >+</button>
+          <button
+            onClick={() => setSign("-")}
+            className={`px-3 h-8 text-sm font-bold transition-colors ${sign === "-" ? "bg-red-500 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+          >−</button>
+        </div>
+        <div className="relative">
+          <input
+            value={qty}
+            onChange={e => setQty(e.target.value)}
+            type="number" min="0" step="any"
+            className="w-24 h-8 pl-2 pr-7 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-amber-400"
+            placeholder="Qty"
+            autoFocus
+          />
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">{batch.pack_unit}</span>
+        </div>
+        <input
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          className="flex-1 min-w-[160px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-amber-400"
+          placeholder="Reason (spillage, recount…)"
+          onKeyDown={e => e.key === "Enter" && void save()}
+        />
+        <button
+          onClick={() => void save()}
+          disabled={!qty || saving}
+          className="h-8 px-3 rounded-lg bg-amber-600 text-white text-xs font-semibold disabled:opacity-40 hover:bg-amber-700"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+        </button>
+        <button onClick={onDone} className="text-muted-foreground hover:text-foreground">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      {adjustments.length > 0 && (
+        <div className="space-y-0.5 pt-1 border-t border-amber-200/60">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Recent adjustments</p>
+          {adjustments.slice(0, 5).map(a => (
+            <div key={a.id} className="flex items-center gap-2 text-xs">
+              <span className={`font-semibold tabular-nums w-16 shrink-0 ${Number(a.qty_change) > 0 ? "text-emerald-700" : "text-red-600"}`}>
+                {Number(a.qty_change) > 0 ? "+" : ""}{Number(a.qty_change)} {batch.pack_unit}
+              </span>
+              <span className="text-muted-foreground flex-1 truncate">{a.note ?? "—"}</span>
+              <span className="text-muted-foreground/70 shrink-0">{fmtTime(a.adjusted_at)}</span>
             </div>
           ))}
         </div>
@@ -539,20 +680,21 @@ function BatchInventory({
 }) {
   const [addingBatch, setAddingBatch] = useState(false);
   const [pendingIngredientId, setPendingIngredientId] = useState<number | undefined>();
+  const [adjustingId, setAdjustingId] = useState<number | null>(null);
 
   const activeBatches = useMemo(() => batches.filter(b => b.status !== "consumed"), [batches]);
 
-  // Open Batches: one entry per ingredient that currently has an open pack
+  // Center-stock open batches only (no member-assigned packs)
   const openGroups = useMemo(() => {
     const map = new Map<number, { ingredient: Ingredient; openBatch: IngredientBatch; reserveCount: number }>();
     for (const b of activeBatches) {
-      if (b.status === "open") {
+      if (b.status === "open" && !b.assigned_member_id) {
         const ing = ingredients.find(i => i.id === b.ingredient_id);
         if (ing) map.set(ing.id, { ingredient: ing, openBatch: b, reserveCount: 0 });
       }
     }
     for (const b of activeBatches) {
-      if (b.status === "new") {
+      if (b.status === "new" && !b.assigned_member_id) {
         const entry = map.get(b.ingredient_id);
         if (entry) entry.reserveCount++;
       }
@@ -560,10 +702,19 @@ function BatchInventory({
     return [...map.values()];
   }, [activeBatches, ingredients]);
 
-  // New Batches: flat list of all sealed / unopened batches
+  // Center-stock new (sealed) batches only
   const newBatches = useMemo(() =>
     activeBatches
-      .filter(b => b.status === "new")
+      .filter(b => b.status === "new" && !b.assigned_member_id)
+      .map(b => ({ ...b, ingredient: ingredients.find(i => i.id === b.ingredient_id) }))
+      .filter(b => b.ingredient),
+    [activeBatches, ingredients]
+  );
+
+  // Member-assigned packs (open or new, shown in their own section)
+  const memberBatches = useMemo(() =>
+    activeBatches
+      .filter(b => b.assigned_member_id != null)
       .map(b => ({ ...b, ingredient: ingredients.find(i => i.id === b.ingredient_id) }))
       .filter(b => b.ingredient),
     [activeBatches, ingredients]
@@ -616,49 +767,72 @@ function BatchInventory({
               const minNeeded = req ? Number(req.min_serving_qty) : 0;
               const isLow = minNeeded > 0 && remaining < minNeeded;
               const pct = Math.min(100, (consumed / openBatch.pack_size) * 100);
+              const isAdjusting = adjustingId === openBatch.id;
               return (
-                <div key={ingredient.id} className="px-5 py-3 flex items-center gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <span className="font-medium text-sm text-foreground">{ingredient.name}</span>
-                      {ingredient.material_code && (
-                        <span className="text-[10px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{ingredient.material_code}</span>
-                      )}
-                      {reserveCount > 0 && (
-                        <span className="text-[10px] text-sky-700 bg-sky-100 border border-sky-200 px-1.5 py-0.5 rounded-full font-semibold">{reserveCount} in reserve</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${isLow ? "bg-red-500" : "bg-emerald-500"}`}
-                          style={{ width: `${pct}%` }}
-                        />
+                <div key={ingredient.id}>
+                  <div className="px-5 py-3 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span className="font-medium text-sm text-foreground">{ingredient.name}</span>
+                        {ingredient.material_code && (
+                          <span className="text-[10px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{ingredient.material_code}</span>
+                        )}
+                        {reserveCount > 0 && (
+                          <span className="text-[10px] text-sky-700 bg-sky-100 border border-sky-200 px-1.5 py-0.5 rounded-full font-semibold">{reserveCount} in reserve</span>
+                        )}
                       </div>
-                      <span className={`text-xs font-semibold tabular-nums whitespace-nowrap ${isLow ? "text-red-600" : "text-emerald-700"}`}>
-                        {remaining} {ingredient.pack_unit} left
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${isLow ? "bg-red-500" : "bg-emerald-500"}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-semibold tabular-nums whitespace-nowrap ${isLow ? "text-red-600" : "text-emerald-700"}`}>
+                          {remaining} {ingredient.pack_unit} left
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => setAdjustingId(isAdjusting ? null : openBatch.id)}
+                        title="Adjust quantity"
+                        className={`flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border transition-colors ${
+                          isAdjusting
+                            ? "bg-amber-100 text-amber-700 border-amber-300"
+                            : "text-muted-foreground border-border hover:text-amber-700 hover:border-amber-300 hover:bg-amber-50"
+                        }`}
+                      >
+                        <SlidersHorizontal className="w-3 h-3" />
+                        Adjust
+                      </button>
+                      {isLow ? (
+                        <>
+                          <AlertTriangle className="w-4 h-4 text-red-500" />
+                          <button
+                            onClick={() => void openNewPack(openBatch.id, ingredient.id)}
+                            className="flex items-center gap-1 h-7 px-2.5 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
+                          >
+                            <PackagePlus className="w-3 h-3" />
+                            Open New Pack
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => void consumeBatch(openBatch.id)}
+                          title="Mark pack as fully consumed"
+                          className="text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          <MinusCircle className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
-                  {isLow ? (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <AlertTriangle className="w-4 h-4 text-red-500" />
-                      <button
-                        onClick={() => void openNewPack(openBatch.id, ingredient.id)}
-                        className="flex items-center gap-1 h-7 px-2.5 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
-                      >
-                        <PackagePlus className="w-3 h-3" />
-                        Open New Pack
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => void consumeBatch(openBatch.id)}
-                      title="Mark pack as fully consumed"
-                      className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      <MinusCircle className="w-4 h-4" />
-                    </button>
+                  {isAdjusting && (
+                    <AdjustBatchForm
+                      batch={openBatch}
+                      onDone={() => { onRefresh(); setAdjustingId(null); }}
+                    />
                   )}
                 </div>
               );
@@ -746,6 +920,84 @@ function BatchInventory({
           </div>
         )}
       </section>
+
+      {/* ── Member Packs ──────────────────────────────────────────── */}
+      {memberBatches.length > 0 && (
+        <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
+            <Users className="w-5 h-5 text-violet-600" />
+            <h2 className="text-base font-semibold text-foreground">Member Packs</h2>
+            <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+              {memberBatches.length} assigned
+            </span>
+          </div>
+          <div className="divide-y divide-border">
+            {memberBatches.map(b => {
+              const consumed = Number(b.consumed_qty);
+              const remaining = Math.max(0, b.pack_size - consumed);
+              const pct = b.pack_size > 0 ? Math.min(100, (consumed / b.pack_size) * 100) : 0;
+              const isAdjusting = adjustingId === b.id;
+              return (
+                <div key={b.id}>
+                  <div className="px-5 py-3 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">
+                          <Users className="w-3 h-3" />
+                          {b.assigned_member_name ?? "Member"}
+                        </span>
+                        <span className="font-medium text-sm text-foreground">{b.ingredient_name}</span>
+                        <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{b.batch_number}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-violet-500 transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap">
+                          {consumed} / {b.pack_size} {b.pack_unit}
+                        </span>
+                        <span className="text-xs font-semibold text-violet-700 tabular-nums whitespace-nowrap">
+                          {remaining} {b.pack_unit} left
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => setAdjustingId(isAdjusting ? null : b.id)}
+                        title="Adjust quantity"
+                        className={`flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border transition-colors ${
+                          isAdjusting
+                            ? "bg-amber-100 text-amber-700 border-amber-300"
+                            : "text-muted-foreground border-border hover:text-amber-700 hover:border-amber-300 hover:bg-amber-50"
+                        }`}
+                      >
+                        <SlidersHorizontal className="w-3 h-3" />
+                        Adjust
+                      </button>
+                      <button
+                        onClick={() => void consumeBatch(b.id)}
+                        title="Mark pack as fully consumed"
+                        className="text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <MinusCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  {isAdjusting && (
+                    <AdjustBatchForm
+                      batch={b}
+                      onDone={() => { onRefresh(); setAdjustingId(null); }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -758,6 +1010,7 @@ export default function InventoryPage() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [batches, setBatches] = useState<IngredientBatch[]>([]);
   const [requirements, setRequirements] = useState<IngredientRequirement[]>([]);
+  const [members, setMembers] = useState<CenterMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -765,14 +1018,16 @@ export default function InventoryPage() {
     if (!center) return;
     setError(null);
     try {
-      const [ings, bats, reqs] = await Promise.all([
+      const [ings, bats, reqs, mems] = await Promise.all([
         apiGet<Ingredient[]>("/admin/ingredients"),
         apiGet<IngredientBatch[]>(`/admin/centers/${center.id}/ingredient-batches`),
         apiGet<IngredientRequirement[]>(`/admin/centers/${center.id}/ingredient-requirements`),
+        apiGet<CenterMember[]>(`/admin/centers/${center.id}/members`),
       ]);
       setIngredients(ings);
       setBatches(bats);
       setRequirements(reqs);
+      setMembers(mems);
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }
@@ -804,6 +1059,7 @@ export default function InventoryPage() {
               <QuickReceiptForm
                 centerId={center.id}
                 ingredients={ingredients}
+                members={members}
                 onSuccess={fetchAll}
               />
             )}
