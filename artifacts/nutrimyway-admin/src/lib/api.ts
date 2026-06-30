@@ -205,6 +205,7 @@ export interface ConsumptionLog {
   calories_kcal: number | null;
   menu_item_id: number | null;
   menu_item_name: string | null;
+  checkin_id: number | null;
 }
 
 export interface ConsumptionReport {

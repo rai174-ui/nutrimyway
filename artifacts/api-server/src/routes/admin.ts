@@ -128,9 +128,9 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
 
     // Log consumption under the time-appropriate meal slot
     await pool.query(
-      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, calories_kcal, logged_at)
-       VALUES ($1, $5, $2, $3, $4, NOW())`,
-      [memberId, sel.name as string, sel.menu_item_id as number, totalKcal, slotForNowIST()]
+      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, calories_kcal, checkin_id, logged_at)
+       VALUES ($1, $5, $2, $3, $4, $6, NOW())`,
+      [memberId, sel.name as string, sel.menu_item_id as number, totalKcal, slotForNowIST(), checkinId]
     );
     // Deduct BOM quantities from the open ingredient batch (oldest open batch first)
     const { rows: bom } = await pool.query(
@@ -197,9 +197,9 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
     const batchRow = batches[0] as { id: number; total_qty: number; serving_qty: number };
     const foodLabel = `${fsel.name as string} – ${fsel.flavour as string}`;
     await pool.query(
-      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, calories_kcal, logged_at)
-       VALUES ($1, $3, $2, NULL, NOW())`,
-      [memberId, foodLabel, slotForNowIST()]
+      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, calories_kcal, checkin_id, logged_at)
+       VALUES ($1, $3, $2, NULL, $4, NOW())`,
+      [memberId, foodLabel, slotForNowIST(), checkinId]
     );
     // Deduct serving qty from the open batch
     await pool.query(
@@ -737,7 +737,7 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
   // qty and kcal fall back to BOM totals when the stored value is NULL (BOM-based check-in logs).
   const { rows: logsRaw } = await pool.query(
     `SELECT cl.id, cl.member_id, m.name AS member_name, cl.logged_at, cl.meal_slot,
-            cl.food_item,
+            cl.food_item, cl.checkin_id,
             COALESCE(
               cl.quantity_g,
               (SELECT SUM(mb.quantity) FROM menu_item_bom mb

@@ -611,6 +611,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables20();
   await migrateAdminTables21();
   await migrateAdminTables22();
+  await migrateAdminTables23();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -624,6 +625,13 @@ async function migrateAdminTables20(): Promise<void> {
 async function migrateAdminTables21(): Promise<void> {
   // Serving quantity per visit for flavoured items — how many units are consumed per member checkout
   await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS serving_qty REAL NOT NULL DEFAULT 1`);
+}
+
+async function migrateAdminTables23(): Promise<void> {
+  // Link consumption log entries back to the check-in visit that generated them
+  await pool.query(
+    `ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS checkin_id INTEGER REFERENCES member_check_ins(id) ON DELETE SET NULL`
+  );
 }
 
 async function migrateAdminTables22(): Promise<void> {

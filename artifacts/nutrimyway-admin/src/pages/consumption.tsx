@@ -165,7 +165,7 @@ export default function ConsumptionPage() {
                 <Calendar className="w-5 h-5 text-teal-base" />
               </div>
               <div>
-                <p className="text-xl font-bold">{data.logs.filter(l => l.menu_item_id).length}</p>
+                <p className="text-xl font-bold">{data.logs.filter(l => l.menu_item_id || l.checkin_id).length}</p>
                 <p className="text-xs text-muted-foreground">Via Check-in</p>
               </div>
             </div>
@@ -174,7 +174,7 @@ export default function ConsumptionPage() {
                 <Calendar className="w-5 h-5 text-amber-500" />
               </div>
               <div>
-                <p className="text-xl font-bold">{data.logs.filter(l => !l.menu_item_id).length}</p>
+                <p className="text-xl font-bold">{data.logs.filter(l => !l.menu_item_id && !l.checkin_id).length}</p>
                 <p className="text-xs text-muted-foreground">Self-logged</p>
               </div>
             </div>
@@ -283,12 +283,12 @@ export default function ConsumptionPage() {
             </div>
           ) : (() => {
             const visibleLogs = logFilter === "matched"
-              ? data.logs.filter(l => l.menu_item_id)
+              ? data.logs.filter(l => l.menu_item_id || l.checkin_id)
               : logFilter === "self"
-              ? data.logs.filter(l => !l.menu_item_id)
+              ? data.logs.filter(l => !l.menu_item_id && !l.checkin_id)
               : data.logs;
-            const matchedCount = data.logs.filter(l => l.menu_item_id).length;
-            const selfCount    = data.logs.filter(l => !l.menu_item_id).length;
+            const matchedCount = data.logs.filter(l => l.menu_item_id || l.checkin_id).length;
+            const selfCount    = data.logs.filter(l => !l.menu_item_id && !l.checkin_id).length;
             return (
               <>
                 {/* Filter pills */}
@@ -334,13 +334,27 @@ export default function ConsumptionPage() {
                             <td className="px-5 py-3 text-sm">
                               {log.menu_item_name
                                 ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-pale text-teal-dark">{log.menu_item_name}</span>
+                                : log.checkin_id
+                                ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-100 text-violet-700">Direct flavour</span>
                                 : <span className="text-[11px] text-muted-foreground/60 italic">Self-logged</span>
                               }
                             </td>
                             <td className="px-5 py-3 text-sm text-foreground">{log.food_item}</td>
                             <td className="px-5 py-3 text-sm text-muted-foreground">{log.meal_slot}</td>
-                            <td className="px-5 py-3 text-sm text-right tabular-nums">{log.quantity_g ?? "–"}</td>
-                            <td className="px-5 py-3 text-sm text-right tabular-nums">{log.calories_kcal ? Math.round(log.calories_kcal) : "–"}</td>
+                            <td className="px-5 py-3 text-sm text-right tabular-nums">
+                              {log.quantity_g != null
+                                ? log.quantity_g
+                                : log.checkin_id && !log.menu_item_id
+                                ? <span className="text-muted-foreground/40 text-xs">N/A</span>
+                                : "–"}
+                            </td>
+                            <td className="px-5 py-3 text-sm text-right tabular-nums">
+                              {log.calories_kcal != null
+                                ? Math.round(log.calories_kcal)
+                                : log.checkin_id && !log.menu_item_id
+                                ? <span className="text-muted-foreground/40 text-xs">N/A</span>
+                                : "–"}
+                            </td>
                             <td className="px-5 py-3 text-sm text-right text-muted-foreground">
                               {new Date(log.logged_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                             </td>
