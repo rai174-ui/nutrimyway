@@ -83,8 +83,6 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction): voi
   }
 }
 
-const AUTO_CHECKOUT_MINUTES = 180;
-
 // Shared helper: book consumption for all selections and mark check-in as checked out
 function slotForNowIST(): string {
   const h = new Date(Date.now() + 5.5 * 60 * 60 * 1000).getUTCHours();
@@ -233,13 +231,14 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
   );
 }
 
-// Auto-checkout sessions older than AUTO_CHECKOUT_MINUTES at a given center
+// Auto-checkout sessions older than the center's configured auto_checkout_min
 async function autoCheckoutExpired(centerId: string): Promise<void> {
   const { rows: expired } = await pool.query(
-    `SELECT id, member_id FROM member_check_ins
-     WHERE center_id = $1 AND checked_out_at IS NULL
-       AND NOW() - checked_in_at > ($2 || ' minutes')::INTERVAL`,
-    [centerId, AUTO_CHECKOUT_MINUTES]
+    `SELECT mci.id, mci.member_id FROM member_check_ins mci
+     JOIN centers c ON c.id = mci.center_id
+     WHERE mci.center_id = $1 AND mci.checked_out_at IS NULL
+       AND NOW() - mci.checked_in_at > (c.auto_checkout_min || ' minutes')::INTERVAL`,
+    [centerId]
   );
   for (const ci of expired) {
     await bookAndCheckout(ci.id as number, ci.member_id as number, centerId);
@@ -415,6 +414,30 @@ router.post("/admin/me/password", requireAdmin, async (req, res) => {
 router.get("/admin/centers", async (_req, res) => {
   const { rows } = await pool.query("SELECT id, name FROM centers WHERE is_active = TRUE ORDER BY name");
   res.json(rows);
+});
+
+// GET /api/admin/centers/:centerId/settings
+router.get("/admin/centers/:centerId/settings", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { rows } = await pool.query("SELECT auto_checkout_min FROM centers WHERE id = $1", [centerId]);
+  if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
+  res.json({ auto_checkout_min: rows[0].auto_checkout_min as number });
+});
+
+// PATCH /api/admin/centers/:centerId/settings
+router.patch("/admin/centers/:centerId/settings", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { auto_checkout_min } = req.body as { auto_checkout_min?: unknown };
+  const mins = Number(auto_checkout_min);
+  if (!Number.isFinite(mins) || mins < 10 || mins > 480) {
+    res.status(400).json({ error: "auto_checkout_min must be a number between 10 and 480" }); return;
+  }
+  await pool.query("UPDATE centers SET auto_checkout_min = $1 WHERE id = $2", [mins, centerId]);
+  res.json({ auto_checkout_min: mins });
 });
 
 // GET /api/admin/centers/:centerId/dashboard

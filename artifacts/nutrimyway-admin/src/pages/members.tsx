@@ -9,10 +9,8 @@ import {
 import { Nav } from "@/components/nav";
 import {
   apiGet, apiPost, apiPatch, apiDelete, getAdminCenter,
-  type CenterMember, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord,
+  type CenterMember, type CenterSettings, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord,
 } from "@/lib/api";
-
-const AUTO_CHECKOUT_MIN = 180;
 
 interface FlavourOption { id: number; name: string; flavour: string; unit: string; }
 interface FlavourSelection { id: number; checkin_id: number; ingredient_id: number; flavour: string; }
@@ -356,10 +354,11 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 // ── Checked-In Visit Panel ──────────────────────────────────────────────────
 
 function VisitPanel({
-  member, centerId, onCheckout,
+  member, centerId, autoCheckoutMin, onCheckout,
 }: {
   member: CenterMember;
   centerId: string;
+  autoCheckoutMin: number;
   onCheckout: () => void;
 }) {
   const checkinId = member.checkin_id!;
@@ -459,7 +458,7 @@ function VisitPanel({
   }
 
   const mins = minutesSince(member.checked_in_at!);
-  const remaining = AUTO_CHECKOUT_MIN - mins;
+  const remaining = autoCheckoutMin - mins;
   const mandatory = menuItems.filter(m => m.is_mandatory);
   const optional = menuItems.filter(m => !m.is_mandatory);
   const selectionCount = selections.length + flavourSelections.length;
@@ -487,8 +486,8 @@ function VisitPanel({
       <div className="flex items-center gap-3">
         <div className="flex-1 bg-border rounded-full h-1.5 overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all ${mins >= AUTO_CHECKOUT_MIN ? "bg-red-500" : mins >= 150 ? "bg-amber-400" : "bg-emerald-400"}`}
-            style={{ width: `${Math.min(100, (mins / AUTO_CHECKOUT_MIN) * 100)}%` }}
+            className={`h-full rounded-full transition-all ${mins >= autoCheckoutMin ? "bg-red-500" : mins >= autoCheckoutMin * 0.83 ? "bg-amber-400" : "bg-emerald-400"}`}
+            style={{ width: `${Math.min(100, (mins / autoCheckoutMin) * 100)}%` }}
           />
         </div>
         <span className={`text-xs font-medium tabular-nums flex-shrink-0 ${remaining <= 0 ? "text-red-500" : remaining <= 30 ? "text-amber-600" : "text-muted-foreground"}`}>
@@ -496,7 +495,7 @@ function VisitPanel({
             ? "Auto-checkout overdue"
             : remaining <= 30
             ? `Auto-checkout in ${remaining} min`
-            : `${mins} min of ${AUTO_CHECKOUT_MIN} min`}
+            : `${mins} min of ${autoCheckoutMin} min`}
         </span>
       </div>
 
@@ -915,8 +914,8 @@ function validityBadge(valid_until: string | null) {
   );
 }
 
-function MemberRow({ member, centerId, onRefresh }: {
-  member: CenterMember; centerId: string; onRefresh: () => void;
+function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
+  member: CenterMember; centerId: string; autoCheckoutMin: number; onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [showWeightForm, setShowWeightForm] = useState(false);
@@ -1124,7 +1123,7 @@ function MemberRow({ member, centerId, onRefresh }: {
       </div>
       {/* Expanded visit panel for checked-in members */}
       {isCheckedIn && (
-        <VisitPanel member={member} centerId={centerId} onCheckout={onRefresh} />
+        <VisitPanel member={member} centerId={centerId} autoCheckoutMin={autoCheckoutMin} onCheckout={onRefresh} />
       )}
       {showEditPanel && (
         <div className="border-t border-violet-100 bg-violet-50/40 px-5 py-4">
@@ -1432,6 +1431,7 @@ function HealthReportModal({ centerId, members, onClose }: {
 export default function MembersPage() {
   const center = getAdminCenter();
   const [members, setMembers] = useState<CenterMember[]>([]);
+  const [autoCheckoutMin, setAutoCheckoutMin] = useState(180);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showHealthReport, setShowHealthReport] = useState(false);
@@ -1448,6 +1448,13 @@ export default function MembersPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }
+
+  useEffect(() => {
+    if (!center) return;
+    apiGet<CenterSettings>(`/admin/centers/${center.id}/settings`)
+      .then(s => setAutoCheckoutMin(s.auto_checkout_min))
+      .catch(() => { /* keep default 180 */ });
+  }, [center?.id]);
 
   useEffect(() => { load(); }, [center?.id, expiringSoon]);
 
@@ -1553,12 +1560,12 @@ export default function MembersPage() {
                     <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                     Currently Checked In ({checkedIn.length})
                     <span className="ml-auto text-[10px] font-normal text-green-600 normal-case">
-                      Auto-checkout at {AUTO_CHECKOUT_MIN} min · select items below each member
+                      Auto-checkout at {autoCheckoutMin} min · select items below each member
                     </span>
                   </h2>
                 </div>
                 {checkedIn.map(m => (
-                  <MemberRow key={m.id} member={m} centerId={center!.id} onRefresh={load} />
+                  <MemberRow key={m.id} member={m} centerId={center!.id} autoCheckoutMin={autoCheckoutMin} onRefresh={load} />
                 ))}
               </div>
             )}
@@ -1569,7 +1576,7 @@ export default function MembersPage() {
                   <h2 className="text-sm font-semibold text-muted-foreground">Not Checked In ({notCheckedIn.length})</h2>
                 </div>
                 {notCheckedIn.map(m => (
-                  <MemberRow key={m.id} member={m} centerId={center!.id} onRefresh={load} />
+                  <MemberRow key={m.id} member={m} centerId={center!.id} autoCheckoutMin={autoCheckoutMin} onRefresh={load} />
                 ))}
               </div>
             )}

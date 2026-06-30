@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag } from "lucide-react";
+import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
-import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember } from "@/lib/api";
+import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember, type CenterSettings } from "@/lib/api";
 
 const UNITS = ["g", "kg", "ml", "L", "pcs", "oz", "lb"];
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -567,6 +567,119 @@ function ItemMaster() {
   );
 }
 
+// ── Center Settings (auto-checkout) ────────────────────────────────────────────
+
+function CenterSettingsCard() {
+  const center = getAdminCenter();
+  const [value, setValue] = useState<number | "">(180);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!center) return;
+    setLoading(true);
+    apiGet<CenterSettings>(`/admin/centers/${center.id}/settings`)
+      .then(s => setValue(s.auto_checkout_min))
+      .catch(() => setError("Failed to load settings"))
+      .finally(() => setLoading(false));
+  }, [center?.id]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!center || value === "") return;
+    const mins = Number(value);
+    if (!Number.isFinite(mins) || mins < 10 || mins > 480) {
+      setError("Must be between 10 and 480 minutes"); return;
+    }
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const updated = await apiPatch<CenterSettings>(`/admin/centers/${center.id}/settings`, { auto_checkout_min: mins });
+      setValue(updated.auto_checkout_min);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Clock className="w-4 h-4 text-primary" />
+        </div>
+        <div>
+          <h2 className="font-semibold text-foreground leading-tight">Center Settings</h2>
+          <p className="text-xs text-muted-foreground">Configure behavior for your center</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit => void handleSave(handleSubmit)} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Auto-Checkout Duration (minutes)
+            </label>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Members are automatically checked out after this many minutes of being checked in.
+            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <input
+                type="number"
+                min={10}
+                max={480}
+                step={5}
+                value={value}
+                onChange={e => setValue(e.target.value === "" ? "" : Number(e.target.value))}
+                required
+                className="w-28 h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <span className="text-sm text-muted-foreground">minutes</span>
+              {value !== "" && (
+                <span className="text-xs text-muted-foreground">
+                  ({Math.floor(Number(value) / 60) > 0 ? `${Math.floor(Number(value) / 60)}h ` : ""}{Number(value) % 60 > 0 ? `${Number(value) % 60}m` : ""})
+                </span>
+              )}
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+              <span className="text-sm text-red-700">{error}</span>
+            </div>
+          )}
+          {saved && (
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="text-sm text-emerald-700 font-medium">Settings saved.</span>
+            </div>
+          )}
+
+          <div>
+            <button
+              type="submit"
+              disabled={saving || value === ""}
+              className="flex items-center gap-2 h-9 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Save Settings
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 // ── Center QR Code ─────────────────────────────────────────────────────────────
 
 function CenterQRCode() {
@@ -768,6 +881,8 @@ export default function SettingsPage() {
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
           <p className="text-muted-foreground text-sm mt-1">Manage flavours, item master, center QR code, and admin password</p>
         </div>
+
+        <CenterSettingsCard />
 
         <FlavourMaster />
 

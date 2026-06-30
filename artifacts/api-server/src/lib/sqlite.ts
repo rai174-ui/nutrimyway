@@ -613,6 +613,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables22();
   await migrateAdminTables23();
   await migrateAdminTables24();
+  await migrateAdminTables25();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -639,6 +640,13 @@ async function migrateAdminTables24(): Promise<void> {
   // Kcal per serving for direct-flavour ingredients so checkout can log calories
   await pool.query(
     `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS kcal_per_serving REAL`
+  );
+}
+
+async function migrateAdminTables25(): Promise<void> {
+  // Per-center configurable auto-checkout window (minutes); default 180
+  await pool.query(
+    `ALTER TABLE centers ADD COLUMN IF NOT EXISTS auto_checkout_min INTEGER NOT NULL DEFAULT 180`
   );
 }
 
