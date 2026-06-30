@@ -351,7 +351,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
   const [memberRes, menuRes, consumptionRes] = await Promise.all([
     pool.query("SELECT COUNT(*) as count FROM member_center_mapping WHERE center_id = $1", [centerId]),
@@ -360,7 +360,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
       `SELECT COALESCE(SUM(cl.calories_kcal), 0) as total_calories, COUNT(DISTINCT cl.member_id) as active_members
        FROM consumption_logs cl
        JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-       WHERE mcm.center_id = $1 AND DATE(cl.logged_at) = $2`,
+       WHERE mcm.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2`,
       [centerId, today]
     ),
   ]);

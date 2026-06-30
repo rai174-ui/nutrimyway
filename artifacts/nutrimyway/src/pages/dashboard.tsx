@@ -8,7 +8,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { Html5Qrcode } from "html5-qrcode";
 
-const TODAY = new Date().toISOString().split('T')[0];
+function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
+const TODAY = todayLocal();
 const BASE = "/api";
 
 interface CheckIn {

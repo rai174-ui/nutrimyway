@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 
-const TODAY = new Date().toISOString().split('T')[0];
+function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
 const BASE = "/api";
 
 const slots = [
@@ -47,6 +47,7 @@ export function Log() {
   const { memberId: MEMBER_ID } = useAuth();
   const [activeSlot, setActiveSlot] = useState("Breakfast");
   const [foodItem, setFoodItem] = useState("");
+  const [customKcal, setCustomKcal] = useState("");
   const [checkin, setCheckin] = useState<ActiveCheckin | null>(null);
   const [centerMenu, setCenterMenu] = useState<CenterMenuItem[]>([]);
   const [pendingItem, setPendingItem] = useState<CenterMenuItem | null>(null);
@@ -69,22 +70,25 @@ export function Log() {
 
   const handleSave = () => {
     if (!foodItem.trim()) return;
+    const kcal = customKcal !== "" ? Number(customKcal) : null;
     createLog.mutate(
       {
         memberId: MEMBER_ID!,
         data: {
           meal_slot: activeSlot,
           food_item: foodItem,
-          calories_kcal: 250,
-          protein_g: 10,
-          carbs_g: 30,
-          fat_g: 5,
+          calories_kcal: kcal,
+          protein_g: null,
+          carbs_g: null,
+          fat_g: null,
         }
       },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) });
+          queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: todayLocal() }) });
           toast({ title: "Meal logged successfully!" });
+          setFoodItem("");
+          setCustomKcal("");
           setLocation("/dashboard");
         }
       }
@@ -111,7 +115,7 @@ export function Log() {
       },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) });
+          queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: todayLocal() }) });
           toast({ title: flavour ? `Logged: ${item.name} (${flavour})` : "Set menu item logged!" });
           setLocation("/dashboard");
         }
@@ -241,6 +245,18 @@ export function Log() {
             placeholder="What did you eat?"
             className="w-full bg-card border border-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
           />
+          <div className="relative">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={customKcal}
+              onChange={(e) => setCustomKcal(e.target.value)}
+              placeholder="Calories (optional)"
+              className="w-full bg-card border border-border rounded-lg px-4 py-3 pr-14 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">kcal</span>
+          </div>
           <button
             onClick={handleSave}
             disabled={!foodItem.trim() || createLog.isPending}

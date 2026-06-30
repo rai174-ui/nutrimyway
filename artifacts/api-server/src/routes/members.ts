@@ -62,7 +62,7 @@ router.get("/members/:id/consumption", async (req, res) => {
   const date = req.query.date as string | undefined;
   if (date) {
     const { rows } = await pool.query(
-      "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at) = $2 ORDER BY logged_at ASC",
+      "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2 ORDER BY logged_at ASC",
       [memberId, date]
     );
     res.json(rows);
@@ -108,12 +108,16 @@ router.post("/members/:id/consumption", async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
+function todayIST() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+}
+
 // GET /api/members/:id/summary?date=YYYY-MM-DD
 router.get("/members/:id/summary", async (req, res) => {
   const memberId = Number(req.params.id);
-  const date = (req.query.date as string) ?? new Date().toISOString().split("T")[0];
+  const date = (req.query.date as string) ?? todayIST();
   const { rows: logs } = await pool.query(
-    "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at) = $2 ORDER BY logged_at ASC",
+    "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2 ORDER BY logged_at ASC",
     [memberId, date]
   ) as { rows: Array<{ id: number; member_id: number; logged_at: string; meal_slot: string; food_item: string; quantity_g: number | null; calories_kcal: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null }> };
 
