@@ -364,7 +364,12 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
     pool.query("SELECT COUNT(*) as count FROM member_center_mapping WHERE center_id = $1", [centerId]),
     pool.query("SELECT COUNT(*) as count FROM menu_items WHERE center_id = $1", [centerId]),
     pool.query(
-      `SELECT COALESCE(SUM(cl.calories_kcal), 0) AS total_calories
+      `SELECT COALESCE(SUM(
+         COALESCE(
+           cl.calories_kcal,
+           (SELECT SUM(mb.kcal) FROM menu_item_bom mb WHERE mb.menu_item_id = cl.menu_item_id AND mb.kcal IS NOT NULL)
+         )
+       ), 0) AS total_calories
        FROM consumption_logs cl
        JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
        WHERE mcm.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2`,
