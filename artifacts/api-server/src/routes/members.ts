@@ -232,13 +232,59 @@ router.post("/members/:id/checkin", async (req, res) => {
 // POST /api/members/:id/checkout — self check-out
 router.post("/members/:id/checkout", async (req, res) => {
   const memberId = Number(req.params.id);
-  const { rows } = await pool.query(
-    `UPDATE member_check_ins SET checked_out_at = NOW()
-     WHERE member_id = $1 AND checked_out_at IS NULL
-     RETURNING *`,
+
+  // Fetch active check-in first so we can deduct flavour consumption before closing
+  const { rows: ciRows } = await pool.query(
+    `SELECT id, center_id FROM member_check_ins
+     WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
     [memberId]
   );
-  if (!rows[0]) { res.status(404).json({ error: "No active check-in found" }); return; }
+  if (!ciRows[0]) { res.status(404).json({ error: "No active check-in found" }); return; }
+  const checkin = ciRows[0] as { id: number; center_id: string };
+
+  // Deduct serving qty from open batch for each direct-flavour selection
+  const { rows: flavourSels } = await pool.query(
+    `SELECT vfs.ingredient_id, vfs.flavour, i.name
+     FROM visit_flavour_selections vfs
+     JOIN ingredients i ON i.id = vfs.ingredient_id
+     WHERE vfs.checkin_id = $1`,
+    [checkin.id]
+  );
+  for (const fsel of flavourSels) {
+    const { rows: batches } = await pool.query(
+      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty, i.serving_qty
+       FROM ingredient_batches ib
+       JOIN ingredients i ON i.id = ib.ingredient_id
+       WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
+       ORDER BY ib.opened_at ASC LIMIT 1`,
+      [fsel.ingredient_id as number, checkin.center_id]
+    );
+    if (!batches[0]) continue;
+    const batchRow = batches[0] as { id: number; total_qty: number; serving_qty: number };
+    await pool.query(
+      `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
+       VALUES ($1, $2, 'auto: flavour visit', NOW())`,
+      [batchRow.id, batchRow.serving_qty]
+    );
+    const { rows: bal } = await pool.query(
+      `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
+      [batchRow.id]
+    );
+    if (Number((bal[0] as { total: number }).total) >= batchRow.total_qty) {
+      await pool.query(
+        `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
+         WHERE id = $1 AND status = 'open'`,
+        [batchRow.id]
+      );
+    }
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE member_check_ins SET checked_out_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [checkin.id]
+  );
   res.json(rows[0]);
 });
 

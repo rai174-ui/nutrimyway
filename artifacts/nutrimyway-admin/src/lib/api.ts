@@ -252,6 +252,7 @@ export interface Ingredient {
   material_code: string | null;
   description: string | null;
   flavour: string | null;
+  serving_qty: number;
   created_at: string;
 }
 

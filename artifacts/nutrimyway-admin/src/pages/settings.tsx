@@ -141,12 +141,14 @@ function ItemMaster() {
   const [newMaterialCode, setNewMaterialCode] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newFlavour, setNewFlavour] = useState("");
+  const [newServingQty, setNewServingQty] = useState("1");
 
   const [editName, setEditName] = useState("");
   const [editUnit, setEditUnit] = useState("");
   const [editMaterialCode, setEditMaterialCode] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editFlavour, setEditFlavour] = useState("");
+  const [editServingQty, setEditServingQty] = useState("1");
 
   async function load() {
     try {
@@ -172,9 +174,10 @@ function ItemMaster() {
         material_code: newMaterialCode.trim() || null,
         description: newDescription.trim() || null,
         flavour: newFlavour.trim() || null,
+        serving_qty: Number(newServingQty) || 1,
       });
       setNewName(""); setNewUnit("g");
-      setNewMaterialCode(""); setNewDescription(""); setNewFlavour("");
+      setNewMaterialCode(""); setNewDescription(""); setNewFlavour(""); setNewServingQty("1");
       setAdding(false);
       void load();
     } catch (e) { setError((e as Error).message); }
@@ -193,6 +196,7 @@ function ItemMaster() {
         material_code: editMaterialCode.trim() || null,
         description: editDescription.trim() || null,
         flavour: editFlavour.trim() || null,
+        serving_qty: Number(editServingQty) || 1,
       });
       setEditId(null);
       void load();
@@ -215,6 +219,7 @@ function ItemMaster() {
     setEditMaterialCode(ing.material_code ?? "");
     setEditDescription(ing.description ?? "");
     setEditFlavour(ing.flavour ?? "");
+    setEditServingQty(String(ing.serving_qty ?? 1));
   }
 
   return (
@@ -285,6 +290,17 @@ function ItemMaster() {
             >
               {UNITS.map(u => <option key={u}>{u}</option>)}
             </select>
+            <div className="flex items-center gap-1">
+              <label className="text-xs text-muted-foreground whitespace-nowrap">Serving qty</label>
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={newServingQty}
+                onChange={e => setNewServingQty(e.target.value)}
+                className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
             <button
               onClick={() => void addIngredient()}
               disabled={!newName.trim() || saving}
@@ -350,6 +366,17 @@ function ItemMaster() {
                     >
                       {UNITS.map(u => <option key={u}>{u}</option>)}
                     </select>
+                    <div className="flex items-center gap-1">
+                      <label className="text-xs text-muted-foreground whitespace-nowrap">Serving qty</label>
+                      <input
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={editServingQty}
+                        onChange={e => setEditServingQty(e.target.value)}
+                        className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
                     <button
                       onClick={() => void saveEdit(ing.id)}
                       disabled={saving}
@@ -372,6 +399,9 @@ function ItemMaster() {
                       )}
                       {ing.flavour && (
                         <span className="text-[10px] bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full">{ing.flavour}</span>
+                      )}
+                      {ing.flavour && (
+                        <span className="text-[10px] bg-orange-50 text-orange-600 border border-orange-200 px-1.5 py-0.5 rounded-full">{ing.serving_qty} {ing.pack_unit}/serve</span>
                       )}
                     </div>
                     {ing.description && (

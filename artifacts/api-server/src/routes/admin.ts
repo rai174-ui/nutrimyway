@@ -179,18 +179,39 @@ async function bookAndCheckout(checkinId: number, memberId: number, centerId: st
   );
   for (const fsel of flavourSels) {
     const { rows: batches } = await pool.query(
-      `SELECT ib.id FROM ingredient_batches ib
+      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty, i.serving_qty
+       FROM ingredient_batches ib
+       JOIN ingredients i ON i.id = ib.ingredient_id
        WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
        ORDER BY ib.opened_at ASC LIMIT 1`,
       [fsel.ingredient_id as number, centerId]
     );
     if (!batches[0]) continue;
+    const batchRow = batches[0] as { id: number; total_qty: number; serving_qty: number };
     const foodLabel = `${fsel.name as string} – ${fsel.flavour as string}`;
     await pool.query(
       `INSERT INTO consumption_logs (member_id, meal_slot, food_item, calories_kcal, logged_at)
        VALUES ($1, $3, $2, NULL, NOW())`,
       [memberId, foodLabel, slotForNowIST()]
     );
+    // Deduct serving qty from the open batch
+    await pool.query(
+      `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
+       VALUES ($1, $2, 'auto: flavour visit', NOW())`,
+      [batchRow.id, batchRow.serving_qty]
+    );
+    // Auto-close batch if fully consumed
+    const { rows: bal } = await pool.query(
+      `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
+      [batchRow.id]
+    );
+    if (Number((bal[0] as { total: number }).total) >= batchRow.total_qty) {
+      await pool.query(
+        `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
+         WHERE id = $1 AND status = 'open'`,
+        [batchRow.id]
+      );
+    }
   }
   // Mark check-in as checked out
   await pool.query(
@@ -1280,21 +1301,21 @@ router.delete("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, asyn
 // GET /api/admin/ingredients
 router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
   const { rows } = await pool.query(
-    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, created_at FROM ingredients ORDER BY name"
+    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, created_at FROM ingredients ORDER BY name"
   );
   res.json(rows);
 });
 
 // POST /api/admin/ingredients
 router.post("/admin/ingredients", requireAdmin, async (req, res) => {
-  const { name, pack_size, pack_unit, material_code, description, flavour } = req.body as {
+  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty } = req.body as {
     name?: string; pack_size?: number; pack_unit?: string;
-    material_code?: string; description?: string; flavour?: string;
+    material_code?: string; description?: string; flavour?: string; serving_qty?: number;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   const { rows } = await pool.query(
-    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null]
+    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1]
   );
   res.status(201).json(rows[0]);
 });
@@ -1302,14 +1323,14 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
 // PUT /api/admin/ingredients/:ingredientId
 router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
   const { ingredientId } = req.params;
-  const { name, pack_size, pack_unit, material_code, description, flavour } = req.body as {
+  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty } = req.body as {
     name?: string; pack_size?: number; pack_unit?: string;
-    material_code?: string; description?: string; flavour?: string;
+    material_code?: string; description?: string; flavour?: string; serving_qty?: number;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   const { rows } = await pool.query(
-    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6 WHERE id=$7 RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, Number(ingredientId)]
+    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6, serving_qty=$7 WHERE id=$8 RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, Number(ingredientId)]
   );
   if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   res.json(rows[0]);
