@@ -40,6 +40,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   const [dobDay, setDobDay] = useState("");
   const [dobMonth, setDobMonth] = useState("");
   const [ageAtJoining, setAgeAtJoining] = useState("");
+  const [validUntil, setValidUntil] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Health record step
@@ -58,7 +59,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   function reset() {
     setStep("search"); setQuery(""); setFound(null); setError("");
     setName(""); setEmail(""); setMobile(""); setHeight(""); setDoj(""); setMembershipNo("");
-    setDobDay(""); setDobMonth(""); setAgeAtJoining("");
+    setDobDay(""); setDobMonth(""); setAgeAtJoining(""); setValidUntil("");
     setLinkedMemberId(null);
     setHrDate(new Date().toISOString().slice(0, 10));
     setHrWeight(""); setHrBmi(""); setHrBodyFat(""); setHrVisceralFat("");
@@ -108,6 +109,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
         membership_no: membershipNo.trim() || null,
         dob: dobDay && dobMonth ? `${dobDay} ${dobMonth}` : null,
         age_at_joining: ageAtJoining ? Number(ageAtJoining) : null,
+        valid_until: validUntil || null,
       });
       setLinkedMemberId(member.id);
       setStep("healthrecord");
@@ -259,6 +261,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
             <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-muted-foreground mb-1">Age at Joining</label>
               <input type="number" step="0.5" min="1" max="100" value={ageAtJoining} onChange={e => setAgeAtJoining(e.target.value)} placeholder="e.g. 35.5" className={inputCls} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Membership Valid Until</label>
+              <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className={inputCls} />
             </div>
           </div>
           <p className="text-[10px] text-amber-600">* Mobile or email is required (at least one)</p>
@@ -880,10 +886,10 @@ function MemberRow({ member, centerId, onRefresh }: {
           <button
             onClick={() => void handleRenew()}
             disabled={busy}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
-            title="Renew membership (+32 days)"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-colors border border-emerald-200"
+            title="Renew membership (+32 days from today)"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-3.5 h-3.5" />Renew
           </button>
           <button
             onClick={() => setShowHealthPanel(v => !v)}
