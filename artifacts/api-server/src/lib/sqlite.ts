@@ -137,17 +137,19 @@ async function createTables(): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS otps (
       id SERIAL PRIMARY KEY,
+      member_id INTEGER REFERENCES members(id) ON DELETE CASCADE,
       mobile TEXT,
       email TEXT,
       otp TEXT NOT NULL,
+      otp_token TEXT,
       expires_at TIMESTAMPTZ NOT NULL,
       used BOOLEAN NOT NULL DEFAULT FALSE
     );
 
     CREATE TABLE IF NOT EXISTS user_auth (
       id SERIAL PRIMARY KEY,
-      mobile TEXT UNIQUE,
-      email TEXT UNIQUE,
+      mobile TEXT,
+      email TEXT,
       member_id INTEGER REFERENCES members(id),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -614,6 +616,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables23();
   await migrateAdminTables24();
   await migrateAdminTables25();
+  await migrateAdminTables26();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -648,6 +651,26 @@ async function migrateAdminTables25(): Promise<void> {
   await pool.query(
     `ALTER TABLE centers ADD COLUMN IF NOT EXISTS auto_checkout_min INTEGER NOT NULL DEFAULT 180`
   );
+}
+
+async function migrateAdminTables26(): Promise<void> {
+  // OTP-by-email auth: email is no longer unique, membership_no identifies the member
+  await pool.query(`ALTER TABLE otps ADD COLUMN IF NOT EXISTS member_id INTEGER REFERENCES members(id) ON DELETE CASCADE`);
+  await pool.query(`ALTER TABLE otps ADD COLUMN IF NOT EXISTS otp_token TEXT`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS otps_token_idx ON otps(otp_token)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS otps_member_idx ON otps(member_id)`);
+  // Drop unique constraints so multiple members can share the same email
+  await pool.query(`ALTER TABLE members DROP CONSTRAINT IF EXISTS members_email_uidx`);
+  await pool.query(`DROP INDEX IF EXISTS members_email_uidx`);
+  await pool.query(`ALTER TABLE user_auth DROP CONSTRAINT IF EXISTS user_auth_email_uidx`);
+  await pool.query(`DROP INDEX IF EXISTS user_auth_email_uidx`);
+  await pool.query(`ALTER TABLE user_auth DROP CONSTRAINT IF EXISTS user_auth_mobile_key`);
+  await pool.query(`DROP INDEX IF EXISTS user_auth_mobile_key`);
+  // Add non-unique indexes for lookups
+  await pool.query(`CREATE INDEX IF NOT EXISTS members_email_idx ON members(email)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS members_membership_no_idx ON members(membership_no)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS user_auth_email_idx ON user_auth(email)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS user_auth_mobile_idx ON user_auth(mobile)`);
 }
 
 async function migrateAdminTables22(): Promise<void> {

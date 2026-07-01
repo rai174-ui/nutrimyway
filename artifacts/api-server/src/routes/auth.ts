@@ -1,120 +1,155 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
+import { randomBytes } from "crypto";
 import { pool } from "../lib/sqlite";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
 const JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
 const OTP_TTL_MIN = 10;
 
-type ContactKind = "mobile" | "email";
-
-interface ContactInfo {
-  kind: ContactKind;
-  value: string;
-}
-
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-function signToken(memberId: number, contact: ContactInfo): string {
-  return jwt.sign({ memberId, [contact.kind]: contact.value }, JWT_SECRET, { expiresIn: "30d" });
+function generateOtpToken(): string {
+  return randomBytes(16).toString("hex");
 }
 
-function parseContact(body: Record<string, unknown>): ContactInfo | null {
-  const mobile = typeof body.mobile === "string" ? body.mobile.replace(/\s+/g, "") : null;
-  const email  = typeof body.email  === "string" ? body.email.trim().toLowerCase()  : null;
-
-  if (mobile && /^\d{7,15}$/.test(mobile)) return { kind: "mobile", value: mobile };
-  if (email  && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { kind: "email", value: email };
-  return null;
+function signToken(memberId: number, email: string): string {
+  return jwt.sign({ memberId, email }, JWT_SECRET, { expiresIn: "30d" });
 }
 
-// Upsert a user_auth row. email uses a partial unique index (WHERE email IS NOT
-// NULL), so the ON CONFLICT target must include the matching predicate; mobile
-// has a full unique constraint and needs none.
-async function upsertUserAuth(contact: ContactInfo, memberId: number): Promise<void> {
-  const conflict = contact.kind === "email"
-    ? "ON CONFLICT (email) WHERE email IS NOT NULL"
-    : "ON CONFLICT (mobile)";
-  await pool.query(
-    `INSERT INTO user_auth (${contact.kind}, member_id) VALUES ($1,$2)
-     ${conflict} DO UPDATE SET member_id = $2`,
-    [contact.value, memberId]
-  );
+async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
+  const host = process.env["SMTP_HOST"];
+  const user = process.env["SMTP_USER"];
+  const pass = process.env["SMTP_PASS"];
+  const port = Number(process.env["SMTP_PORT"] ?? "587");
+  if (!host || !user || !pass) {
+    logger.warn({ to }, "SMTP not configured — OTP email skipped");
+    return false;
+  }
+  const transporter = nodemailer.createTransport({
+    host, port, secure: port === 465, auth: { user, pass },
+  });
+  try {
+    await transporter.sendMail({
+      from: `"NutriMyWay" <${user}>`,
+      to,
+      subject: "Your NutriMyWay Login Code",
+      html: `<div style="font-family:sans-serif;max-width:480px;margin:auto">
+        <h2 style="color:#0d9488">Login Code</h2>
+        <p>Use the following 6-digit code to log in to your NutriMyWay account:</p>
+        <div style="font-size:32px;font-weight:700;letter-spacing:0.2em;color:#0d9488;padding:16px 24px;background:#f0fdfa;border-radius:8px;display:inline-block;margin:8px 0">${otp}</div>
+        <p style="color:#6b7280;font-size:13px;margin-top:16px">This code expires in ${OTP_TTL_MIN} minutes.</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this code, please ignore this email.</p>
+      </div>`,
+    });
+    return true;
+  } catch (err) {
+    logger.warn({ to, err }, "Failed to send OTP email");
+    return false;
+  }
 }
 
 // POST /api/auth/request-otp
+// Body: { email: string, membership_no: string }
 router.post("/auth/request-otp", async (req, res) => {
-  const contact = parseContact(req.body as Record<string, unknown>);
-  if (!contact) {
-    res.status(400).json({ error: "A valid mobile number or email address is required" });
+  const body = req.body as Record<string, unknown>;
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const membershipNo = typeof body.membership_no === "string" ? body.membership_no.trim() : "";
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "A valid email address is required" });
+    return;
+  }
+  if (!membershipNo) {
+    res.status(400).json({ error: "Membership number is required" });
+    return;
+  }
+
+  // Find member by membership_no (unique) and verify email matches
+  const { rows: memberRows } = await pool.query(
+    "SELECT id, name, email, membership_no FROM members WHERE membership_no = $1",
+    [membershipNo]
+  );
+  if (!memberRows[0]) {
+    res.status(404).json({ error: "No member found with this membership number. Please contact your wellness center." });
+    return;
+  }
+  const member = memberRows[0] as { id: number; name: string; email: string | null; membership_no: string };
+  if (member.email !== email) {
+    res.status(401).json({ error: "Email does not match the membership number. Please contact your wellness center." });
     return;
   }
 
   const otp = generateOtp();
   const expiresAt = new Date(Date.now() + OTP_TTL_MIN * 60_000);
+  const otpToken = generateOtpToken();
 
-  if (contact.kind === "mobile") {
-    await pool.query("UPDATE otps SET used = TRUE WHERE mobile = $1 AND used = FALSE", [contact.value]);
-    await pool.query("INSERT INTO otps (mobile, otp, expires_at) VALUES ($1,$2,$3)", [contact.value, otp, expiresAt]);
+  // Invalidate any previous unused OTPs for this member
+  await pool.query("UPDATE otps SET used = TRUE WHERE member_id = $1 AND used = FALSE", [member.id]);
+  // Store new OTP
+  await pool.query(
+    "INSERT INTO otps (member_id, email, otp, otp_token, expires_at) VALUES ($1,$2,$3,$4,$5)",
+    [member.id, email, otp, otpToken, expiresAt]
+  );
+
+  // Send email
+  const sent = await sendOtpEmail(email, otp);
+
+  if (sent) {
+    res.json({ message: "OTP sent", otp_token: otpToken });
   } else {
-    await pool.query("UPDATE otps SET used = TRUE WHERE email = $1 AND used = FALSE", [contact.value]);
-    await pool.query("INSERT INTO otps (email, otp, expires_at) VALUES ($1,$2,$3)", [contact.value, otp, expiresAt]);
+    // Dev mode fallback: return OTP preview
+    res.json({ message: "OTP sent", otp_token: otpToken, otp_preview: otp });
   }
-
-  // In production: send SMS / email. For demo, return otp_preview.
-  res.json({ message: "OTP sent", otp_preview: otp });
 });
 
 // POST /api/auth/verify-otp
+// Body: { otp_token: string, otp: string }
 router.post("/auth/verify-otp", async (req, res) => {
   const body = req.body as Record<string, unknown>;
-  const contact = parseContact(body);
-  const otp = typeof body.otp === "string" ? body.otp.trim() : null;
+  const otpToken = typeof body.otp_token === "string" ? body.otp_token.trim() : "";
+  const otp = typeof body.otp === "string" ? body.otp.trim() : "";
 
-  if (!contact || !otp) {
-    res.status(400).json({ error: "Contact (mobile or email) and OTP are required" });
+  if (!otpToken || !otp) {
+    res.status(400).json({ error: "OTP token and OTP are required" });
     return;
   }
 
-  const col = contact.kind;
   const { rows } = await pool.query(
-    `SELECT * FROM otps WHERE ${col} = $1 AND otp = $2 AND used = FALSE AND expires_at > NOW() ORDER BY id DESC LIMIT 1`,
-    [contact.value, otp]
+    `SELECT * FROM otps
+     WHERE otp_token = $1 AND otp = $2 AND used = FALSE AND expires_at > NOW()
+     ORDER BY id DESC LIMIT 1`,
+    [otpToken, otp]
   );
-  if (!rows[0]) { res.status(401).json({ error: "Invalid or expired OTP" }); return; }
-  await pool.query("UPDATE otps SET used = TRUE WHERE id = $1", [rows[0].id]);
+  if (!rows[0]) {
+    res.status(401).json({ error: "Invalid or expired OTP" });
+    return;
+  }
+  const otpRow = rows[0] as { id: number; member_id: number; email: string };
+  await pool.query("UPDATE otps SET used = TRUE WHERE id = $1", [otpRow.id]);
 
-  // Check user_auth record
+  const memberId = otpRow.member_id;
+  const email = otpRow.email;
+
+  // Ensure user_auth record exists for this member
   const { rows: authRows } = await pool.query(
-    `SELECT * FROM user_auth WHERE ${col} = $1`, [contact.value]
+    "SELECT id FROM user_auth WHERE member_id = $1",
+    [memberId]
   );
-  if (authRows[0]?.member_id) {
-    const token = signToken(authRows[0].member_id, contact);
-    res.json({ token, member_id: authRows[0].member_id, is_new_user: false });
-    return;
+  if (!authRows[0]) {
+    await pool.query(
+      "INSERT INTO user_auth (member_id, email, created_at) VALUES ($1,$2,NOW())",
+      [memberId, email]
+    );
   }
 
-  // Check pre-seeded member
-  const { rows: memberRows } = await pool.query(
-    `SELECT * FROM members WHERE ${col} = $1`, [contact.value]
-  );
-  if (memberRows[0]) {
-    await upsertUserAuth(contact, memberRows[0].id);
-    const token = signToken(memberRows[0].id, contact);
-    res.json({ token, member_id: memberRows[0].id, is_new_user: false });
-    return;
-  }
-
-  // New user — partial token
-  const partialToken = jwt.sign(
-    { [col]: contact.value, pending: true },
-    JWT_SECRET,
-    { expiresIn: "30m" }
-  );
-  res.json({ token: partialToken, member_id: null, is_new_user: true });
+  const token = signToken(memberId, email);
+  res.json({ token, member_id: memberId });
 });
 
 // POST /api/auth/register — disabled: member onboarding is center-only
@@ -123,65 +158,8 @@ router.post("/auth/register", async (_req, res) => {
 });
 
 // POST /api/auth/register_legacy (kept for reference only, never called)
-router.post("/auth/register_legacy", async (req, res) => {
-  const { token, name, center_ids } = req.body as {
-    token?: string; name?: string; center_ids?: string[];
-  };
-  if (!token || !name || !center_ids?.length) {
-    res.status(400).json({ error: "token, name, and at least one center_id required" });
-    return;
-  }
-
-  let payload: { mobile?: string; email?: string; pending: boolean };
-  try {
-    payload = jwt.verify(token, JWT_SECRET) as typeof payload;
-    if (!payload.pending) throw new Error("not a registration token");
-  } catch {
-    res.status(401).json({ error: "Invalid or expired registration token" });
-    return;
-  }
-
-  const contact: ContactInfo = payload.email
-    ? { kind: "email", value: payload.email }
-    : { kind: "mobile", value: payload.mobile! };
-
-  const col = contact.kind;
-
-  // Already registered?
-  const { rows: existing } = await pool.query(
-    `SELECT * FROM user_auth WHERE ${col} = $1`, [contact.value]
-  );
-  if (existing[0]?.member_id) {
-    const fullToken = signToken(existing[0].member_id, contact);
-    res.json({ token: fullToken, member_id: existing[0].member_id });
-    return;
-  }
-
-  // Create member. The members table uses an explicit INTEGER primary key
-  // (seeded from xlsx with fixed IDs), so compute the next available id.
-  const { rows: idRows } = await pool.query(
-    "SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM members"
-  );
-  const nextId = idRows[0].next_id as number;
-  const { rows: memberRows } = await pool.query(
-    `INSERT INTO members (id, name, ${col}) VALUES ($1,$2,$3) RETURNING *`,
-    [nextId, name.trim(), contact.value]
-  );
-  const memberId = memberRows[0].id;
-
-  // Link centers
-  for (const cid of center_ids) {
-    await pool.query("INSERT INTO centers (id, name) VALUES ($1,$1) ON CONFLICT DO NOTHING", [cid]);
-    await pool.query(
-      "INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-      [memberId, cid]
-    );
-  }
-
-  await upsertUserAuth(contact, memberId);
-
-  const fullToken = signToken(memberId, contact);
-  res.status(201).json({ token: fullToken, member_id: memberId });
+router.post("/auth/register_legacy", async (_req, res) => {
+  res.status(403).json({ error: "Self-registration is disabled. Please contact your wellness center to get registered." });
 });
 
 // GET /api/auth/me
