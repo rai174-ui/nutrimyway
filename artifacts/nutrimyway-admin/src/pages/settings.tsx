@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock } from "lucide-react";
+import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock, Megaphone, Send } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
-import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember, type CenterSettings } from "@/lib/api";
+import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember, type CenterSettings, type BroadcastSettings } from "@/lib/api";
 
 const UNITS = ["g", "kg", "ml", "L", "pcs", "oz", "lb"];
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -41,6 +41,121 @@ function DayPicker({ value, onChange }: { value: Day[]; onChange: (v: Day[]) => 
           {day}
         </button>
       ))}
+    </div>
+  );
+}
+
+function BroadcastSettingsCard() {
+  const center = getAdminCenter();
+  const [message, setMessage] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [isActive, setIsActive] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!center) return;
+    setLoading(true);
+    apiGet<BroadcastSettings>(`/admin/centers/${center.id}/broadcast-settings`)
+      .then(s => {
+        setMessage(s.message ?? "");
+        setScheduleTime(s.schedule_time ?? "09:00");
+        setIsActive(s.is_active ?? false);
+      })
+      .catch(() => setError("Failed to load broadcast settings"))
+      .finally(() => setLoading(false));
+  }, [center?.id]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!center) return;
+    if (!message.trim()) { setError("Message is required"); return; }
+    if (!/^([0-1]\d|2[0-3]):([0-5]\d)$/.test(scheduleTime)) {
+      setError("Time must be HH:MM (24-hour format)"); return;
+    }
+    setSaving(true); setError(null); setSaved(false);
+    try {
+      await apiPut<BroadcastSettings>(`/admin/centers/${center.id}/broadcast-settings`, {
+        message: message.trim(), schedule_time: scheduleTime, is_active: isActive,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+          <Megaphone className="w-4 h-4 text-amber-600" />
+        </div>
+        <div>
+          <h2 className="font-semibold text-foreground leading-tight">Broadcast Settings</h2>
+          <p className="text-xs text-muted-foreground">Schedule a daily message for active members</p>
+        </div>
+      </div>
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+        </div>
+      ) : (
+        <form onSubmit={e => void handleSave(e)} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Daily Message</label>
+            <textarea
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              placeholder="e.g. Don't forget to log your meals today! Stay hydrated and track your calories."
+              rows={3}
+              className="w-full px-3 py-2 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Send Time</label>
+            <input
+              type="time"
+              value={scheduleTime}
+              onChange={e => setScheduleTime(e.target.value)}
+              className="w-32 h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={e => setIsActive(e.target.checked)}
+              className="w-4 h-4 accent-primary rounded"
+            />
+            <span className="text-sm text-foreground">Enable scheduled broadcast</span>
+          </label>
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+              <span className="text-sm text-red-700">{error}</span>
+            </div>
+          )}
+          {saved && (
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="text-sm text-emerald-700 font-medium">Broadcast settings saved.</span>
+            </div>
+          )}
+          <div>
+            <button
+              type="submit"
+              disabled={saving || !message.trim()}
+              className="flex items-center gap-2 h-9 px-5 rounded-xl bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Save Schedule
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
@@ -883,6 +998,8 @@ export default function SettingsPage() {
         </div>
 
         <CenterSettingsCard />
+
+        <BroadcastSettingsCard />
 
         <FlavourMaster />
 

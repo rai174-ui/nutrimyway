@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Users, UtensilsCrossed, Flame, Activity, CalendarClock, ChevronRight } from "lucide-react";
+import { Users, UtensilsCrossed, Flame, Activity, CalendarClock, ChevronRight, Megaphone, Send, X, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList,
 } from "recharts";
 import { Nav } from "@/components/nav";
-import { apiGet, getAdminCenter, type Dashboard } from "@/lib/api";
+import { apiGet, apiPost, getAdminCenter, type Dashboard, type Broadcast } from "@/lib/api";
 
 function StatCard({
   icon: Icon, label, value, color, onClick, badge,
@@ -35,6 +35,106 @@ function StatCard({
         <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{label}</p>
       </div>
       {onClick && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />}
+    </div>
+  );
+}
+
+function AdHocBroadcastModal({ centerId, onClose }: { centerId: string; onClose: () => void }) {
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const [history, setHistory] = useState<Broadcast[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  useEffect(() => {
+    apiGet<Broadcast[]>(`/admin/centers/${centerId}/broadcasts?limit=5`)
+      .then(setHistory)
+      .catch(() => { /* ignore */ })
+      .finally(() => setLoadingHistory(false));
+  }, [centerId]);
+
+  async function handleSend() {
+    if (!message.trim()) { setError("Message is required"); return; }
+    setSending(true); setError(null); setSent(false);
+    try {
+      await apiPost<{ id: number }>(`/admin/centers/${centerId}/broadcasts`, { message: message.trim() });
+      setSent(true);
+      setMessage("");
+      // refresh history
+      apiGet<Broadcast[]>(`/admin/centers/${centerId}/broadcasts?limit=5`).then(setHistory);
+      setTimeout(() => setSent(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send");
+    } finally { setSending(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Megaphone className="w-4 h-4 text-amber-600" />
+            <h2 className="font-semibold text-foreground">Broadcast Message</h2>
+          </div>
+          <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Message</label>
+            <textarea
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              placeholder="Type your message to all active members..."
+              rows={4}
+              className="w-full px-3 py-2 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+            />
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+              <span className="text-sm text-red-700">{error}</span>
+            </div>
+          )}
+          {sent && (
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="text-sm text-emerald-700 font-medium">Broadcast sent to all members!</span>
+            </div>
+          )}
+          <div>
+            <button
+              onClick={() => void handleSend()}
+              disabled={sending || !message.trim()}
+              className="w-full flex items-center justify-center gap-2 h-10 rounded-xl bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
+            >
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Send Now
+            </button>
+          </div>
+          <div className="pt-2 border-t border-border">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Recent Broadcasts</p>
+            {loadingHistory ? (
+              <div className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
+            ) : history.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No broadcasts yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {history.map(b => (
+                  <div key={b.id} className="bg-muted/40 rounded-lg px-3 py-2 text-sm">
+                    <p className="text-foreground line-clamp-2">{b.message}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {b.sent_by === "scheduled" ? "Scheduled" : "Manual"} · {new Date(b.sent_at).toLocaleDateString("en-IN")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -133,6 +233,7 @@ export default function DashboardPage() {
   const center = getAdminCenter();
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showBroadcast, setShowBroadcast] = useState(false);
 
   useEffect(() => {
     if (!center) return;
@@ -226,11 +327,33 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* ── Monthly check-in chart (full width) ── */}
-            <MonthlyCheckinChart data={data.monthly_checkins} />
+            {/* ── Broadcast + Monthly check-in chart ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-1">
+                <div
+                  onClick={() => setShowBroadcast(true)}
+                  className="bg-amber-50 rounded-xl border border-amber-200 px-4 py-3 cursor-pointer hover:border-amber-400 hover:shadow-sm transition-all group flex items-center gap-3 h-full"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <Megaphone className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground group-hover:text-amber-700 transition-colors">Send Broadcast</p>
+                    <p className="text-[11px] text-muted-foreground leading-tight">Ad-hoc message to all members</p>
+                  </div>
+                  <Send className="w-3.5 h-3.5 text-amber-500/70 flex-shrink-0" />
+                </div>
+              </div>
+              <div className="lg:col-span-2">
+                <MonthlyCheckinChart data={data.monthly_checkins} />
+              </div>
+            </div>
           </>
         ) : null}
 
+        {showBroadcast && center && (
+          <AdHocBroadcastModal centerId={center.id} onClose={() => setShowBroadcast(false)} />
+        )}
       </main>
     </div>
   );

@@ -508,4 +508,42 @@ If you cannot identify food, return: {"error": "No food detected"}`;
   });
 });
 
+// ── Member Broadcasts ─────────────────────────────────────────────────────
+
+// GET /api/members/:memberId/broadcasts — broadcasts for this member's centers, with read status
+router.get("/members/:memberId/broadcasts", async (req, res) => {
+  const memberId = Number(req.params.memberId);
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const { rows: centers } = await pool.query(
+    "SELECT center_id FROM member_center_mapping WHERE member_id = $1",
+    [memberId]
+  );
+  if (centers.length === 0) { res.json([]); return; }
+  const centerIds = centers.map((c: { center_id: string }) => c.center_id);
+  const placeholders = centerIds.map((_: unknown, i: number) => "$" + (i + 2)).join(",");
+  const { rows } = await pool.query(
+    `SELECT b.id, b.center_id, b.message, b.sent_at, b.sent_by,
+            EXISTS(SELECT 1 FROM member_broadcast_reads r WHERE r.broadcast_id = b.id AND r.member_id = $1) AS is_read
+     FROM member_broadcasts b
+     WHERE b.center_id IN (${placeholders})
+     ORDER BY b.sent_at DESC
+     LIMIT $${centerIds.length + 2}`,
+    [memberId, ...centerIds, limit]
+  );
+  res.json(rows);
+});
+
+// POST /api/members/:memberId/broadcasts/:broadcastId/read
+router.post("/members/:memberId/broadcasts/:broadcastId/read", async (req, res) => {
+  const memberId = Number(req.params.memberId);
+  const broadcastId = Number(req.params.broadcastId);
+  await pool.query(
+    `INSERT INTO member_broadcast_reads (member_id, broadcast_id, read_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (member_id, broadcast_id) DO NOTHING`,
+    [memberId, broadcastId]
+  );
+  res.json({ success: true });
+});
+
 export default router;

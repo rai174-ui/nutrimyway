@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useGetMember, getGetMemberQueryKey, useGetDailySummary, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { Plus, LogOut, MapPin, Camera, X } from "lucide-react";
+import { Plus, LogOut, MapPin, Camera, X, Megaphone, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -24,6 +24,15 @@ interface CheckIn {
 interface Center {
   id: string;
   name: string;
+}
+
+interface Broadcast {
+  id: number;
+  center_id: string;
+  message: string;
+  sent_at: string;
+  sent_by: "scheduled" | "manual";
+  is_read: boolean;
 }
 
 function useActiveCheckin(memberId: number | null) {
@@ -277,6 +286,15 @@ export function Dashboard() {
   });
 
   const { checkin, reload: reloadCheckin } = useActiveCheckin(MEMBER_ID);
+  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
+
+  useEffect(() => {
+    if (!MEMBER_ID) return;
+    fetch(`${BASE}/members/${MEMBER_ID}/broadcasts?limit=5`)
+      .then(r => r.ok ? r.json() : [])
+      .then((d: Broadcast[]) => setBroadcasts(d))
+      .catch(() => { /* ignore */ });
+  }, [MEMBER_ID]);
 
   function handleCheckinChange() {
     reloadCheckin();
@@ -299,6 +317,23 @@ export function Dashboard() {
         <h1 className="text-2xl font-bold text-foreground">Hi, {member?.name?.split(' ')[0] || 'Member'}</h1>
         <p className="text-muted-foreground">{format(new Date(), "EEEE, MMM do")}</p>
       </header>
+
+      {/* Broadcasts */}
+      {broadcasts.filter(b => !b.is_read).length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold flex items-center gap-1.5">
+              <Megaphone className="w-3.5 h-3.5 text-amber-600" />
+              Messages from your center
+            </h2>
+          </div>
+          {broadcasts.filter(b => !b.is_read).slice(0, 3).map(b => (
+            <BroadcastCard key={b.id} broadcast={b} memberId={MEMBER_ID!} onDismiss={() => {
+              setBroadcasts(prev => prev.map(p => p.id === b.id ? { ...p, is_read: true } : p));
+            }} />
+          ))}
+        </section>
+      )}
 
       {/* Progress Ring Card */}
       <section className="bg-card rounded-[12px] p-6 border border-border flex items-center justify-between">
@@ -379,5 +414,30 @@ export function Dashboard() {
         </Link>
       </div>
     </motion.div>
+  );
+}
+
+function BroadcastCard({ broadcast, memberId, onDismiss }: {
+  broadcast: Broadcast; memberId: number; onDismiss: () => void;
+}) {
+  async function markRead() {
+    try {
+      await fetch(`${BASE}/members/${memberId}/broadcasts/${broadcast.id}/read`, { method: "POST" });
+      onDismiss();
+    } catch { /* ignore */ }
+  }
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-[12px] p-3.5 relative">
+      <button
+        onClick={markRead}
+        className="absolute top-2 right-2 p-0.5 rounded text-amber-400 hover:text-amber-700 hover:bg-amber-100 transition-colors"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+      <p className="text-sm text-amber-900 pr-6 leading-snug">{broadcast.message}</p>
+      <p className="text-[10px] text-amber-600 mt-1.5">
+        {broadcast.sent_by === "scheduled" ? "Scheduled" : "From your center"} · {new Date(broadcast.sent_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+      </p>
+    </div>
   );
 }

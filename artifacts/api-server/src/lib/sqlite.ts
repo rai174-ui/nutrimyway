@@ -160,6 +160,35 @@ async function createTables(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS center_broadcast_settings (
+      center_id TEXT PRIMARY KEY REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      schedule_time TEXT NOT NULL DEFAULT '09:00',
+      is_active BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS member_broadcasts (
+      id SERIAL PRIMARY KEY,
+      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      sent_by TEXT NOT NULL DEFAULT 'scheduled',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS member_broadcasts_center_idx ON member_broadcasts(center_id);
+    CREATE INDEX IF NOT EXISTS member_broadcasts_sent_idx ON member_broadcasts(sent_at DESC);
+
+    CREATE TABLE IF NOT EXISTS member_broadcast_reads (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      broadcast_id INTEGER NOT NULL REFERENCES member_broadcasts(id) ON DELETE CASCADE,
+      read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(member_id, broadcast_id)
+    );
+    CREATE INDEX IF NOT EXISTS member_broadcast_reads_member_idx ON member_broadcast_reads(member_id);
+
     CREATE TABLE IF NOT EXISTS menu_items (
       id SERIAL PRIMARY KEY,
       center_id TEXT NOT NULL REFERENCES centers(id),
@@ -617,6 +646,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables24();
   await migrateAdminTables25();
   await migrateAdminTables26();
+  await migrateAdminTables27();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -671,6 +701,42 @@ async function migrateAdminTables26(): Promise<void> {
   await pool.query(`CREATE INDEX IF NOT EXISTS members_membership_no_idx ON members(membership_no)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS user_auth_email_idx ON user_auth(email)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS user_auth_mobile_idx ON user_auth(mobile)`);
+}
+
+async function migrateAdminTables27(): Promise<void> {
+  // Center broadcast messaging: scheduled daily + ad-hoc broadcasts to active members
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS center_broadcast_settings (
+      center_id TEXT PRIMARY KEY REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      schedule_time TEXT NOT NULL DEFAULT '09:00',
+      is_active BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_broadcasts (
+      id SERIAL PRIMARY KEY,
+      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      sent_by TEXT NOT NULL DEFAULT 'scheduled',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcasts_center_idx ON member_broadcasts(center_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcasts_sent_idx ON member_broadcasts(sent_at DESC)`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_broadcast_reads (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      broadcast_id INTEGER NOT NULL REFERENCES member_broadcasts(id) ON DELETE CASCADE,
+      read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(member_id, broadcast_id)
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcast_reads_member_idx ON member_broadcast_reads(member_id)`);
 }
 
 async function migrateAdminTables22(): Promise<void> {

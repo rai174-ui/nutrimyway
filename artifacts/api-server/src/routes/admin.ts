@@ -1825,4 +1825,86 @@ router.delete("/admin/checkin-selections/:selectionId", requireAdmin, async (req
   res.status(204).end();
 });
 
+// ── Broadcast Settings ──────────────────────────────────────────────────────
+
+// GET /api/admin/centers/:centerId/broadcast-settings
+router.get("/admin/centers/:centerId/broadcast-settings", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { rows } = await pool.query(
+    "SELECT center_id, message, schedule_time, is_active, created_at, updated_at FROM center_broadcast_settings WHERE center_id = $1",
+    [centerId]
+  );
+  if (!rows[0]) {
+    res.json({ center_id: centerId, message: "", schedule_time: "09:00", is_active: false });
+    return;
+  }
+  res.json(rows[0]);
+});
+
+// PUT /api/admin/centers/:centerId/broadcast-settings
+router.put("/admin/centers/:centerId/broadcast-settings", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { message, schedule_time, is_active } = req.body as {
+    message?: string; schedule_time?: string; is_active?: boolean;
+  };
+  if (!message || typeof message !== "string" || message.trim().length === 0) {
+    res.status(400).json({ error: "Message is required" }); return;
+  }
+  const timeStr = typeof schedule_time === "string" ? schedule_time.trim() : "09:00";
+  if (!/^([0-1]\d|2[0-3]):([0-5]\d)$/.test(timeStr)) {
+    res.status(400).json({ error: "schedule_time must be HH:MM (24-hour format)" }); return;
+  }
+  const active = Boolean(is_active);
+  await pool.query(
+    `INSERT INTO center_broadcast_settings (center_id, message, schedule_time, is_active, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, NOW(), NOW())
+     ON CONFLICT (center_id) DO UPDATE SET
+       message = EXCLUDED.message,
+       schedule_time = EXCLUDED.schedule_time,
+       is_active = EXCLUDED.is_active,
+       updated_at = NOW()`,
+    [centerId, message.trim(), timeStr, active]
+  );
+  res.json({ center_id: centerId, message: message.trim(), schedule_time: timeStr, is_active: active });
+});
+
+// POST /api/admin/centers/:centerId/broadcasts — ad-hoc broadcast to all active members
+router.post("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { message } = req.body as { message?: string };
+  if (!message || typeof message !== "string" || message.trim().length === 0) {
+    res.status(400).json({ error: "Message is required" }); return;
+  }
+  const trimmed = message.trim();
+  // Insert the broadcast
+  const { rows } = await pool.query(
+    `INSERT INTO member_broadcasts (center_id, message, sent_at, sent_by)
+     VALUES ($1, $2, NOW(), 'manual') RETURNING id`,
+    [centerId, trimmed]
+  );
+  const broadcastId = (rows[0] as { id: number }).id;
+  res.json({ id: broadcastId, message: trimmed, sent_at: new Date().toISOString(), sent_by: "manual" });
+});
+
+// GET /api/admin/centers/:centerId/broadcasts — recent broadcasts
+router.get("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const { rows } = await pool.query(
+    `SELECT id, center_id, message, sent_at, sent_by
+     FROM member_broadcasts WHERE center_id = $1
+     ORDER BY sent_at DESC LIMIT $2`,
+    [centerId, limit]
+  );
+  res.json(rows);
+});
+
 export default router;

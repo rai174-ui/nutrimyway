@@ -59,6 +59,19 @@ export function bomDeletePath(menuItemId: number, bomId: number): string {
 export interface Center { id: string; name: string; }
 export interface CenterWithStatus { id: string; name: string; is_active: boolean; valid_until: string | null; }
 export interface CenterSettings { auto_checkout_min: number; }
+export interface BroadcastSettings {
+  center_id: string;
+  message: string;
+  schedule_time: string;
+  is_active: boolean;
+}
+export interface Broadcast {
+  id: number;
+  center_id: string;
+  message: string;
+  sent_at: string;
+  sent_by: "scheduled" | "manual";
+}
 
 export function saveSuperAuth(token: string) {
   localStorage.setItem("nmw_super_token", token);
