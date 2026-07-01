@@ -773,13 +773,22 @@ async function migrateAdminTables30(): Promise<void> {
 }
 
 async function migrateAdminTables31(): Promise<void> {
-  // Migrate existing single-schedule settings into the new schedules table
+  // Migrate existing single-schedule settings into the new schedules table.
+  // Guard with an existence check — on re-runs the source columns are already dropped.
   await pool.query(`
-    INSERT INTO center_broadcast_schedules (center_id, message, schedule_time, is_active)
-    SELECT center_id, message, schedule_time, is_active
-    FROM center_broadcast_settings
-    WHERE message IS NOT NULL AND message <> '' AND schedule_time IS NOT NULL
-    ON CONFLICT DO NOTHING
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'center_broadcast_settings' AND column_name = 'message'
+      ) THEN
+        INSERT INTO center_broadcast_schedules (center_id, message, schedule_time, is_active)
+        SELECT center_id, message, schedule_time, is_active
+        FROM center_broadcast_settings
+        WHERE message IS NOT NULL AND message <> '' AND schedule_time IS NOT NULL
+        ON CONFLICT DO NOTHING;
+      END IF;
+    END $$;
   `);
   // Remove per-center single-schedule columns from settings; retention_days stays
   await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS message`);

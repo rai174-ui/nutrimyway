@@ -216,6 +216,17 @@ export interface CenterMember {
   already_consumed_today: boolean;
 }
 
+export interface SelfLogEntry {
+  id: number;
+  member_id: number;
+  member_name: string;
+  food_item: string;
+  meal_slot: string;
+  quantity_g: number | null;
+  calories_kcal: number | null;
+  logged_at: string;
+}
+
 export interface ConsumptionLog {
   selected_flavour?: string | null;
   id: number;

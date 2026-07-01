@@ -7,9 +7,10 @@ import {
   FileDown, ClipboardList, Flame,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
+import * as XLSX from "xlsx";
 import {
   apiGet, apiPost, apiPatch, apiDelete, getAdminCenter,
-  type CenterMember, type CenterSettings, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord,
+  type CenterMember, type CenterSettings, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord, type SelfLogEntry,
 } from "@/lib/api";
 
 interface FlavourOption { id: number; name: string; flavour: string; unit: string; }
@@ -1244,6 +1245,148 @@ function thirtyDaysAgoISO() {
   const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
 }
 
+function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: () => void }) {
+  const [from, setFrom] = useState(todayISO);
+  const [to, setTo] = useState(todayISO);
+  const [logs, setLogs] = useState<SelfLogEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  function load() {
+    setLoading(true);
+    apiGet<{ logs: SelfLogEntry[] }>(`/admin/centers/${centerId}/member-self-logs?from=${from}&to=${to}`)
+      .then(r => setLogs(r.logs))
+      .catch(() => setLogs([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { load(); }, [centerId, from, to]);
+
+  function exportXlsx() {
+    const rows = logs.map(l => ({
+      Member: l.member_name,
+      "Food Item": l.food_item,
+      Slot: l.meal_slot,
+      "Qty (g)": l.quantity_g ?? "",
+      "kcal": l.calories_kcal ? Math.round(l.calories_kcal) : "",
+      Date: new Date(l.logged_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+      Time: new Date(l.logged_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Outside Meals");
+    XLSX.writeFile(wb, `outside-meals-${from}-to-${to}.xlsx`);
+  }
+
+  const grouped = logs.reduce<Record<string, SelfLogEntry[]>>((acc, l) => {
+    (acc[l.member_name] ??= []).push(l);
+    return acc;
+  }, {});
+
+  const totalKcal = logs.reduce((s, l) => s + (l.calories_kcal ?? 0), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+          <div>
+            <h2 className="font-semibold text-foreground flex items-center gap-2">
+              <Flame className="w-4 h-4 text-amber-500" />
+              Outside Meals
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Meals logged by members outside of center visits</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="px-5 py-3 border-b border-border shrink-0 flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">From</label>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+              className="h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">To</label>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)}
+              className="h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          </div>
+          <div className="flex gap-2 ml-auto items-end">
+            {logs.length > 0 && (
+              <button onClick={exportXlsx}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 text-xs font-medium transition-colors">
+                <FileDown className="w-3.5 h-3.5" />
+                Export Excel
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Summary strip */}
+        {!loading && logs.length > 0 && (
+          <div className="px-5 py-2 border-b border-border shrink-0 flex gap-4 text-xs text-muted-foreground">
+            <span><span className="font-semibold text-foreground">{logs.length}</span> entries</span>
+            <span><span className="font-semibold text-foreground">{Object.keys(grouped).length}</span> members</span>
+            <span><span className="font-semibold text-foreground">{Math.round(totalKcal).toLocaleString()}</span> kcal total</span>
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {loading ? (
+            <div className="space-y-2">
+              {[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-xl bg-muted animate-pulse" />)}
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Flame className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm font-medium">No outside meals logged</p>
+              <p className="text-xs mt-1">No member-logged meals for the selected period</p>
+            </div>
+          ) : (
+            Object.entries(grouped).map(([memberName, entries]) => (
+              <div key={memberName} className="bg-muted/30 rounded-xl border border-border overflow-hidden">
+                <div className="px-4 py-2 bg-muted/50 border-b border-border flex items-center justify-between">
+                  <span className="text-sm font-semibold text-foreground">{memberName}</span>
+                  <span className="text-xs text-muted-foreground">{entries.length} entr{entries.length === 1 ? "y" : "ies"} · {Math.round(entries.reduce((s, e) => s + (e.calories_kcal ?? 0), 0))} kcal</span>
+                </div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border/50">
+                      <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Food</th>
+                      <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Slot</th>
+                      <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Qty (g)</th>
+                      <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">kcal</th>
+                      <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.map(e => (
+                      <tr key={e.id} className="border-b border-border/30 last:border-0 hover:bg-muted/50 transition-colors">
+                        <td className="px-4 py-2 text-sm text-foreground">{e.food_item}</td>
+                        <td className="px-4 py-2 text-xs text-muted-foreground">{e.meal_slot}</td>
+                        <td className="px-4 py-2 text-sm text-right tabular-nums">{e.quantity_g ?? "—"}</td>
+                        <td className="px-4 py-2 text-sm text-right tabular-nums">{e.calories_kcal != null ? Math.round(e.calories_kcal) : "—"}</td>
+                        <td className="px-4 py-2 text-xs text-right text-muted-foreground">
+                          {new Date(e.logged_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                          {" "}
+                          <span className="text-muted-foreground/60">{new Date(e.logged_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HealthReportModal({ centerId, members, onClose }: {
   centerId: string;
   members: CenterMember[];
@@ -1451,6 +1594,7 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showHealthReport, setShowHealthReport] = useState(false);
+  const [showOutsideMeals, setShowOutsideMeals] = useState(false);
   const [, navigate] = useLocation();
 
   const expiringSoon = new URLSearchParams(window.location.search).get("expiring_soon") === "true";
@@ -1500,16 +1644,31 @@ export default function MembersPage() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {members.length > 0 && (
-              <button
-                onClick={() => setShowHealthReport(true)}
-                className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
-              >
-                <ClipboardList className="w-4 h-4 text-sky-600" />Health Report
-              </button>
+              <>
+                <button
+                  onClick={() => setShowOutsideMeals(true)}
+                  className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
+                >
+                  <Flame className="w-4 h-4 text-amber-500" />Outside Meals
+                </button>
+                <button
+                  onClick={() => setShowHealthReport(true)}
+                  className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
+                >
+                  <ClipboardList className="w-4 h-4 text-sky-600" />Health Report
+                </button>
+              </>
             )}
             {center && <AddMemberForm centerId={center.id} onAdded={load} />}
           </div>
         </div>
+
+        {showOutsideMeals && center && (
+          <OutsideMealsModal
+            centerId={center.id}
+            onClose={() => setShowOutsideMeals(false)}
+          />
+        )}
 
         {showHealthReport && center && (
           <HealthReportModal

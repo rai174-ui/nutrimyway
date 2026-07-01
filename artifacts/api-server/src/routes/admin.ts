@@ -722,10 +722,8 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
   const from = typeof req.query.from === "string" ? req.query.from : today;
   const to   = typeof req.query.to   === "string" ? req.query.to   : today;
 
-  // Resolve each log to a menu_item_id that belongs to THIS center:
-  //   1. Prefer the stored FK only if the referenced menu_item belongs to centerId.
-  //   2. Fall back to a case-insensitive name match within the center for legacy logs.
-  // Both paths enforce center ownership — cross-center menu_item_id is silently ignored.
+  // Resolve each log to a menu_item_id that belongs to THIS center.
+  // Only center-issued logs (checkin_id IS NOT NULL) are included.
   const { rows: byComponent } = await pool.query(
     `WITH resolved AS (
        SELECT
@@ -745,6 +743,7 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
        FROM consumption_logs cl
        JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
        WHERE mcm.center_id = $1
+         AND cl.checkin_id IS NOT NULL
          AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
      )
      SELECT
@@ -761,8 +760,7 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
     [centerId, from, to]
   );
 
-  // Logs breakdown: ALL logs for this center in the date range.
-  // Each row carries a resolved menu_item_id+name (null = self-logged by member, not via check-in).
+  // Logs breakdown: center-issued logs only (checkin_id IS NOT NULL).
   // qty and kcal fall back to BOM totals when the stored value is NULL (BOM-based check-in logs).
   const { rows: logsRaw } = await pool.query(
     `SELECT cl.id, cl.member_id, m.name AS member_name, cl.logged_at, cl.meal_slot,
@@ -797,12 +795,40 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
      JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      JOIN members m ON m.id = cl.member_id
      WHERE mcm.center_id = $1
+       AND cl.checkin_id IS NOT NULL
        AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
      ORDER BY cl.logged_at DESC`,
     [centerId, from, to]
   );
 
   res.json({ from, to, by_component: byComponent, logs: logsRaw });
+});
+
+// GET /api/admin/centers/:centerId/member-self-logs?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Returns meals that members logged themselves outside of center check-ins.
+router.get("/admin/centers/:centerId/member-self-logs", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const from = typeof req.query.from === "string" ? req.query.from : today;
+  const to   = typeof req.query.to   === "string" ? req.query.to   : today;
+
+  const { rows } = await pool.query(
+    `SELECT cl.id, cl.member_id, m.name AS member_name,
+            cl.food_item, cl.meal_slot, cl.quantity_g, cl.calories_kcal, cl.logged_at
+     FROM consumption_logs cl
+     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+     JOIN members m ON m.id = cl.member_id
+     WHERE mcm.center_id = $1
+       AND cl.checkin_id IS NULL
+       AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     ORDER BY cl.logged_at DESC`,
+    [centerId, from, to]
+  );
+
+  res.json({ from, to, logs: rows });
 });
 
 // ---------------------------------------------------------------------------
