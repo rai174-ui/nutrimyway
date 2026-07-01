@@ -645,10 +645,10 @@ export function Log() {
                       <p className="text-sm font-medium">Open Google AI Studio</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Sign in with your Google account (it's free)</p>
                     </StepRow>
-                    <StepRow n={2}>
+                    <StepRow n={2} onClick={() => setWizardStep("setup-2")}>
                       <p className="text-sm font-medium text-muted-foreground">Click "Get API Key"</p>
                     </StepRow>
-                    <StepRow n={3}>
+                    <StepRow n={3} onClick={() => setWizardStep("setup-3")}>
                       <p className="text-sm font-medium text-muted-foreground">Paste your key here</p>
                     </StepRow>
                   </div>
@@ -677,14 +677,14 @@ export function Log() {
                     <button onClick={() => setShowWizard(false)}><X className="w-5 h-5 text-muted-foreground" /></button>
                   </div>
                   <div className="bg-muted/50 rounded-xl p-4 space-y-4">
-                    <StepRow n={1}>
+                    <StepRow n={1} done>
                       <p className="text-sm font-medium text-muted-foreground">Open Google AI Studio ✓</p>
                     </StepRow>
                     <StepRow n={2} active>
                       <p className="text-sm font-medium">Click <span className="font-bold">"Get API Key"</span></p>
                       <p className="text-xs text-muted-foreground mt-0.5">Choose "Create API key in new project" when prompted</p>
                     </StepRow>
-                    <StepRow n={3}>
+                    <StepRow n={3} onClick={() => setWizardStep("setup-3")}>
                       <p className="text-sm font-medium text-muted-foreground">Paste your key here</p>
                     </StepRow>
                   </div>
@@ -708,8 +708,8 @@ export function Log() {
                     <button onClick={() => setShowWizard(false)}><X className="w-5 h-5 text-muted-foreground" /></button>
                   </div>
                   <div className="bg-muted/50 rounded-xl p-4 space-y-4">
-                    <StepRow n={1}><p className="text-sm text-muted-foreground">Open Google AI Studio ✓</p></StepRow>
-                    <StepRow n={2}><p className="text-sm text-muted-foreground">Create API key ✓</p></StepRow>
+                    <StepRow n={1} done><p className="text-sm text-muted-foreground">Open Google AI Studio ✓</p></StepRow>
+                    <StepRow n={2} done><p className="text-sm text-muted-foreground">Get API key ✓</p></StepRow>
                     <StepRow n={3} active>
                       <p className="text-sm font-medium">Paste your key below</p>
                     </StepRow>
@@ -743,13 +743,17 @@ export function Log() {
   );
 }
 
-function StepRow({ n, active, children }: { n: number; active?: boolean; children: React.ReactNode }) {
+function StepRow({ n, active, done, onClick, children }: { n: number; active?: boolean; done?: boolean; onClick?: () => void; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-3">
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className={`flex items-start gap-3 w-full text-left ${onClick ? "cursor-pointer" : "cursor-default"}`}
+    >
       <span className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5 ${
-        active ? "bg-primary text-primary-foreground" : "bg-muted-foreground/20 text-muted-foreground"
+        active ? "bg-primary text-primary-foreground" : done ? "bg-emerald-500 text-white" : "bg-muted-foreground/20 text-muted-foreground"
       }`}>{n}</span>
       <div className="flex-1">{children}</div>
-    </div>
+    </button>
   );
 }
