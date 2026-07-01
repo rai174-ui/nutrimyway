@@ -681,7 +681,7 @@ export function Log() {
                       <p className="text-sm font-medium text-muted-foreground">Open Google AI Studio ✓</p>
                     </StepRow>
                     <StepRow n={2} active>
-                      <p className="text-sm font-medium">Click <span className="font-bold">"Create API key"</span></p>
+                      <p className="text-sm font-medium">Click <span className="font-bold">"Get API Key"</span></p>
                       <p className="text-xs text-muted-foreground mt-0.5">Choose "Create API key in new project" when prompted</p>
                     </StepRow>
                     <StepRow n={3}>
