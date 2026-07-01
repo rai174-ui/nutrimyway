@@ -61,10 +61,17 @@ export interface CenterWithStatus { id: string; name: string; is_active: boolean
 export interface CenterSettings { auto_checkout_min: number; }
 export interface BroadcastSettings {
   center_id: string;
+  retention_days: number;
+}
+export interface BroadcastSchedule {
+  id: number;
+  center_id: string;
   message: string;
   schedule_time: string;
   is_active: boolean;
-  retention_days: number;
+  last_sent_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 export interface Broadcast {
   id: number;

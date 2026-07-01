@@ -1,4 +1,4 @@
-import app from "./app";
+import app, { startBroadcastScheduler } from "./app";
 import { logger } from "./lib/logger";
 import { initDb } from "./lib/sqlite";
 
@@ -16,9 +16,10 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// Initialize SQLite database and seed from xlsx before starting server
+// Initialize database and seed from xlsx before starting server or scheduler
 initDb()
   .then(() => {
+    startBroadcastScheduler();
     app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");

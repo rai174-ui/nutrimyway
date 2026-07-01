@@ -650,6 +650,8 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables27();
   await migrateAdminTables28();
   await migrateAdminTables29();
+  await migrateAdminTables30();
+  await migrateAdminTables31();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -751,6 +753,38 @@ async function migrateAdminTables28(): Promise<void> {
 async function migrateAdminTables29(): Promise<void> {
   // Per-member daily calorie target (kcal); null means fall back to center default
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS daily_kcal INTEGER`);
+}
+
+async function migrateAdminTables30(): Promise<void> {
+  // Multiple broadcast schedules per center
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS center_broadcast_schedules (
+      id SERIAL PRIMARY KEY,
+      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      schedule_time TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS center_broadcast_schedules_center_idx ON center_broadcast_schedules(center_id)`);
+}
+
+async function migrateAdminTables31(): Promise<void> {
+  // Migrate existing single-schedule settings into the new schedules table
+  await pool.query(`
+    INSERT INTO center_broadcast_schedules (center_id, message, schedule_time, is_active)
+    SELECT center_id, message, schedule_time, is_active
+    FROM center_broadcast_settings
+    WHERE message IS NOT NULL AND message <> '' AND schedule_time IS NOT NULL
+    ON CONFLICT DO NOTHING
+  `);
+  // Remove per-center single-schedule columns from settings; retention_days stays
+  await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS message`);
+  await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS schedule_time`);
+  await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS is_active`);
 }
 
 async function migrateAdminTables22(): Promise<void> {

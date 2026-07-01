@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock, Megaphone, Send } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
-import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember, type CenterSettings, type BroadcastSettings } from "@/lib/api";
+import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember, type CenterSettings, type BroadcastSettings, type BroadcastSchedule } from "@/lib/api";
 
 const UNITS = ["g", "kg", "ml", "L", "pcs", "oz", "lb"];
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -47,46 +47,116 @@ function DayPicker({ value, onChange }: { value: Day[]; onChange: (v: Day[]) => 
 
 function BroadcastSettingsCard() {
   const center = getAdminCenter();
-  const [message, setMessage] = useState("");
-  const [scheduleTime, setScheduleTime] = useState("09:00");
-  const [isActive, setIsActive] = useState(false);
+  const [schedules, setSchedules] = useState<BroadcastSchedule[]>([]);
   const [retentionDays, setRetentionDays] = useState(7);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [savingRetention, setSavingRetention] = useState(false);
+  const [retentionSaved, setRetentionSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Add-schedule form
+  const [newMessage, setNewMessage] = useState("");
+  const [newTime, setNewTime] = useState("09:00");
+  const [adding, setAdding] = useState(false);
+
+  // Inline edit
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editMessage, setEditMessage] = useState("");
+  const [editTime, setEditTime] = useState("09:00");
 
   useEffect(() => {
     if (!center) return;
-    setLoading(true);
-    apiGet<BroadcastSettings>(`/admin/centers/${center.id}/broadcast-settings`)
-      .then(s => {
-        setMessage(s.message ?? "");
-        setScheduleTime(s.schedule_time ?? "09:00");
-        setIsActive(s.is_active ?? false);
-        setRetentionDays(s.retention_days ?? 7);
-      })
-      .catch(() => setError("Failed to load broadcast settings"))
-      .finally(() => setLoading(false));
+    void loadAll();
   }, [center?.id]);
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
+  async function loadAll() {
     if (!center) return;
-    if (!message.trim()) { setError("Message is required"); return; }
-    if (!/^([0-1]\d|2[0-3]):([0-5]\d)$/.test(scheduleTime)) {
+    setLoading(true); setError(null);
+    try {
+      const [settings, schs] = await Promise.all([
+        apiGet<BroadcastSettings>(`/admin/centers/${center.id}/broadcast-settings`),
+        apiGet<BroadcastSchedule[]>(`/admin/centers/${center.id}/broadcast-schedules`),
+      ]);
+      setRetentionDays(settings.retention_days ?? 7);
+      setSchedules(schs);
+    } catch {
+      setError("Failed to load broadcast settings");
+    } finally { setLoading(false); }
+  }
+
+  async function saveRetention() {
+    if (!center) return;
+    setSavingRetention(true); setRetentionSaved(false);
+    try {
+      await apiPut(`/admin/centers/${center.id}/broadcast-settings`, { retention_days: retentionDays });
+      setRetentionSaved(true);
+      setTimeout(() => setRetentionSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save retention");
+    } finally { setSavingRetention(false); }
+  }
+
+  async function addSchedule() {
+    if (!center) return;
+    if (!newMessage.trim()) { setError("Message is required"); return; }
+    if (!/^([0-1]\d|2[0-3]):([0-5]\d)$/.test(newTime)) {
       setError("Time must be HH:MM (24-hour format)"); return;
     }
-    setSaving(true); setError(null); setSaved(false);
+    setAdding(true); setError(null);
     try {
-      await apiPut<BroadcastSettings>(`/admin/centers/${center.id}/broadcast-settings`, {
-        message: message.trim(), schedule_time: scheduleTime, is_active: isActive, retention_days: retentionDays,
+      await apiPost<BroadcastSchedule>(`/admin/centers/${center.id}/broadcast-schedules`, {
+        message: newMessage.trim(), schedule_time: newTime,
       });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      setNewMessage(""); setNewTime("09:00");
+      void loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add schedule");
+    } finally { setAdding(false); }
+  }
+
+  async function toggleSchedule(id: number, active: boolean) {
+    if (!center) return;
+    try {
+      await apiPut(`/admin/centers/${center.id}/broadcast-schedules/${id}`, { is_active: !active });
+      void loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to toggle");
+    }
+  }
+
+  async function deleteSchedule(id: number) {
+    if (!center) return;
+    if (!confirm("Delete this scheduled broadcast?")) return;
+    try {
+      await apiDelete(`/admin/centers/${center.id}/broadcast-schedules/${id}`);
+      void loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete");
+    }
+  }
+
+  async function saveEdit(id: number) {
+    if (!center) return;
+    if (!editMessage.trim()) { setError("Message is required"); return; }
+    if (!/^([0-1]\d|2[0-3]):([0-5]\d)$/.test(editTime)) {
+      setError("Time must be HH:MM (24-hour format)"); return;
+    }
+    try {
+      await apiPut(`/admin/centers/${center.id}/broadcast-schedules/${id}`, {
+        message: editMessage.trim(), schedule_time: editTime,
+      });
+      setEditingId(null);
+      void loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
-    } finally { setSaving(false); }
+    }
+  }
+
+  function startEdit(s: BroadcastSchedule) {
+    setEditingId(s.id);
+    setEditMessage(s.message);
+    setEditTime(s.schedule_time);
+    setError(null);
   }
 
   return (
@@ -96,81 +166,128 @@ function BroadcastSettingsCard() {
           <Megaphone className="w-4 h-4 text-amber-600" />
         </div>
         <div>
-          <h2 className="font-semibold text-foreground leading-tight">Broadcast Settings</h2>
-          <p className="text-xs text-muted-foreground">Schedule a daily message for active members</p>
+          <h2 className="font-semibold text-foreground leading-tight">Broadcast Schedules</h2>
+          <p className="text-xs text-muted-foreground">Set up multiple daily messages for active members</p>
         </div>
       </div>
+
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading…
         </div>
       ) : (
-        <form onSubmit={e => void handleSave(e)} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Daily Message</label>
+        <div className="flex flex-col gap-5">
+          {/* Retention */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">Keep broadcasts visible for</span>
+            <input
+              type="number" min={1} max={90}
+              value={retentionDays}
+              onChange={e => setRetentionDays(Math.max(1, Math.min(90, Number(e.target.value) || 7)))}
+              className="w-14 h-8 px-2 rounded-lg border border-input bg-background text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <span className="text-xs text-muted-foreground">days</span>
+            <button
+              onClick={() => void saveRetention()}
+              disabled={savingRetention}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-600 text-white disabled:opacity-50"
+            >
+              {savingRetention ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+            </button>
+            {retentionSaved && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+          </div>
+
+          {/* Schedule list */}
+          <div className="space-y-2">
+            {schedules.length === 0 && (
+              <p className="text-xs text-muted-foreground">No schedules yet. Add one below.</p>
+            )}
+            {schedules.map(s => (
+              <div key={s.id} className="flex items-start justify-between gap-2 bg-muted/40 rounded-lg px-3 py-2 text-sm">
+                {editingId === s.id ? (
+                  <div className="flex-1 flex flex-col gap-2">
+                    <textarea
+                      value={editMessage}
+                      onChange={e => setEditMessage(e.target.value)}
+                      rows={2}
+                      className="w-full px-2 py-1 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none"
+                    />
+                    <div className="flex items-center gap-2">
+                      <input type="time" value={editTime} onChange={e => setEditTime(e.target.value)}
+                        className="w-24 h-7 px-2 rounded-lg border border-input bg-background text-xs focus:outline-none" />
+                      <button onClick={() => void saveEdit(s.id)}
+                        className="text-xs font-medium px-2 py-1 rounded bg-primary text-white">Save</button>
+                      <button onClick={() => setEditingId(null)}
+                        className="text-xs font-medium px-2 py-1 rounded border border-border">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="min-w-0">
+                    <p className="text-foreground line-clamp-2">{s.message}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {s.schedule_time} IST · {s.is_active ? "Active" : "Paused"}
+                      {s.last_sent_at && ` · Last sent ${new Date(s.last_sent_at).toLocaleDateString("en-IN")}`}
+                    </p>
+                  </div>
+                )}
+                {editingId !== s.id && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => void toggleSchedule(s.id, s.is_active)}
+                      className={`p-1 rounded-md text-xs font-medium transition-colors ${
+                        s.is_active
+                          ? "text-emerald-600 hover:bg-emerald-50"
+                          : "text-muted-foreground hover:bg-muted"
+                      }`}
+                      title={s.is_active ? "Pause" : "Resume"}
+                    >
+                      {s.is_active ? "Pause" : "Resume"}
+                    </button>
+                    <button onClick={() => startEdit(s)}
+                      className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => void deleteSchedule(s.id)}
+                      className="p-1 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Add new */}
+          <div className="border-t border-border pt-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Add Schedule</p>
             <textarea
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              placeholder="e.g. Don't forget to log your meals today! Stay hydrated and track your calories."
-              rows={3}
+              value={newMessage}
+              onChange={e => setNewMessage(e.target.value)}
+              placeholder="Type your scheduled message..."
+              rows={2}
               className="w-full px-3 py-2 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Send Time</label>
-            <input
-              type="time"
-              value={scheduleTime}
-              onChange={e => setScheduleTime(e.target.value)}
-              className="w-32 h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={e => setIsActive(e.target.checked)}
-                className="w-4 h-4 accent-primary rounded"
-              />
-              <span className="text-sm text-foreground">Enable scheduled broadcast</span>
-            </label>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Keep visible for</span>
-              <input
-                type="number"
-                min={1}
-                max={90}
-                value={retentionDays}
-                onChange={e => setRetentionDays(Math.max(1, Math.min(90, Number(e.target.value) || 7)))}
-                className="w-14 h-8 px-2 rounded-lg border border-input bg-background text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-              <span className="text-xs text-muted-foreground">days</span>
+              <input type="time" value={newTime} onChange={e => setNewTime(e.target.value)}
+                className="w-28 h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              <button
+                onClick={() => void addSchedule()}
+                disabled={adding || !newMessage.trim()}
+                className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
+              >
+                {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Add
+              </button>
             </div>
           </div>
+
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
               <span className="text-sm text-red-700">{error}</span>
             </div>
           )}
-          {saved && (
-            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span className="text-sm text-emerald-700 font-medium">Broadcast settings saved.</span>
-            </div>
-          )}
-          <div>
-            <button
-              type="submit"
-              disabled={saving || !message.trim()}
-              className="flex items-center gap-2 h-9 px-5 rounded-xl bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              Save Schedule
-            </button>
-          </div>
-        </form>
+        </div>
       )}
     </div>
   );
