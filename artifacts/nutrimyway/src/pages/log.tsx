@@ -255,7 +255,7 @@ export function Log() {
       const data = await res.json() as { food_item?: string; calories_kcal?: number | null; protein_g?: number | null; error?: string };
       if (!res.ok || data.error) {
         setPendingPhoto(null);
-        toast({ title: data.error ?? "Could not identify food", variant: "destructive" });
+        toast({ title: data.error ?? "Could not identify food", variant: "destructive", duration: 6000 });
         return;
       }
       setFoodItem(data.food_item ?? "");
