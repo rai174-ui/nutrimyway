@@ -6,12 +6,14 @@ import packsRouter from "./packs";
 import authRouter from "./auth";
 import centersRouter from "./centers";
 import adminRouter from "./admin";
+import storageRouter from "./storage";
 
 const router: IRouter = Router();
 
 router.use(authRouter);
 router.use(centersRouter);
 router.use(healthRouter);
+router.use(storageRouter);
 router.use(membersRouter);
 router.use(bomRouter);
 router.use(packsRouter);

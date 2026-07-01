@@ -86,6 +86,7 @@ export function Log() {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [savingKey, setSavingKey] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
 
   const consentKey = `aiScanConsented_${MEMBER_ID}`;
 
@@ -107,10 +108,29 @@ export function Log() {
 
   const createLog = useCreateConsumptionLog();
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!foodItem.trim()) return;
     const kcal = customKcal !== "" ? Number(customKcal) : null;
     const protein = customProtein !== "" ? Number(customProtein) : null;
+    let photoUrl: string | null = null;
+    if (pendingPhoto) {
+      try {
+        const urlRes = await fetch(`${BASE}/storage/uploads/request-url`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: pendingPhoto.name, size: pendingPhoto.size, contentType: pendingPhoto.type }),
+        });
+        if (urlRes.ok) {
+          const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+          const putRes = await fetch(uploadURL, { method: "PUT", body: pendingPhoto, headers: { "Content-Type": pendingPhoto.type } });
+          if (putRes.ok) {
+            photoUrl = objectPath;
+          }
+        }
+      } catch {
+        // non-blocking: log without photo if upload fails
+      }
+    }
     createLog.mutate(
       {
         memberId: MEMBER_ID!,
@@ -121,6 +141,7 @@ export function Log() {
           protein_g: protein,
           carbs_g: null,
           fat_g: null,
+          photo_url: photoUrl,
         }
       },
       {
@@ -131,6 +152,10 @@ export function Log() {
           setCustomKcal("");
           setCustomProtein("");
           setAiEstimated(false);
+          setPendingPhoto(null);
+        },
+        onError: () => {
+          setPendingPhoto(null);
         }
       }
     );
@@ -217,6 +242,7 @@ export function Log() {
     const file = e.target.files?.[0];
     if (!file || !MEMBER_ID) return;
     e.target.value = "";
+    setPendingPhoto(file);
 
     setAiLoading(true);
     try {
@@ -228,6 +254,7 @@ export function Log() {
       });
       const data = await res.json() as { food_item?: string; calories_kcal?: number | null; protein_g?: number | null; error?: string };
       if (!res.ok || data.error) {
+        setPendingPhoto(null);
         toast({ title: data.error ?? "Could not identify food", variant: "destructive" });
         return;
       }
@@ -237,6 +264,7 @@ export function Log() {
       setAiEstimated(true);
       toast({ title: "AI estimate ready — review and save!" });
     } catch {
+      setPendingPhoto(null);
       toast({ title: "Photo analysis failed. Try again.", variant: "destructive" });
     } finally {
       setAiLoading(false);

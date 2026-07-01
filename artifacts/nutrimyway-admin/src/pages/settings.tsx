@@ -857,6 +857,7 @@ function ItemMaster() {
 function CenterSettingsCard() {
   const center = getAdminCenter();
   const [value, setValue] = useState<number | "">(180);
+  const [photoRetention, setPhotoRetention] = useState<number | "">(2);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -867,24 +868,32 @@ function CenterSettingsCard() {
     if (!center) return;
     setLoading(true);
     apiGet<CenterSettings>(`/admin/centers/${center.id}/settings`)
-      .then(s => setValue(s.auto_checkout_min))
+      .then(s => {
+        setValue(s.auto_checkout_min);
+        setPhotoRetention(s.photo_retention_days ?? 2);
+      })
       .catch(() => setError("Failed to load settings"))
       .finally(() => setLoading(false));
   }, [center?.id]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!center || value === "") return;
+    if (!center || value === "" || photoRetention === "") return;
     const mins = Number(value);
     if (!Number.isFinite(mins) || mins < 10 || mins > 480) {
       setError("Must be between 10 and 480 minutes"); return;
+    }
+    const days = Number(photoRetention);
+    if (!Number.isFinite(days) || days < 1 || days > 30) {
+      setError("Photo retention must be between 1 and 30 days"); return;
     }
     setSaving(true);
     setError(null);
     setSaved(false);
     try {
-      const updated = await apiPatch<CenterSettings>(`/admin/centers/${center.id}/settings`, { auto_checkout_min: mins });
+      const updated = await apiPatch<CenterSettings>(`/admin/centers/${center.id}/settings`, { auto_checkout_min: mins, photo_retention_days: days });
       setValue(updated.auto_checkout_min);
+      setPhotoRetention(updated.photo_retention_days);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -945,6 +954,28 @@ function CenterSettingsCard() {
             </div>
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Meal Photo Retention (days)
+            </label>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Photos older than this are automatically deleted. Range 1–30 days.
+            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                step={1}
+                value={photoRetention}
+                onChange={e => setPhotoRetention(e.target.value === "" ? "" : Number(e.target.value))}
+                required
+                className="w-28 h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <span className="text-sm text-muted-foreground">days</span>
+            </div>
+          </div>
+
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
@@ -961,7 +992,7 @@ function CenterSettingsCard() {
           <div>
             <button
               type="submit"
-              disabled={saving || value === ""}
+              disabled={saving || value === "" || photoRetention === ""}
               className="flex items-center gap-2 h-9 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}

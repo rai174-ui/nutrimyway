@@ -11,6 +11,7 @@
     "reset-passwords": "node --env-file-if-exists=../../.env reset-passwords.mjs"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.21.0",
     "@google/generative-ai": "^0.24.1",
     "@types/better-sqlite3": "^7.6.13",
     "@workspace/api-zod": "workspace:*",
@@ -21,6 +22,7 @@
     "cors": "^2.8.6",
     "drizzle-orm": "catalog:",
     "express": "^5.2.1",
+    "google-auth-library": "^10.9.0",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^9.0.1",
     "pg": "^8.22.0",

@@ -5,6 +5,8 @@ import path from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { pool } from "./lib/sqlite";
+import { ObjectStorageService } from "./lib/objectStorage";
+import { ObjectNotFoundError } from "./lib/objectStorage";
 
 const app: Express = express();
 
@@ -103,6 +105,66 @@ export function startBroadcastScheduler(): void {
   tick();
   setInterval(tick, 60_000);
   logger.info("Broadcast scheduler started (checking every 60s)");
+}
+
+// ── Photo cleanup scheduler ─────────────────────────────────────────────
+
+/** Run every hour and delete meal photos older than each center's retention setting. */
+export function startPhotoCleanupScheduler(): void {
+  const objectStorageService = new ObjectStorageService();
+
+  async function tick() {
+    try {
+      const { rows: centers } = await pool.query(
+        `SELECT id, photo_retention_days FROM centers WHERE photo_retention_days IS NOT NULL`
+      );
+      for (const c of centers as Array<{ id: string; photo_retention_days: number }>) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - c.photo_retention_days);
+        const { rows: expired } = await pool.query(
+          `SELECT id, photo_url
+           FROM consumption_logs
+           WHERE photo_url IS NOT NULL
+             AND photo_uploaded_at IS NOT NULL
+             AND photo_uploaded_at < $1
+             AND EXISTS (
+               SELECT 1 FROM member_center_mapping mcm
+               WHERE mcm.member_id = consumption_logs.member_id
+                 AND mcm.center_id = $2
+             )`,
+          [cutoff.toISOString(), c.id]
+        );
+        const ids: number[] = [];
+        for (const row of expired as Array<{ id: number; photo_url: string }>) {
+          try {
+            await objectStorageService.deleteObjectEntity(row.photo_url);
+            logger.info({ logId: row.id, photo_url: row.photo_url }, "Deleted expired meal photo");
+          } catch (err) {
+            if (err instanceof ObjectNotFoundError) {
+              logger.info({ logId: row.id }, "Photo already missing in GCS, clearing DB reference");
+            } else {
+              logger.error({ err, logId: row.id }, "Failed to delete expired meal photo, skipping");
+              continue;
+            }
+          }
+          ids.push(row.id);
+        }
+        if (ids.length > 0) {
+          await pool.query(
+            `UPDATE consumption_logs SET photo_url = NULL, photo_uploaded_at = NULL WHERE id = ANY($1)`,
+            [ids]
+          );
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, "Photo cleanup tick failed");
+    }
+  }
+
+  // Run every hour
+  tick();
+  setInterval(tick, 60 * 60_000);
+  logger.info("Photo cleanup scheduler started (checking every hour)");
 }
 
 export default app;

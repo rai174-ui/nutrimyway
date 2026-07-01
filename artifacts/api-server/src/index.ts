@@ -1,4 +1,4 @@
-import app, { startBroadcastScheduler } from "./app";
+import app, { startBroadcastScheduler, startPhotoCleanupScheduler } from "./app";
 import { logger } from "./lib/logger";
 import { initDb } from "./lib/sqlite";
 
@@ -20,6 +20,7 @@ if (Number.isNaN(port) || port <= 0) {
 initDb()
   .then(() => {
     startBroadcastScheduler();
+    startPhotoCleanupScheduler();
     app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");

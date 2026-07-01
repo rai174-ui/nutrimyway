@@ -18,6 +18,46 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Request a presigned URL for file upload
+ */
+
+
+
+
+
+export const RequestUploadUrlBody = zod.object({
+  "name": zod.string().min(1).describe('Original file name.'),
+  "size": zod.number().min(1).describe('File size in bytes.'),
+  "contentType": zod.string().min(1).describe('MIME type of the file (e.g. image\/jpeg).')
+})
+
+
+
+
+
+
+export const RequestUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().url().describe('Presigned GCS URL for PUT upload.'),
+  "objectPath": zod.string().describe('Normalized object path.'),
+  "metadata": zod.object({
+  "name": zod.string().min(1).describe('Original file name.'),
+  "size": zod.number().min(1).describe('File size in bytes.'),
+  "contentType": zod.string().min(1).describe('MIME type of the file (e.g. image\/jpeg).')
+}).optional()
+})
+
+
+/**
+ * @summary Serve a public asset from PUBLIC_OBJECT_SEARCH_PATHS
+ */
+export const GetPublicObjectParams = zod.object({
+  "filePath": zod.coerce.string()
+})
+
+export const GetPublicObjectResponse = zod.unknown()
+
+
+/**
  * @summary Get member profile
  */
 export const GetMemberParams = zod.object({
@@ -131,7 +171,9 @@ export const GetConsumptionLogsResponseItem = zod.object({
   "calories_kcal": zod.number().nullish(),
   "protein_g": zod.number().nullish(),
   "carbs_g": zod.number().nullish(),
-  "fat_g": zod.number().nullish()
+  "fat_g": zod.number().nullish(),
+  "photo_url": zod.string().nullish(),
+  "photo_uploaded_at": zod.string().nullish()
 })
 export const GetConsumptionLogsResponse = zod.array(GetConsumptionLogsResponseItem)
 
@@ -150,7 +192,8 @@ export const CreateConsumptionLogBody = zod.object({
   "calories_kcal": zod.number().nullish(),
   "protein_g": zod.number().nullish(),
   "carbs_g": zod.number().nullish(),
-  "fat_g": zod.number().nullish()
+  "fat_g": zod.number().nullish(),
+  "photo_url": zod.string().nullish()
 })
 
 export const CreateConsumptionLogResponse = zod.object({
@@ -163,7 +206,9 @@ export const CreateConsumptionLogResponse = zod.object({
   "calories_kcal": zod.number().nullish(),
   "protein_g": zod.number().nullish(),
   "carbs_g": zod.number().nullish(),
-  "fat_g": zod.number().nullish()
+  "fat_g": zod.number().nullish(),
+  "photo_url": zod.string().nullish(),
+  "photo_uploaded_at": zod.string().nullish()
 })
 
 
@@ -195,7 +240,9 @@ export const GetDailySummaryResponse = zod.object({
   "calories_kcal": zod.number().nullish(),
   "protein_g": zod.number().nullish(),
   "carbs_g": zod.number().nullish(),
-  "fat_g": zod.number().nullish()
+  "fat_g": zod.number().nullish(),
+  "photo_url": zod.string().nullish(),
+  "photo_uploaded_at": zod.string().nullish()
 }))).optional()
 })
 

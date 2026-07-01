@@ -1365,7 +1365,26 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
                   <tbody>
                     {entries.map(e => (
                       <tr key={e.id} className="border-b border-border/30 last:border-0 hover:bg-muted/50 transition-colors">
-                        <td className="px-4 py-2 text-sm text-foreground">{e.food_item}</td>
+                        <td className="px-4 py-2 text-sm text-foreground">
+                          <div className="flex items-center gap-2">
+                            {e.food_item}
+                            {e.photo_url && (
+                              <a
+                                href={`/api/storage${e.photo_url}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="View meal photo"
+                                className="shrink-0"
+                              >
+                                <img
+                                  src={`/api/storage${e.photo_url}`}
+                                  alt="meal"
+                                  className="w-8 h-8 rounded object-cover border border-border"
+                                />
+                              </a>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-2 text-xs text-muted-foreground">{e.meal_slot}</td>
                         <td className="px-4 py-2 text-sm text-right tabular-nums">{e.quantity_g ?? "—"}</td>
                         <td className="px-4 py-2 text-sm text-right tabular-nums">{e.calories_kcal != null ? Math.round(e.calories_kcal) : "—"}</td>

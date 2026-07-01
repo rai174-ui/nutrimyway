@@ -95,6 +95,10 @@ export interface ConsumptionLog {
   carbs_g?: number | null;
   /** @nullable */
   fat_g?: number | null;
+  /** @nullable */
+  photo_url?: string | null;
+  /** @nullable */
+  photo_uploaded_at?: string | null;
 }
 
 export interface ConsumptionLogInput {
@@ -110,6 +114,8 @@ export interface ConsumptionLogInput {
   carbs_g?: number | null;
   /** @nullable */
   fat_g?: number | null;
+  /** @nullable */
+  photo_url?: string | null;
 }
 
 export type DailySummaryLogsBySlot = {[key: string]: ConsumptionLog[]};
@@ -163,6 +169,40 @@ export interface Issuance {
   /** @nullable */
   status?: string | null;
 }
+
+export interface UploadUrlRequest {
+  /**
+     * Original file name.
+     * @minLength 1
+     */
+  name: string;
+  /**
+     * File size in bytes.
+     * @minimum 1
+     */
+  size: number;
+  /**
+     * MIME type of the file (e.g. image/jpeg).
+     * @minLength 1
+     */
+  contentType: string;
+}
+
+export interface UploadUrlResponse {
+  /** Presigned GCS URL for PUT upload. */
+  uploadURL: string;
+  /** Normalized object path. */
+  objectPath: string;
+  metadata?: UploadUrlRequest;
+}
+
+export type RequestUploadUrl400 = {
+  error?: string;
+};
+
+export type GetPublicObject404 = {
+  error?: string;
+};
 
 export type GetConsumptionLogsParams = {
 /**

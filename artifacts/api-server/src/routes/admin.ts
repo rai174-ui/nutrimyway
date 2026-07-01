@@ -423,7 +423,7 @@ router.get("/admin/centers/:centerId/settings", requireAdmin, async (req, res) =
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
   const { rows } = await pool.query("SELECT auto_checkout_min FROM centers WHERE id = $1", [centerId]);
   if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
-  res.json({ auto_checkout_min: rows[0].auto_checkout_min as number });
+  res.json({ auto_checkout_min: rows[0].auto_checkout_min as number, photo_retention_days: rows[0].photo_retention_days as number ?? 2 });
 });
 
 // PATCH /api/admin/centers/:centerId/settings
@@ -431,13 +431,30 @@ router.patch("/admin/centers/:centerId/settings", requireAdmin, async (req, res)
   const { centerId } = req.params;
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
-  const { auto_checkout_min } = req.body as { auto_checkout_min?: unknown };
-  const mins = Number(auto_checkout_min);
-  if (!Number.isFinite(mins) || mins < 10 || mins > 480) {
-    res.status(400).json({ error: "auto_checkout_min must be a number between 10 and 480" }); return;
+  const { auto_checkout_min, photo_retention_days } = req.body as { auto_checkout_min?: unknown; photo_retention_days?: unknown };
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  if (auto_checkout_min != null) {
+    const mins = Number(auto_checkout_min);
+    if (!Number.isFinite(mins) || mins < 10 || mins > 480) {
+      res.status(400).json({ error: "auto_checkout_min must be a number between 10 and 480" }); return;
+    }
+    updates.push(`auto_checkout_min = $${updates.length + 1}`);
+    values.push(mins);
   }
-  await pool.query("UPDATE centers SET auto_checkout_min = $1 WHERE id = $2", [mins, centerId]);
-  res.json({ auto_checkout_min: mins });
+  if (photo_retention_days != null) {
+    const days = Number(photo_retention_days);
+    if (!Number.isFinite(days) || days < 1 || days > 30) {
+      res.status(400).json({ error: "photo_retention_days must be between 1 and 30" }); return;
+    }
+    updates.push(`photo_retention_days = $${updates.length + 1}`);
+    values.push(days);
+  }
+  if (updates.length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
+  values.push(centerId);
+  await pool.query(`UPDATE centers SET ${updates.join(", ")} WHERE id = $${values.length}`, values);
+  const { rows } = await pool.query("SELECT auto_checkout_min, photo_retention_days FROM centers WHERE id = $1", [centerId]);
+  res.json({ auto_checkout_min: rows[0].auto_checkout_min as number, photo_retention_days: rows[0].photo_retention_days as number });
 });
 
 // GET /api/admin/centers/:centerId/dashboard
@@ -817,7 +834,7 @@ router.get("/admin/centers/:centerId/member-self-logs", requireAdmin, async (req
 
   const { rows } = await pool.query(
     `SELECT cl.id, cl.member_id, m.name AS member_name,
-            cl.food_item, cl.meal_slot, cl.quantity_g, cl.calories_kcal, cl.logged_at
+            cl.food_item, cl.meal_slot, cl.quantity_g, cl.calories_kcal, cl.logged_at, cl.photo_url
      FROM consumption_logs cl
      JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      JOIN members m ON m.id = cl.member_id

@@ -79,11 +79,12 @@ router.get("/members/:id/consumption", async (req, res) => {
 // POST /api/members/:id/consumption
 router.post("/members/:id/consumption", async (req, res) => {
   const memberId = Number(req.params.id);
-  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id } = req.body as {
+  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id, photo_url } = req.body as {
     meal_slot: string; food_item: string;
     quantity_g?: number | null; calories_kcal?: number | null;
     protein_g?: number | null; carbs_g?: number | null; fat_g?: number | null;
     menu_item_id?: number | null;
+    photo_url?: string | null;
   };
   if (!meal_slot || !food_item) { res.status(400).json({ error: "meal_slot and food_item are required" }); return; }
 
@@ -101,10 +102,11 @@ router.post("/members/:id/consumption", async (req, res) => {
 
   const { rows } = await pool.query(
     `INSERT INTO consumption_logs
-       (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id)
-     VALUES ($1,NOW(),$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+       (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id, photo_url, photo_uploaded_at)
+     VALUES ($1,NOW(),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
     [memberId, meal_slot, food_item, quantity_g ?? null, calories_kcal ?? null,
-     protein_g ?? null, carbs_g ?? null, fat_g ?? null, menu_item_id ?? null]
+     protein_g ?? null, carbs_g ?? null, fat_g ?? null, menu_item_id ?? null,
+     photo_url ?? null, photo_url ? new Date().toISOString() : null]
   );
   res.status(201).json(rows[0]);
 });

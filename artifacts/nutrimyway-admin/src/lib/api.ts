@@ -58,7 +58,7 @@ export function bomDeletePath(menuItemId: number, bomId: number): string {
 
 export interface Center { id: string; name: string; }
 export interface CenterWithStatus { id: string; name: string; is_active: boolean; valid_until: string | null; }
-export interface CenterSettings { auto_checkout_min: number; }
+export interface CenterSettings { auto_checkout_min: number; photo_retention_days: number; }
 export interface BroadcastSettings {
   center_id: string;
   retention_days: number;
@@ -225,6 +225,7 @@ export interface SelfLogEntry {
   quantity_g: number | null;
   calories_kcal: number | null;
   logged_at: string;
+  photo_url: string | null;
 }
 
 export interface ConsumptionLog {

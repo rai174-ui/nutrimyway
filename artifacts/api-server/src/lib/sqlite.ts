@@ -58,7 +58,9 @@ async function createTables(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS centers (
       id TEXT PRIMARY KEY,
-      name TEXT NOT NULL
+      name TEXT NOT NULL,
+      auto_checkout_min INTEGER DEFAULT 180,
+      photo_retention_days INTEGER DEFAULT 2
     );
 
     CREATE TABLE IF NOT EXISTS members (
@@ -100,7 +102,9 @@ async function createTables(): Promise<void> {
       calories_kcal REAL,
       protein_g REAL,
       carbs_g REAL,
-      fat_g REAL
+      fat_g REAL,
+      photo_url TEXT,
+      photo_uploaded_at TIMESTAMPTZ
     );
 
     CREATE TABLE IF NOT EXISTS bom_items (
@@ -652,6 +656,8 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables29();
   await migrateAdminTables30();
   await migrateAdminTables31();
+  await migrateAdminTables32();
+  await migrateAdminTables33();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -770,6 +776,17 @@ async function migrateAdminTables30(): Promise<void> {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS center_broadcast_schedules_center_idx ON center_broadcast_schedules(center_id)`);
+}
+
+async function migrateAdminTables32(): Promise<void> {
+  // Meal photo storage on consumption logs
+  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS photo_url TEXT`);
+  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS photo_uploaded_at TIMESTAMPTZ`);
+}
+
+async function migrateAdminTables33(): Promise<void> {
+  // Photo retention setting per center
+  await pool.query(`ALTER TABLE centers ADD COLUMN IF NOT EXISTS photo_retention_days INTEGER DEFAULT 2`);
 }
 
 async function migrateAdminTables31(): Promise<void> {
