@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Upload, Loader2 } from "lucide-react";
+import { Upload, Loader2, Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import { superFetch, type CenterWithStatus } from "@/lib/api";
 
@@ -59,6 +59,18 @@ export function UploadMembersDialog({
         <p className="text-xs text-muted-foreground">
           Upload an XLSX or CSV with columns: <strong>name</strong>, <strong>membership_no</strong>, email, mobile, height_cm, date_of_joining, dob, age_at_joining, valid_until
         </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => {
+            const headers = ["name","membership_no","email","mobile","height_cm","date_of_joining","dob","age_at_joining","valid_until"];
+            const sample = [["Amit Sharma","MEM-001","amit@example.com","9876543210","170","01-01-2024","15-05-1990","34","31-12-2025"]];
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...sample]);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Members");
+            XLSX.writeFile(wb, "sample-members-upload.xlsx");
+          }} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Download className="w-3.5 h-3.5" /> Download sample
+          </button>
+        </div>
         <input ref={fileRef} type="file" accept=".xlsx,.csv" onChange={parseFile} className="hidden" />
         <div className="flex items-center gap-2">
           <button onClick={() => fileRef.current?.click()}
@@ -162,6 +174,24 @@ export function UploadInventoryDialog({
           menu_item: name, description, is_mandatory, flavours, available_days<br/>
           bom: menu_item_name, ingredient_name, quantity, unit, kcal
         </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => {
+            const headers = ["item_type","name","pack_size","pack_unit","material_code","description","flavour","serving_qty","kcal_per_serving","menu_item_name","ingredient_name","quantity","unit","kcal","is_mandatory","flavours","available_days"];
+            const sample = [
+              ["ingredient","Almonds",100,"g","MAT-001","Raw almonds","nut",10,58,null,null,null,null,null,null,null,null],
+              ["ingredient","Whey Protein",500,"g","MAT-002","Vanilla whey","vanilla",1,120,null,null,null,null,null,null,null,null],
+              ["menu_item","Morning Shake",null,null,null,"Daily protein shake","yes","vanilla,choco","Mon,Tue,Wed,Thu,Fri",null,null,null,null,null,"yes","vanilla,choco","Mon,Tue,Wed,Thu,Fri"],
+              ["bom",null,null,null,null,null,null,null,null,"Morning Shake","Almonds",10,"g",58,null,null,null],
+              ["bom",null,null,null,null,null,null,null,null,"Morning Shake","Whey Protein",1,"scoop",120,null,null,null],
+            ];
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...sample]);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+            XLSX.writeFile(wb, "sample-inventory-upload.xlsx");
+          }} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Download className="w-3.5 h-3.5" /> Download sample
+          </button>
+        </div>
         <input ref={fileRef} type="file" accept=".xlsx,.csv" onChange={parseFile} className="hidden" />
         <div className="flex items-center gap-2">
           <button onClick={() => fileRef.current?.click()}
