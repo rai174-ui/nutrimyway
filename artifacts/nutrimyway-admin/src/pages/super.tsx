@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearch } from "wouter";
 import {
   ShieldCheck, CheckCircle2, XCircle, Loader2, LogOut, RefreshCw,
-  Key, Calendar, Mail, Eye, EyeOff,
+  Key, Calendar, Mail, Eye, EyeOff, Pencil,
 } from "lucide-react";
 import {
   isSuperAuthenticated, saveSuperAuth, clearSuperAuth, superFetch, type CenterWithStatus,
@@ -310,6 +310,61 @@ function ResetPwdDialog({
   );
 }
 
+// ─── Edit Center Name Dialog ────────────────────────────────────────────────
+
+function EditCenterDialog({
+  center, onClose, onSuccess,
+}: { center: CenterWithStatus; onClose: () => void; onSuccess: (updated: CenterWithStatus) => void }) {
+  const [name, setName] = useState(center.name);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) { setError("Name is required"); return; }
+    setLoading(true); setError(null);
+    try {
+      const updated = await superFetch<CenterWithStatus>(`/admin/super/centers/${center.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      onSuccess(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm p-6">
+        <h3 className="text-base font-bold text-foreground mb-1">Edit Center</h3>
+        <p className="text-sm text-muted-foreground mb-4">{center.id}</p>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Center name"
+            autoFocus
+            className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex gap-2 mt-1">
+            <button type="button" onClick={onClose} className="flex-1 h-9 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={!name.trim() || loading} className="flex-1 h-9 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-40 flex items-center justify-center">
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Set Validity Date Dialog ─────────────────────────────────────────────────
 
 function ValidityDialog({
@@ -402,6 +457,7 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [resetPwdCenter, setResetPwdCenter] = useState<CenterWithStatus | null>(null);
   const [validityCenter, setValidityCenter] = useState<CenterWithStatus | null>(null);
+  const [editCenter, setEditCenter] = useState<CenterWithStatus | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   function showToast(msg: string) {
@@ -463,6 +519,18 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
             setCenters(prev => prev.map(c => c.id === updated.id ? { ...c, valid_until: updated.valid_until } : c));
             setValidityCenter(null);
             showToast("Validity date updated");
+          }}
+        />
+      )}
+
+      {editCenter && (
+        <EditCenterDialog
+          center={editCenter}
+          onClose={() => setEditCenter(null)}
+          onSuccess={updated => {
+            setCenters(prev => prev.map(c => c.id === updated.id ? { ...c, name: updated.name } : c));
+            setEditCenter(null);
+            showToast("Center name updated");
           }}
         />
       )}
@@ -556,6 +624,13 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setEditCenter(center)}
+                          title="Edit name"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           onClick={() => setResetPwdCenter(center)}
                           title="Reset password"

@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock, Megaphone, Send, ChevronDown, ChevronUp } from "lucide-react";
+import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock, Megaphone, Send, ChevronDown, ChevronUp, Upload } from "lucide-react";
+import * as XLSX from "xlsx";
 import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
 import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember, type CenterSettings, type BroadcastSettings, type BroadcastSchedule } from "@/lib/api";
+import { BulkUploadInventory } from "@/components/bulk-upload-inventory";
 
 const UNITS = ["g", "kg", "ml", "L", "pcs", "oz", "lb"];
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -634,6 +636,7 @@ function ItemMaster() {
             <Plus className="w-3.5 h-3.5" />
             Add
           </button>
+          <BulkUploadInventory onSuccess={() => void load()} />
           <button onClick={() => setExpanded(v => !v)} className="p-1 text-muted-foreground hover:text-foreground">
             {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
           </button>

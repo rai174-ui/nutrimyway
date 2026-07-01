@@ -329,6 +329,20 @@ router.patch("/admin/super/centers/:centerId/password", requireSuperAdmin, async
 });
 
 // PATCH /api/admin/super/centers/:centerId/validity — set/clear access expiry date
+// PATCH /api/admin/super/centers/:centerId - edit center name
+router.patch("/admin/super/centers/:centerId", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { name } = req.body as { name?: string };
+  if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+  const { rows } = await pool.query(
+    "UPDATE centers SET name = $1 WHERE id = $2 RETURNING id, name, is_active",
+    [name.trim(), centerId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
+  res.json(rows[0]);
+});
+
+// PATCH /api/admin/super/centers/:centerId/validity - set/clear access expiry date
 router.patch("/admin/super/centers/:centerId/validity", requireSuperAdmin, async (req, res) => {
   const { centerId } = req.params;
   const { valid_until } = req.body as { valid_until?: string | null };
@@ -2039,6 +2053,173 @@ router.delete("/admin/centers/:centerId/broadcasts/:broadcastId", requireAdmin, 
   }
   await pool.query("DELETE FROM member_broadcasts WHERE id = $1", [Number(broadcastId)]);
   res.status(204).end();
+});
+
+// ── Bulk Uploads ───────────────────────────────────────────────────────────
+
+// POST /api/admin/centers/:centerId/upload/members
+// Accepts XLSX/CSV with columns: name, membership_no, email, mobile, height_cm, date_of_joining, dob, age_at_joining, valid_until
+// Data integrity: membership_no must be unique; email must be unique when provided.
+router.post("/admin/centers/:centerId/upload/members", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows, format } = req.body as { rows: Record<string, unknown>[]; format?: string };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "rows array is required" }); return;
+  }
+
+  const results = { created: 0, skipped: 0, errors: [] as string[] };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const row of rows) {
+      const name = String(row.name ?? "").trim();
+      const membershipNo = String(row.membership_no ?? "").trim();
+      if (!name || !membershipNo) {
+        results.errors.push(`Row missing name or membership_no`);
+        continue;
+      }
+
+      // Deduplicate: check membership_no already exists
+      const { rows: dup } = await client.query("SELECT id FROM members WHERE membership_no = $1", [membershipNo]);
+      if (dup[0]) { results.skipped++; continue; }
+
+      const email = String(row.email ?? "").trim() || null;
+      const mobile = String(row.mobile ?? "").trim() || null;
+      const heightCm = row.height_cm != null ? Number(row.height_cm) : null;
+      const doj = String(row.date_of_joining ?? "").trim() || null;
+      const dob = String(row.dob ?? "").trim() || null;
+      const age = row.age_at_joining != null ? Number(row.age_at_joining) : null;
+      const validUntil = String(row.valid_until ?? "").trim() || null;
+
+      const { rows: m } = await client.query(
+        `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [name, heightCm, doj, mobile, email, membershipNo, dob, age, validUntil]
+      );
+      await client.query(
+        `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [m[0].id, centerId]
+      );
+      results.created++;
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    client.release();
+    res.status(500).json({ error: "Bulk insert failed", detail: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  client.release();
+  res.json(results);
+});
+
+// POST /api/admin/centers/:centerId/upload/inventory
+// Accepts XLSX/CSV with columns per row type:
+//   ingredient: name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving
+//   menu_item: name, description, is_mandatory, flavours, available_days
+//   bom: menu_item_name, ingredient_name, quantity, unit, kcal
+router.post("/admin/centers/:centerId/upload/inventory", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = req.body as { rows: Record<string, unknown>[] };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "rows array is required" }); return;
+  }
+
+  const results = { ingredients: 0, menuItems: 0, bom: 0, errors: [] as string[] };
+  const ingredientMap = new Map<string, number>(); // name -> id
+  const menuMap = new Map<string, number>(); // name -> id
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Load existing ingredients + menu items for this center (for dedup and linking)
+    const { rows: existingIng } = await client.query("SELECT id, name FROM ingredients");
+    for (const r of existingIng) ingredientMap.set((r as { name: string; id: number }).name, (r as { name: string; id: number }).id);
+
+    const { rows: existingMi } = await client.query("SELECT id, name FROM menu_items WHERE center_id = $1", [centerId]);
+    for (const r of existingMi) menuMap.set((r as { name: string; id: number }).name, (r as { name: string; id: number }).id);
+
+    for (const row of rows) {
+      const type = String(row.item_type ?? "").trim().toLowerCase();
+      if (!type) { results.errors.push("Missing item_type (ingredient | menu_item | bom)"); continue; }
+
+      if (type === "ingredient") {
+        const name = String(row.name ?? "").trim();
+        if (!name) { results.errors.push("ingredient missing name"); continue; }
+        if (ingredientMap.has(name)) continue; // dedup
+        const { rows: r } = await client.query(
+          `INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+          [
+            name,
+            Number(row.pack_size ?? 1) || 1,
+            String(row.pack_unit ?? "g").trim() || "g",
+            String(row.material_code ?? "").trim() || null,
+            String(row.description ?? "").trim() || null,
+            String(row.flavour ?? "").trim() || null,
+            Number(row.serving_qty ?? 1) || 1,
+            row.kcal_per_serving != null ? Number(row.kcal_per_serving) : null,
+          ]
+        );
+        ingredientMap.set(name, r[0].id);
+        results.ingredients++;
+
+      } else if (type === "menu_item") {
+        const name = String(row.name ?? "").trim();
+        if (!name) { results.errors.push("menu_item missing name"); continue; }
+        if (menuMap.has(name)) continue; // dedup
+        const isMandatory = String(row.is_mandatory ?? "").trim().toLowerCase() === "yes";
+        const flavours = String(row.flavours ?? "").trim() || null;
+        const availableDays = String(row.available_days ?? "").trim() || "all";
+        const { rows: r } = await client.query(
+          `INSERT INTO menu_items (center_id, name, description, is_mandatory, flavours, available_days)
+           VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+          [centerId, name, String(row.description ?? "").trim() || null, isMandatory, flavours, availableDays]
+        );
+        menuMap.set(name, r[0].id);
+        results.menuItems++;
+
+      } else if (type === "bom") {
+        const miName = String(row.menu_item_name ?? "").trim();
+        const ingName = String(row.ingredient_name ?? "").trim();
+        if (!miName || !ingName) { results.errors.push("bom missing menu_item_name or ingredient_name"); continue; }
+        const menuId = menuMap.get(miName);
+        const ingId = ingredientMap.get(ingName);
+        if (!menuId) { results.errors.push(`BOM references unknown menu_item: ${miName}`); continue; }
+        if (!ingId) { results.errors.push(`BOM references unknown ingredient: ${ingName}`); continue; }
+        await client.query(
+          `INSERT INTO menu_item_bom (menu_item_id, ingredient, ingredient_id, quantity, unit, kcal)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [
+            menuId, ingName,
+            ingId,
+            Number(row.quantity ?? 0) || 0,
+            String(row.unit ?? "g").trim() || "g",
+            row.kcal != null ? Number(row.kcal) : null,
+          ]
+        );
+        results.bom++;
+
+      } else {
+        results.errors.push(`Unknown item_type: ${type}`);
+      }
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    client.release();
+    res.status(500).json({ error: "Bulk inventory insert failed", detail: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  client.release();
+  res.json(results);
 });
 
 export default router;
