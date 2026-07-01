@@ -140,7 +140,10 @@ router.get("/members/:id/summary", async (req, res) => {
     logsBySlot[slot].push(log);
   }
 
-  res.json({ date, ...totals, target_calories: 2000, logs_by_slot: logsBySlot });
+  // Use member-specific daily_kcal if set, otherwise fall back to 2000
+  const { rows: memberKcal } = await pool.query("SELECT daily_kcal FROM members WHERE id = $1", [memberId]);
+  const targetKcal = (memberKcal[0] as { daily_kcal: number | null } | undefined)?.daily_kcal ?? 2000;
+  res.json({ date, ...totals, target_calories: targetKcal, logs_by_slot: logsBySlot });
 });
 
 // GET /api/members/:id/issuances
@@ -510,7 +513,7 @@ If you cannot identify food, return: {"error": "No food detected"}`;
 
 // ── Member Broadcasts ─────────────────────────────────────────────────────
 
-// GET /api/members/:memberId/broadcasts — broadcasts for this member's centers, with read status
+// GET /api/members/:memberId/broadcasts — broadcasts for this member's centers, with read status, respecting center retention
 router.get("/members/:memberId/broadcasts", async (req, res) => {
   const memberId = Number(req.params.memberId);
   const limit = Math.min(Number(req.query.limit) || 20, 100);
@@ -526,6 +529,10 @@ router.get("/members/:memberId/broadcasts", async (req, res) => {
             EXISTS(SELECT 1 FROM member_broadcast_reads r WHERE r.broadcast_id = b.id AND r.member_id = $1) AS is_read
      FROM member_broadcasts b
      WHERE b.center_id IN (${placeholders})
+       AND b.sent_at >= NOW() - (
+         SELECT COALESCE(NULLIF(cbs.retention_days, 0), 7) * INTERVAL '1 day'
+         FROM center_broadcast_settings cbs WHERE cbs.center_id = b.center_id
+       )
      ORDER BY b.sent_at DESC
      LIMIT $${centerIds.length + 2}`,
     [memberId, ...centerIds, limit]

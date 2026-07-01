@@ -4,7 +4,7 @@ import {
   UserPlus, LogIn, LogOut, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
   Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus, Hash, RotateCcw, CalendarClock, Pencil, Save,
-  FileDown, ClipboardList,
+  FileDown, ClipboardList, Flame,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
@@ -934,6 +934,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
   const [editDobMonth, setEditDobMonth]       = useState("");
   const [editAge, setEditAge]                 = useState("");
   const [editValidUntil, setEditValidUntil]   = useState("");
+  const [editDailyKcal, setEditDailyKcal]     = useState("");
   const [editSaving, setEditSaving]           = useState(false);
   const [editError, setEditError]             = useState("");
 
@@ -952,6 +953,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     setEditDobMonth(dobMonth);
     setEditAge(member.age_at_joining != null ? String(member.age_at_joining) : "");
     setEditValidUntil(member.valid_until ? member.valid_until.slice(0, 10) : "");
+    setEditDailyKcal(member.daily_kcal != null ? String(member.daily_kcal) : "");
     setEditError("");
     setShowEditPanel(true);
   }
@@ -970,6 +972,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
         dob: editDobDay && editDobMonth ? `${editDobDay} ${editDobMonth}` : null,
         age_at_joining: editAge ? Number(editAge) : null,
         valid_until: editValidUntil || null,
+        daily_kcal: editDailyKcal ? Number(editDailyKcal) : null,
       });
       setShowEditPanel(false);
       onRefresh();
@@ -1036,6 +1039,11 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
             <p className="text-xs text-muted-foreground">ID #{member.id}</p>
             {member.mobile && <p className="text-xs text-muted-foreground">{member.mobile}</p>}
             {member.membership_no && <p className="text-xs text-muted-foreground">{member.membership_no}</p>}
+            {member.daily_kcal != null && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-2 py-0.5">
+                <Flame className="w-3 h-3" />{member.daily_kcal} kcal/day
+              </span>
+            )}
             {validityBadge(member.valid_until)}
             {isCheckedIn && member.checked_in_at && (
               <p className={`text-xs flex items-center gap-1 ${mins >= 150 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
@@ -1190,6 +1198,11 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
             <div>
               <label className="block text-[10px] font-medium text-muted-foreground mb-1">Membership Valid Until</label>
               <input type="date" value={editValidUntil} onChange={e => setEditValidUntil(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Daily Kcal Target</label>
+              <input type="number" min="500" max="5000" value={editDailyKcal} onChange={e => setEditDailyKcal(e.target.value)} placeholder="2000"
                 className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
           </div>

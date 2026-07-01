@@ -165,6 +165,7 @@ async function createTables(): Promise<void> {
       message TEXT NOT NULL,
       schedule_time TEXT NOT NULL DEFAULT '09:00',
       is_active BOOLEAN NOT NULL DEFAULT FALSE,
+      retention_days INTEGER NOT NULL DEFAULT 7,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -647,6 +648,8 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables25();
   await migrateAdminTables26();
   await migrateAdminTables27();
+  await migrateAdminTables28();
+  await migrateAdminTables29();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -711,6 +714,7 @@ async function migrateAdminTables27(): Promise<void> {
       message TEXT NOT NULL,
       schedule_time TEXT NOT NULL DEFAULT '09:00',
       is_active BOOLEAN NOT NULL DEFAULT FALSE,
+      retention_days INTEGER NOT NULL DEFAULT 7,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -737,6 +741,16 @@ async function migrateAdminTables27(): Promise<void> {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcast_reads_member_idx ON member_broadcast_reads(member_id)`);
+}
+
+async function migrateAdminTables28(): Promise<void> {
+  // Broadcast retention — how many days messages stay visible to members
+  await pool.query(`ALTER TABLE center_broadcast_settings ADD COLUMN IF NOT EXISTS retention_days INTEGER NOT NULL DEFAULT 7`);
+}
+
+async function migrateAdminTables29(): Promise<void> {
+  // Per-member daily calorie target (kcal); null means fall back to center default
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS daily_kcal INTEGER`);
 }
 
 async function migrateAdminTables22(): Promise<void> {

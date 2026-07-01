@@ -50,6 +50,7 @@ function BroadcastSettingsCard() {
   const [message, setMessage] = useState("");
   const [scheduleTime, setScheduleTime] = useState("09:00");
   const [isActive, setIsActive] = useState(false);
+  const [retentionDays, setRetentionDays] = useState(7);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -63,6 +64,7 @@ function BroadcastSettingsCard() {
         setMessage(s.message ?? "");
         setScheduleTime(s.schedule_time ?? "09:00");
         setIsActive(s.is_active ?? false);
+        setRetentionDays(s.retention_days ?? 7);
       })
       .catch(() => setError("Failed to load broadcast settings"))
       .finally(() => setLoading(false));
@@ -78,7 +80,7 @@ function BroadcastSettingsCard() {
     setSaving(true); setError(null); setSaved(false);
     try {
       await apiPut<BroadcastSettings>(`/admin/centers/${center.id}/broadcast-settings`, {
-        message: message.trim(), schedule_time: scheduleTime, is_active: isActive,
+        message: message.trim(), schedule_time: scheduleTime, is_active: isActive, retention_days: retentionDays,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -123,15 +125,29 @@ function BroadcastSettingsCard() {
               className="w-32 h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={e => setIsActive(e.target.checked)}
-              className="w-4 h-4 accent-primary rounded"
-            />
-            <span className="text-sm text-foreground">Enable scheduled broadcast</span>
-          </label>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={e => setIsActive(e.target.checked)}
+                className="w-4 h-4 accent-primary rounded"
+              />
+              <span className="text-sm text-foreground">Enable scheduled broadcast</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Keep visible for</span>
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={retentionDays}
+                onChange={e => setRetentionDays(Math.max(1, Math.min(90, Number(e.target.value) || 7)))}
+                className="w-14 h-8 px-2 rounded-lg border border-input bg-background text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <span className="text-xs text-muted-foreground">days</span>
+            </div>
+          </div>
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />

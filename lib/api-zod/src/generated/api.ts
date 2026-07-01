@@ -28,7 +28,8 @@ export const GetMemberResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "date_of_joining": zod.string().nullish(),
-  "height_cm": zod.number().nullish()
+  "height_cm": zod.number().nullish(),
+  "daily_kcal": zod.number().nullish()
 })
 
 

@@ -16,6 +16,8 @@ export interface Member {
   date_of_joining?: string | null;
   /** @nullable */
   height_cm?: number | null;
+  /** @nullable */
+  daily_kcal?: number | null;
 }
 
 export interface Center {

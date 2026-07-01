@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Users, UtensilsCrossed, Flame, Activity, CalendarClock, ChevronRight, Megaphone, Send, X, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Users, UtensilsCrossed, Flame, Activity, CalendarClock, ChevronRight, Megaphone, Send, X, Loader2, CheckCircle2, AlertTriangle, Trash2 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList,
 } from "recharts";
 import { Nav } from "@/components/nav";
-import { apiGet, apiPost, getAdminCenter, type Dashboard, type Broadcast } from "@/lib/api";
+import { apiGet, apiPost, apiDelete, getAdminCenter, type Dashboard, type Broadcast } from "@/lib/api";
 
 function StatCard({
   icon: Icon, label, value, color, onClick, badge,
@@ -46,6 +46,7 @@ function AdHocBroadcastModal({ centerId, onClose }: { centerId: string; onClose:
   const [sent, setSent] = useState(false);
   const [history, setHistory] = useState<Broadcast[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     apiGet<Broadcast[]>(`/admin/centers/${centerId}/broadcasts?limit=5`)
@@ -61,12 +62,30 @@ function AdHocBroadcastModal({ centerId, onClose }: { centerId: string; onClose:
       await apiPost<{ id: number }>(`/admin/centers/${centerId}/broadcasts`, { message: message.trim() });
       setSent(true);
       setMessage("");
-      // refresh history
-      apiGet<Broadcast[]>(`/admin/centers/${centerId}/broadcasts?limit=5`).then(setHistory);
+      void loadHistory();
       setTimeout(() => setSent(false), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send");
     } finally { setSending(false); }
+  }
+
+  async function loadHistory() {
+    setLoadingHistory(true);
+    try {
+      const data = await apiGet<Broadcast[]>(`/admin/centers/${centerId}/broadcasts?limit=5`);
+      setHistory(data);
+    } catch { /* ignore */ }
+    finally { setLoadingHistory(false); }
+  }
+
+  async function handleDelete(broadcastId: number) {
+    setDeletingId(broadcastId);
+    try {
+      await apiDelete(`/admin/centers/${centerId}/broadcasts/${broadcastId}`);
+      void loadHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete");
+    } finally { setDeletingId(null); }
   }
 
   return (
@@ -123,11 +142,21 @@ function AdHocBroadcastModal({ centerId, onClose }: { centerId: string; onClose:
             ) : (
               <div className="space-y-2">
                 {history.map(b => (
-                  <div key={b.id} className="bg-muted/40 rounded-lg px-3 py-2 text-sm">
-                    <p className="text-foreground line-clamp-2">{b.message}</p>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      {b.sent_by === "scheduled" ? "Scheduled" : "Manual"} · {new Date(b.sent_at).toLocaleDateString("en-IN")}
-                    </p>
+                  <div key={b.id} className="bg-muted/40 rounded-lg px-3 py-2 text-sm flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-foreground line-clamp-2">{b.message}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        {b.sent_by === "scheduled" ? "Scheduled" : "Manual"} · {new Date(b.sent_at).toLocaleDateString("en-IN")}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => void handleDelete(b.id)}
+                      disabled={deletingId === b.id}
+                      className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                      title="Delete broadcast"
+                    >
+                      {deletingId === b.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
                   </div>
                 ))}
               </div>

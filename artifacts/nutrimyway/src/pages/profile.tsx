@@ -114,7 +114,7 @@ export function Profile() {
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="font-medium">Target Calories</span>
-              <span className="font-bold">2000 kcal</span>
+              <span className="font-bold">{(member?.daily_kcal ?? 2000)} kcal</span>
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
               <div className="h-full bg-primary w-3/4 rounded-full" />

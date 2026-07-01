@@ -64,6 +64,7 @@ export interface BroadcastSettings {
   message: string;
   schedule_time: string;
   is_active: boolean;
+  retention_days: number;
 }
 export interface Broadcast {
   id: number;
@@ -200,6 +201,7 @@ export interface CenterMember {
   dob: string | null;
   age_at_joining: number | null;
   valid_until: string | null;
+  daily_kcal: number | null;
   is_active: boolean;
   checkin_id: number | null;
   checked_in_at: string | null;

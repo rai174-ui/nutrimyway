@@ -268,6 +268,8 @@ components:
           type: ["string", "null"]
         height_cm:
           type: ["integer", "null"]
+        daily_kcal:
+          type: ["integer", "null"]
       required:
         - id
         - name

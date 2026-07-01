@@ -956,10 +956,10 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
   );
   if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
 
-  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until } = req.body as {
+  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until, daily_kcal } = req.body as {
     name?: string; mobile?: string | null; email?: string | null; membership_no?: string | null;
     height_cm?: number | null; date_of_joining?: string | null;
-    dob?: string | null; age_at_joining?: number | null; valid_until?: string | null;
+    dob?: string | null; age_at_joining?: number | null; valid_until?: string | null; daily_kcal?: number | null;
   };
   if (name !== undefined && !name?.trim()) { res.status(400).json({ error: "name cannot be blank" }); return; }
   if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
@@ -976,8 +976,9 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
        date_of_joining= $6,
        dob            = $7,
        age_at_joining = $8,
-       valid_until    = $9
-     WHERE id = $10 RETURNING *`,
+       valid_until    = $9,
+       daily_kcal     = $10
+     WHERE id = $11 RETURNING *`,
     [
       name?.trim() ?? null,
       mobile?.trim() || null,
@@ -988,6 +989,7 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
       dob?.trim() || null,
       age_at_joining ?? null,
       valid_until ?? null,
+      daily_kcal ?? null,
       Number(memberId),
     ]
   );
@@ -1833,11 +1835,11 @@ router.get("/admin/centers/:centerId/broadcast-settings", requireAdmin, async (r
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
   const { rows } = await pool.query(
-    "SELECT center_id, message, schedule_time, is_active, created_at, updated_at FROM center_broadcast_settings WHERE center_id = $1",
+    "SELECT center_id, message, schedule_time, is_active, retention_days, created_at, updated_at FROM center_broadcast_settings WHERE center_id = $1",
     [centerId]
   );
   if (!rows[0]) {
-    res.json({ center_id: centerId, message: "", schedule_time: "09:00", is_active: false });
+    res.json({ center_id: centerId, message: "", schedule_time: "09:00", is_active: false, retention_days: 7 });
     return;
   }
   res.json(rows[0]);
@@ -1848,8 +1850,8 @@ router.put("/admin/centers/:centerId/broadcast-settings", requireAdmin, async (r
   const { centerId } = req.params;
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
-  const { message, schedule_time, is_active } = req.body as {
-    message?: string; schedule_time?: string; is_active?: boolean;
+  const { message, schedule_time, is_active, retention_days } = req.body as {
+    message?: string; schedule_time?: string; is_active?: boolean; retention_days?: number;
   };
   if (!message || typeof message !== "string" || message.trim().length === 0) {
     res.status(400).json({ error: "Message is required" }); return;
@@ -1859,17 +1861,19 @@ router.put("/admin/centers/:centerId/broadcast-settings", requireAdmin, async (r
     res.status(400).json({ error: "schedule_time must be HH:MM (24-hour format)" }); return;
   }
   const active = Boolean(is_active);
+  const retention = Number.isFinite(retention_days) ? Math.max(1, Math.min(90, Math.round(retention_days ?? 7))) : 7;
   await pool.query(
-    `INSERT INTO center_broadcast_settings (center_id, message, schedule_time, is_active, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, NOW(), NOW())
+    `INSERT INTO center_broadcast_settings (center_id, message, schedule_time, is_active, retention_days, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
      ON CONFLICT (center_id) DO UPDATE SET
        message = EXCLUDED.message,
        schedule_time = EXCLUDED.schedule_time,
        is_active = EXCLUDED.is_active,
+       retention_days = EXCLUDED.retention_days,
        updated_at = NOW()`,
-    [centerId, message.trim(), timeStr, active]
+    [centerId, message.trim(), timeStr, active, retention]
   );
-  res.json({ center_id: centerId, message: message.trim(), schedule_time: timeStr, is_active: active });
+  res.json({ center_id: centerId, message: message.trim(), schedule_time: timeStr, is_active: active, retention_days: retention });
 });
 
 // POST /api/admin/centers/:centerId/broadcasts — ad-hoc broadcast to all active members
@@ -1892,7 +1896,7 @@ router.post("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res
   res.json({ id: broadcastId, message: trimmed, sent_at: new Date().toISOString(), sent_by: "manual" });
 });
 
-// GET /api/admin/centers/:centerId/broadcasts — recent broadcasts
+// GET /api/admin/centers/:centerId/broadcasts — recent broadcasts (admin sees all; retention only affects member view)
 router.get("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res) => {
   const { centerId } = req.params;
   const adminReq = req as AdminRequest;
@@ -1905,6 +1909,23 @@ router.get("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res)
     [centerId, limit]
   );
   res.json(rows);
+});
+
+// DELETE /api/admin/centers/:centerId/broadcasts/:broadcastId
+router.delete("/admin/centers/:centerId/broadcasts/:broadcastId", requireAdmin, async (req, res) => {
+  const { centerId, broadcastId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { rows } = await pool.query(
+    "SELECT center_id FROM member_broadcasts WHERE id = $1",
+    [Number(broadcastId)]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Broadcast not found" }); return; }
+  if ((rows[0] as { center_id: string }).center_id !== centerId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  await pool.query("DELETE FROM member_broadcasts WHERE id = $1", [Number(broadcastId)]);
+  res.status(204).end();
 });
 
 export default router;
