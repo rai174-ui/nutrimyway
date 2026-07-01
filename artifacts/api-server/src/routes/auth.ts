@@ -70,16 +70,24 @@ router.post("/auth/request-otp", async (req, res) => {
     return;
   }
 
-  // Find member by membership_no (unique) and verify email matches
+  // Find member by membership_no (unique) and verify email + validity
   const { rows: memberRows } = await pool.query(
-    "SELECT id, name, email, membership_no FROM members WHERE membership_no = $1",
+    "SELECT id, name, email, membership_no, is_active, valid_until FROM members WHERE membership_no = $1",
     [membershipNo]
   );
   if (!memberRows[0]) {
     res.status(404).json({ error: "No member found with this membership number. Please contact your wellness center." });
     return;
   }
-  const member = memberRows[0] as { id: number; name: string; email: string | null; membership_no: string };
+  const member = memberRows[0] as { id: number; name: string; email: string | null; membership_no: string; is_active: boolean; valid_until: string | null };
+  if (!member.is_active) {
+    res.status(403).json({ error: "Your membership is inactive. Please contact your wellness center." });
+    return;
+  }
+  if (member.valid_until && new Date(member.valid_until) < new Date()) {
+    res.status(403).json({ error: "Your membership has expired. Please contact your wellness center to renew." });
+    return;
+  }
   if (member.email !== email) {
     res.status(401).json({ error: "Email does not match the membership number. Please contact your wellness center." });
     return;
@@ -135,6 +143,21 @@ router.post("/auth/verify-otp", async (req, res) => {
 
   const memberId = otpRow.member_id;
   const email = otpRow.email;
+
+  // Re-check member validity before issuing token
+  const { rows: memberRows } = await pool.query(
+    "SELECT is_active, valid_until FROM members WHERE id = $1",
+    [memberId]
+  );
+  const member = memberRows[0] as { is_active: boolean; valid_until: string | null } | undefined;
+  if (!member?.is_active) {
+    res.status(403).json({ error: "Your membership is inactive. Please contact your wellness center." });
+    return;
+  }
+  if (member.valid_until && new Date(member.valid_until) < new Date()) {
+    res.status(403).json({ error: "Your membership has expired. Please contact your wellness center to renew." });
+    return;
+  }
 
   // Ensure user_auth record exists for this member
   const { rows: authRows } = await pool.query(
