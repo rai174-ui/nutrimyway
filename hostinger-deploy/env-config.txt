@@ -1,0 +1,41 @@
+# ============================================
+# NutriMyWay Admin Server - Environment Variables
+# Fill in YOUR values, then use "Import .env" in Hostinger
+# ============================================
+
+# --- REQUIRED: Node Server ---
+PORT=3000
+NODE_ENV=production
+
+# --- REQUIRED: Supabase Database ---
+# Get from: Supabase Dashboard → Project Settings → Database → Connection string (URI)
+# Use the "Transaction pooler" connection (port 6543)
+DATABASE_URL=postgresql://postgres.[PROJECT_REF]:[YOUR_PASSWORD]@[HOST].pooler.supabase.com:6543/postgres?sslmode=require
+
+# --- REQUIRED: JWT Secret ---
+# Generate at: https://www.random.org/passwords/?num=1&len=64&format=plain&rnd=new
+SESSION_SECRET=[GENERATE_A_64_CHAR_RANDOM_STRING]
+
+# --- REQUIRED: Gmail SMTP (for OTP emails) ---
+# How to get App Password: Google Account → Security → 2-Step Verification → App passwords
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=[YOUR_GMAIL_ADDRESS]
+SMTP_PASS=[YOUR_GMAIL_APP_PASSWORD]
+
+# --- REQUIRED: Super Admin ---
+# This email address gets full super-admin access
+SUPER_ADMIN_EMAIL=[YOUR_ADMIN_EMAIL]
+
+# --- REQUIRED: Production URL ---
+# Your domain - used in password reset / OTP email links
+APP_URL=https://nutrimyway.in
+
+# --- REQUIRED: Admin Panel Static Files ---
+# Path to built admin frontend (relative to project root)
+ADMIN_STATIC=./admin
+
+# --- OPTIONAL: Object Storage (currently Replit-only, leave blank for now) ---
+# PUBLIC_OBJECT_SEARCH_PATHS=
+# PRIVATE_OBJECT_DIR=
+# DEFAULT_OBJECT_STORAGE_BUCKET_ID=
