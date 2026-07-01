@@ -9,7 +9,12 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes("supabase.co")
+    ? { rejectUnauthorized: false }
+    : undefined,
+});
 
 export async function query<T = Record<string, unknown>>(
   text: string,

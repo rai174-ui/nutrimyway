@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "ck9mj6bcXqOoYQ3fwFQM0"
+uri = "file://nutrimyway_supabase_import.sql.gz"
+type = "unspecified"
+title = "NutriMyWay — Supabase Import SQL (gzipped)"
