@@ -14,6 +14,9 @@ export const pool = new Pool({
   ssl: process.env.DATABASE_URL?.includes("supabase.co")
     ? { rejectUnauthorized: false }
     : undefined,
+  max: 10,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
 });
 
 export async function query<T = Record<string, unknown>>(
@@ -663,6 +666,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables31();
   await migrateAdminTables32();
   await migrateAdminTables33();
+  await migrateAdminTables34();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -792,6 +796,63 @@ async function migrateAdminTables32(): Promise<void> {
 async function migrateAdminTables33(): Promise<void> {
   // Photo retention setting per center
   await pool.query(`ALTER TABLE centers ADD COLUMN IF NOT EXISTS photo_retention_days INTEGER DEFAULT 2`);
+}
+
+async function migrateAdminTables34(): Promise<void> {
+  // Performance indexes — all use IF NOT EXISTS so safe to re-run
+
+  // consumption_logs: most-queried table, had zero non-PK indexes
+  await pool.query(`CREATE INDEX IF NOT EXISTS consumption_logs_member_logged_idx
+    ON consumption_logs(member_id, logged_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS consumption_logs_checkin_idx
+    ON consumption_logs(checkin_id) WHERE checkin_id IS NOT NULL`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS consumption_logs_photo_idx
+    ON consumption_logs(photo_uploaded_at) WHERE photo_url IS NOT NULL`);
+
+  // health_records: ordered by recorded_at DESC per member
+  await pool.query(`CREATE INDEX IF NOT EXISTS health_records_member_recorded_idx
+    ON health_records(member_id, recorded_at DESC)`);
+
+  // issuances: member history + center lookups
+  await pool.query(`CREATE INDEX IF NOT EXISTS issuances_member_issued_idx
+    ON issuances(member_id, issued_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS issuances_center_idx
+    ON issuances(center_id)`);
+
+  // member_check_ins: full history queries (existing partial index covers active-only)
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_check_ins_member_time_idx
+    ON member_check_ins(member_id, checked_in_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_check_ins_center_time_idx
+    ON member_check_ins(center_id, checked_in_at DESC)`);
+
+  // member_center_mapping: reverse lookup (center → members)
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_center_mapping_center_idx
+    ON member_center_mapping(center_id)`);
+
+  // menu_items: filtered by center_id in every checkin query
+  await pool.query(`CREATE INDEX IF NOT EXISTS menu_items_center_idx
+    ON menu_items(center_id)`);
+
+  // menu_item_bom: JOIN on menu_item_id
+  await pool.query(`CREATE INDEX IF NOT EXISTS menu_item_bom_menu_item_idx
+    ON menu_item_bom(menu_item_id)`);
+
+  // batch_consumption_logs: SUM queries by batch_id
+  await pool.query(`CREATE INDEX IF NOT EXISTS batch_consumption_logs_batch_idx
+    ON batch_consumption_logs(batch_id)`);
+
+  // batch_adjustments: FK lookup by batch_id
+  await pool.query(`CREATE INDEX IF NOT EXISTS batch_adjustments_batch_idx
+    ON batch_adjustments(batch_id)`);
+
+  // otps: expiry-based cleanup
+  await pool.query(`CREATE INDEX IF NOT EXISTS otps_expires_idx
+    ON otps(expires_at)`);
+
+  // ANALYZE all key tables so the query planner uses fresh statistics
+  await pool.query(`ANALYZE consumption_logs, health_records, issuances,
+    member_check_ins, member_center_mapping, menu_items, menu_item_bom,
+    batch_consumption_logs, batch_adjustments, ingredient_batches, otps`);
 }
 
 async function migrateAdminTables31(): Promise<void> {
