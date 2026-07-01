@@ -6,3 +6,9 @@ id = "ck9mj6bcXqOoYQ3fwFQM0"
 uri = "file://nutrimyway_supabase_import.sql.gz"
 type = "unspecified"
 title = "NutriMyWay — Supabase Import SQL (gzipped)"
+
+[[outputs]]
+id = "L28U6Cb4lAUr5ZIaMmk59"
+uri = "file://nutrimyway-admin-server.tar.gz"
+type = "unspecified"
+title = "NutriMyWay Admin Server — Hostinger Deploy Package (1.4 MB)"
