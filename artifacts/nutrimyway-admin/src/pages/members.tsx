@@ -211,9 +211,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-green-800">Member found</p>
               <p className="text-sm font-medium text-foreground mt-1">{found.name}</p>
+              {found.id && <p className="text-xs text-muted-foreground">Member ID: #{found.id}</p>}
               {found.mobile && <p className="text-xs text-muted-foreground">{found.mobile}</p>}
               {found.email && <p className="text-xs text-muted-foreground">{found.email}</p>}
-              {found.membership_no && <p className="text-xs text-muted-foreground">ID: {found.membership_no}</p>}
+              {found.membership_no && <p className="text-xs text-muted-foreground">Membership: {found.membership_no}</p>}
             </div>
           </div>
           <div className="flex gap-2 justify-between">
@@ -1032,7 +1033,9 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+            <p className="text-xs text-muted-foreground">ID #{member.id}</p>
             {member.mobile && <p className="text-xs text-muted-foreground">{member.mobile}</p>}
+            {member.membership_no && <p className="text-xs text-muted-foreground">{member.membership_no}</p>}
             {validityBadge(member.valid_until)}
             {isCheckedIn && member.checked_in_at && (
               <p className={`text-xs flex items-center gap-1 ${mins >= 150 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
