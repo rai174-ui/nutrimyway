@@ -2060,10 +2060,8 @@ router.delete("/admin/centers/:centerId/broadcasts/:broadcastId", requireAdmin, 
 // POST /api/admin/centers/:centerId/upload/members
 // Accepts XLSX/CSV with columns: name, membership_no, email, mobile, height_cm, date_of_joining, dob, age_at_joining, valid_until
 // Data integrity: membership_no must be unique; email must be unique when provided.
-router.post("/admin/centers/:centerId/upload/members", requireAdmin, async (req, res) => {
+router.post("/admin/super/centers/:centerId/upload/members", requireSuperAdmin, async (req, res) => {
   const { centerId } = req.params;
-  const adminReq = req as AdminRequest;
-  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const { rows, format } = req.body as { rows: Record<string, unknown>[]; format?: string };
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -2121,10 +2119,8 @@ router.post("/admin/centers/:centerId/upload/members", requireAdmin, async (req,
 //   ingredient: name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving
 //   menu_item: name, description, is_mandatory, flavours, available_days
 //   bom: menu_item_name, ingredient_name, quantity, unit, kcal
-router.post("/admin/centers/:centerId/upload/inventory", requireAdmin, async (req, res) => {
+router.post("/admin/super/centers/:centerId/upload/inventory", requireSuperAdmin, async (req, res) => {
   const { centerId } = req.params;
-  const adminReq = req as AdminRequest;
-  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const { rows } = req.body as { rows: Record<string, unknown>[] };
   if (!Array.isArray(rows) || rows.length === 0) {

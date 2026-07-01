@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearch } from "wouter";
 import {
   ShieldCheck, CheckCircle2, XCircle, Loader2, LogOut, RefreshCw,
-  Key, Calendar, Mail, Eye, EyeOff, Pencil,
+  Key, Calendar, Mail, Eye, EyeOff, Pencil, Upload, Users, Package,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import {
   isSuperAuthenticated, saveSuperAuth, clearSuperAuth, superFetch, type CenterWithStatus,
 } from "@/lib/api";
+import { UploadMembersDialog, UploadInventoryDialog } from "@/components/bulk-upload-dialogs";
 
 // ─── Reset password form (accessed via email link with ?token=xxx) ───────────
 
@@ -458,6 +460,8 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
   const [resetPwdCenter, setResetPwdCenter] = useState<CenterWithStatus | null>(null);
   const [validityCenter, setValidityCenter] = useState<CenterWithStatus | null>(null);
   const [editCenter, setEditCenter] = useState<CenterWithStatus | null>(null);
+  const [uploadMembersCenter, setUploadMembersCenter] = useState<CenterWithStatus | null>(null);
+  const [uploadInventoryCenter, setUploadInventoryCenter] = useState<CenterWithStatus | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   function showToast(msg: string) {
@@ -531,6 +535,28 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
             setCenters(prev => prev.map(c => c.id === updated.id ? { ...c, name: updated.name } : c));
             setEditCenter(null);
             showToast("Center name updated");
+          }}
+        />
+      )}
+
+      {uploadMembersCenter && (
+        <UploadMembersDialog
+          center={uploadMembersCenter}
+          onClose={() => setUploadMembersCenter(null)}
+          onSuccess={count => {
+            setUploadMembersCenter(null);
+            showToast(`${count} members uploaded`);
+          }}
+        />
+      )}
+
+      {uploadInventoryCenter && (
+        <UploadInventoryDialog
+          center={uploadInventoryCenter}
+          onClose={() => setUploadInventoryCenter(null)}
+          onSuccess={res => {
+            setUploadInventoryCenter(null);
+            showToast(`Inventory uploaded: ${res.ingredients} ingredients, ${res.menuItems} menu items, ${res.bom} BOM rows`);
           }}
         />
       )}
@@ -630,6 +656,20 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
                           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
                         >
                           <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setUploadMembersCenter(center)}
+                          title="Bulk upload members"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setUploadInventoryCenter(center)}
+                          title="Bulk upload inventory"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-violet-600 hover:bg-violet-50 transition-colors"
+                        >
+                          <Package className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => setResetPwdCenter(center)}
