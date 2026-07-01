@@ -18,3 +18,9 @@ id = "2FhTeLLIFyojwtBmLX4G9"
 uri = "file://hostinger-deploy/env-config.txt"
 type = "text"
 title = "NutriMyWay .env Template (for Hostinger Import)"
+
+[[outputs]]
+id = "Kh7FnOcNc3u1XPoDQlEmL"
+uri = "file://nutrimyway-admin-server.zip"
+type = "unspecified"
+title = "NutriMyWay Admin Server (.zip, 1.4 MB)"
