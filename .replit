@@ -21,3 +21,11 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+SMTP_HOST = "smtp.gmail.com"
+SMTP_USER = "satish.rai.automation@gmail.com"
+SMTP_PORT = "587"
+SMTP_FROM_NAME = "NutriMyWay"
