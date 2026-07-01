@@ -318,6 +318,7 @@ function FlavourMaster() {
 
   const [editId, setEditId] = useState<number | null>(null);
   const [editDays, setEditDays] = useState<Day[]>([...ALL_DAYS]);
+  const [expanded, setExpanded] = useState(true);
 
   async function load() {
     if (!center) return;
@@ -373,7 +374,10 @@ function FlavourMaster() {
   return (
     <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <div className="flex items-center gap-3">
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="flex items-center gap-3 text-left hover:bg-muted/30 -m-2 p-2 rounded-lg transition-colors"
+        >
           <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center">
             <Tag className="w-4 h-4 text-violet-600" />
           </div>
@@ -384,16 +388,23 @@ function FlavourMaster() {
           <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
             {flavours.length}
           </span>
-        </div>
-        <button
-          onClick={() => { setAdding(v => !v); setError(null); setNewName(""); setNewDays([...ALL_DAYS]); }}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-xs font-medium"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add
         </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setAdding(v => !v); setError(null); setNewName(""); setNewDays([...ALL_DAYS]); }}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 text-white text-xs font-medium"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add
+          </button>
+          <button onClick={() => setExpanded(v => !v)} className="p-1 text-muted-foreground hover:text-foreground">
+            {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
 
+      {expanded && (
+      <>
       {error && (
         <div className="mx-5 mt-3 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">{error}</div>
       )}
@@ -487,6 +498,8 @@ function FlavourMaster() {
           ))}
         </div>
       )}
+      </>
+      )}
     </div>
   );
 }
@@ -507,6 +520,7 @@ function ItemMaster() {
   const [newUnit, setNewUnit] = useState("g");
   const [newMaterialCode, setNewMaterialCode] = useState("");
   const [newDescription, setNewDescription] = useState("");
+  const [expanded, setExpanded] = useState(true);
   const [newFlavour, setNewFlavour] = useState("");
   const [newServingQty, setNewServingQty] = useState("1");
   const [newKcalPerServing, setNewKcalPerServing] = useState("");
@@ -597,7 +611,10 @@ function ItemMaster() {
   return (
     <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <div className="flex items-center gap-3">
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="flex items-center gap-3 text-left hover:bg-muted/30 -m-2 p-2 rounded-lg transition-colors"
+        >
           <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
             <Package className="w-4 h-4 text-primary" />
           </div>
@@ -608,16 +625,23 @@ function ItemMaster() {
           <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
             {ingredients.length}
           </span>
-        </div>
-        <button
-          onClick={() => { setAdding(v => !v); setError(null); }}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Add
         </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setAdding(v => !v); setError(null); }}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add
+          </button>
+          <button onClick={() => setExpanded(v => !v)} className="p-1 text-muted-foreground hover:text-foreground">
+            {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
 
+      {expanded && (
+      <>
       {error && (
         <div className="mx-5 mt-3 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">{error}</div>
       )}
@@ -822,6 +846,8 @@ function ItemMaster() {
           ))}
         </div>
       )}
+      </>
+      )}
     </div>
   );
 }
@@ -835,6 +861,7 @@ function CenterSettingsCard() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(true);
 
   useEffect(() => {
     if (!center) return;
@@ -866,23 +893,31 @@ function CenterSettingsCard() {
   }
 
   return (
-    <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Clock className="w-4 h-4 text-primary" />
+    <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between p-6 text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Clock className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground leading-tight">Center Settings</h2>
+            <p className="text-xs text-muted-foreground">Configure behavior for your center</p>
+          </div>
         </div>
-        <div>
-          <h2 className="font-semibold text-foreground leading-tight">Center Settings</h2>
-          <p className="text-xs text-muted-foreground">Configure behavior for your center</p>
-        </div>
-      </div>
+        {expanded ? <ChevronUp className="w-5 h-5 text-muted-foreground" /> : <ChevronDown className="w-5 h-5 text-muted-foreground" />}
+      </button>
 
-      {loading ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit => void handleSave(handleSubmit)} className="flex flex-col gap-4">
+      {expanded && (
+        <div className="px-6 pb-6">
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit => void handleSave(handleSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Auto-Checkout Duration (minutes)
@@ -933,7 +968,9 @@ function CenterSettingsCard() {
               Save Settings
             </button>
           </div>
-        </form>
+            </form>
+          )}
+        </div>
       )}
     </div>
   );
@@ -944,6 +981,7 @@ function CenterSettingsCard() {
 function CenterQRCode() {
   const center = getAdminCenter();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(true);
 
   if (!center) return null;
 
@@ -958,18 +996,26 @@ function CenterQRCode() {
   }
 
   return (
-    <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-          <QrCode className="w-4 h-4 text-primary" />
+    <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between p-6 text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <QrCode className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground leading-tight">Check-In QR Code</h2>
+            <p className="text-xs text-muted-foreground">Members scan this QR to check in to your center</p>
+          </div>
         </div>
-        <div>
-          <h2 className="font-semibold text-foreground leading-tight">Check-In QR Code</h2>
-          <p className="text-xs text-muted-foreground">Members scan this QR to check in to your center</p>
-        </div>
-      </div>
+        {expanded ? <ChevronUp className="w-5 h-5 text-muted-foreground" /> : <ChevronDown className="w-5 h-5 text-muted-foreground" />}
+      </button>
 
-      <div className="flex flex-col items-center gap-4">
+      {expanded && (
+        <div className="px-6 pb-6">
+          <div className="flex flex-col items-center gap-4">
         <div ref={canvasRef} className="p-4 bg-white rounded-2xl border border-border shadow-sm">
           <QRCodeCanvas
             value={center.id}
@@ -989,10 +1035,12 @@ function CenterQRCode() {
           <Download className="w-4 h-4" />
           Download QR
         </button>
-        <p className="text-xs text-muted-foreground text-center max-w-xs">
-          Print this QR and place it at your center entrance. Members tap "Scan QR" in the app to check in instantly.
-        </p>
+          <p className="text-xs text-muted-foreground text-center max-w-xs">
+            Print this QR and place it at your center entrance. Members tap "Scan QR" in the app to check in instantly.
+          </p>
+        </div>
       </div>
+      )}
     </div>
   );
 }
@@ -1005,6 +1053,7 @@ function MemberManager() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(true);
 
   async function load() {
     if (!center) return;
@@ -1030,61 +1079,71 @@ function MemberManager() {
   }
 
   return (
-    <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
-          <Users className="w-4 h-4 text-red-500" />
+    <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between p-6 text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+            <Users className="w-4 h-4 text-red-500" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground leading-tight">Delete Member</h2>
+            <p className="text-xs text-muted-foreground">Permanently remove a member and all their data</p>
+          </div>
         </div>
-        <div>
-          <h2 className="font-semibold text-foreground leading-tight">Delete Member</h2>
-          <p className="text-xs text-muted-foreground">Permanently remove a member and all their data</p>
-        </div>
-      </div>
+        {expanded ? <ChevronUp className="w-5 h-5 text-muted-foreground" /> : <ChevronDown className="w-5 h-5 text-muted-foreground" />}
+      </button>
 
-      <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
-        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-        <p className="text-xs text-amber-800 leading-relaxed">
-          Deleting a member is permanent and cannot be undone. It removes their profile, all health records, meal logs, and login credentials.
-        </p>
-      </div>
+      {expanded && (
+        <div className="px-6 pb-6">
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Deleting a member is permanent and cannot be undone. It removes their profile, all health records, meal logs, and login credentials.
+            </p>
+          </div>
 
-      {error && (
-        <div className="mb-4 text-sm text-destructive bg-destructive/8 border border-destructive/20 rounded-xl px-4 py-3">{error}</div>
-      )}
+          {error && (
+            <div className="mb-4 text-sm text-destructive bg-destructive/8 border border-destructive/20 rounded-xl px-4 py-3">{error}</div>
+          )}
 
-      {loading ? (
-        <div className="text-center py-6 text-muted-foreground animate-pulse text-sm">Loading members…</div>
-      ) : members.length === 0 ? (
-        <div className="text-center py-6 text-muted-foreground text-sm">No members in this center</div>
-      ) : (
-        <div className="divide-y divide-border border border-border rounded-xl overflow-hidden">
-          {members.map(m => (
-            <div key={m.id} className="flex items-center gap-3 px-4 py-3">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-muted-foreground">
-                  {m.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{m.name}</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {m.membership_no && <span className="mr-2">{m.membership_no}</span>}
-                  {m.mobile ?? m.email ?? "—"}
-                </p>
-              </div>
-              {!m.is_active && (
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">Inactive</span>
-              )}
-              <button
-                onClick={() => void handleDelete(m)}
-                disabled={deletingId === m.id}
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors flex-shrink-0"
-                title="Permanently delete member"
-              >
-                {deletingId === m.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              </button>
+          {loading ? (
+            <div className="text-center py-6 text-muted-foreground animate-pulse text-sm">Loading members…</div>
+          ) : members.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground text-sm">No members in this center</div>
+          ) : (
+            <div className="divide-y divide-border border border-border rounded-xl overflow-hidden">
+              {members.map(m => (
+                <div key={m.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-muted-foreground">
+                      {m.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{m.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {m.membership_no && <span className="mr-2">{m.membership_no}</span>}
+                      {m.mobile ?? m.email ?? "—"}
+                    </p>
+                  </div>
+                  {!m.is_active && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">Inactive</span>
+                  )}
+                  <button
+                    onClick={() => void handleDelete(m)}
+                    disabled={deletingId === m.id}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors flex-shrink-0"
+                    title="Permanently delete member"
+                  >
+                    {deletingId === m.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
@@ -1100,6 +1159,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [pwExpanded, setPwExpanded] = useState(true);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1153,25 +1213,33 @@ export default function SettingsPage() {
 
         <MemberManager />
 
-        <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <KeyRound className="w-4 h-4 text-primary" />
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+          <button
+            onClick={() => setPwExpanded(v => !v)}
+            className="w-full flex items-center justify-between p-6 text-left hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <KeyRound className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-foreground leading-tight">Change Password</h2>
+                <p className="text-xs text-muted-foreground">Update your center admin login password</p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-semibold text-foreground leading-tight">Change Password</h2>
-              <p className="text-xs text-muted-foreground">Update your center admin login password</p>
-            </div>
-          </div>
+            {pwExpanded ? <ChevronUp className="w-5 h-5 text-muted-foreground" /> : <ChevronDown className="w-5 h-5 text-muted-foreground" />}
+          </button>
 
-          {success && (
-            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span className="text-sm text-emerald-700 font-medium">Password changed successfully.</span>
-            </div>
-          )}
+          {pwExpanded && (
+            <div className="px-6 pb-6">
+              {success && (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="text-sm text-emerald-700 font-medium">Password changed successfully.</span>
+                </div>
+              )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Current Password</label>
               <input
@@ -1226,6 +1294,8 @@ export default function SettingsPage() {
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Update Password"}
             </button>
           </form>
+            </div>
+          )}
         </div>
       </main>
     </div>
