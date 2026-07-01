@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock, Megaphone, Send } from "lucide-react";
+import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock, Megaphone, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
 import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember, type CenterSettings, type BroadcastSettings, type BroadcastSchedule } from "@/lib/api";
@@ -53,6 +53,7 @@ function BroadcastSettingsCard() {
   const [savingRetention, setSavingRetention] = useState(false);
   const [retentionSaved, setRetentionSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(true);
 
   // Add-schedule form
   const [newMessage, setNewMessage] = useState("");
@@ -160,18 +161,26 @@ function BroadcastSettingsCard() {
   }
 
   return (
-    <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-          <Megaphone className="w-4 h-4 text-amber-600" />
+    <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between p-6 text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <Megaphone className="w-4 h-4 text-amber-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground leading-tight">Broadcast Schedules</h2>
+            <p className="text-xs text-muted-foreground">Set up multiple daily messages for active members</p>
+          </div>
         </div>
-        <div>
-          <h2 className="font-semibold text-foreground leading-tight">Broadcast Schedules</h2>
-          <p className="text-xs text-muted-foreground">Set up multiple daily messages for active members</p>
-        </div>
-      </div>
+        {expanded ? <ChevronUp className="w-5 h-5 text-muted-foreground" /> : <ChevronDown className="w-5 h-5 text-muted-foreground" />}
+      </button>
 
-      {loading ? (
+      {expanded && (
+        <div className="px-6 pb-6">
+          {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading…
         </div>
@@ -290,6 +299,8 @@ function BroadcastSettingsCard() {
         </div>
       )}
     </div>
+  )}
+</div>
   );
 }
 
