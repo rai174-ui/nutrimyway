@@ -1,0 +1,82 @@
+import { Zap, Heart } from "lucide-react";
+
+export default function Footer() {
+  const currentYear = new Date().getFullYear();
+
+  return (
+    <footer className="bg-[#1a1a2e] text-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+          {/* Brand */}
+          <div className="md:col-span-2">
+            <div className="flex items-center space-x-2 mb-4">
+              <div className="w-8 h-8 bg-[#0d7377] rounded-lg flex items-center justify-center">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xl font-bold">Zero Limit Automation</span>
+            </div>
+            <p className="text-gray-400 text-sm leading-relaxed max-w-md">
+              Building intelligent digital products for health, wellness, and automation.
+              We transform ideas into powerful, user-friendly applications.
+            </p>
+            <div className="mt-4 flex items-center space-x-2 text-sm text-gray-500">
+              <Heart className="w-4 h-4 text-[#0d7377]" />
+              <span>Made with care in India</span>
+            </div>
+          </div>
+
+          {/* Quick Links */}
+          <div>
+            <h4 className="font-semibold text-white mb-4">Quick Links</h4>
+            <ul className="space-y-2">
+              <li>
+                <a href="#about" className="text-gray-400 hover:text-[#0d7377] transition-colors text-sm">
+                  About Us
+                </a>
+              </li>
+              <li>
+                <a href="#services" className="text-gray-400 hover:text-[#0d7377] transition-colors text-sm">
+                  Services
+                </a>
+              </li>
+              <li>
+                <a href="#products" className="text-gray-400 hover:text-[#0d7377] transition-colors text-sm">
+                  Products
+                </a>
+              </li>
+              <li>
+                <a href="#contact" className="text-gray-400 hover:text-[#0d7377] transition-colors text-sm">
+                  Contact
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          {/* Products */}
+          <div>
+            <h4 className="font-semibold text-white mb-4">Products</h4>
+            <ul className="space-y-2">
+              <li>
+                <span className="text-gray-400 text-sm">NutriMyWay</span>
+              </li>
+              <li>
+                <span className="text-gray-500 text-sm italic">More coming soon...</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Bottom Bar */}
+        <div className="mt-12 pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-sm text-gray-500">
+            {currentYear} Zero Limit Automation. All rights reserved.
+          </p>
+          <div className="flex items-center space-x-2 text-sm text-gray-500">
+            <span>Powered by</span>
+            <span className="font-semibold text-[#0d7377]">Zero Limit Automation</span>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
