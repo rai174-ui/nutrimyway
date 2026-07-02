@@ -549,13 +549,14 @@ function ItemMaster() {
 
   async function addIngredient() {
     if (!newName.trim()) return;
+    if (!newMaterialCode.trim()) { setError("Material Code is required"); return; }
     setSaving(true); setError(null);
     try {
       await apiPost<Ingredient>("/admin/ingredients", {
         name: newName.trim(),
         pack_size: 1,
         pack_unit: newUnit,
-        material_code: newMaterialCode.trim() || null,
+        material_code: newMaterialCode.trim(),
         description: newDescription.trim() || null,
         flavour: newFlavour.trim() || null,
         serving_qty: Number(newServingQty) || 1,
@@ -571,6 +572,7 @@ function ItemMaster() {
 
   async function saveEdit(id: number) {
     if (!editName.trim()) return;
+    if (!editMaterialCode.trim()) { setError("Material Code is required"); return; }
     setSaving(true); setError(null);
     try {
       const cur = ingredients.find(i => i.id === id);
@@ -578,7 +580,7 @@ function ItemMaster() {
         name: editName.trim(),
         pack_size: cur?.pack_size ?? 1,
         pack_unit: editUnit,
-        material_code: editMaterialCode.trim() || null,
+        material_code: editMaterialCode.trim(),
         description: editDescription.trim() || null,
         flavour: editFlavour.trim() || null,
         serving_qty: Number(editServingQty) || 1,
@@ -662,7 +664,7 @@ function ItemMaster() {
               value={newMaterialCode}
               onChange={e => setNewMaterialCode(e.target.value)}
               className="w-36 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="Material code"
+              placeholder="Material code *"
             />
             <select
               value={newFlavour}
@@ -750,7 +752,7 @@ function ItemMaster() {
                       value={editMaterialCode}
                       onChange={e => setEditMaterialCode(e.target.value)}
                       className="w-32 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                      placeholder="Material code"
+                      placeholder="Material code *"
                     />
                     <select
                       value={editFlavour}

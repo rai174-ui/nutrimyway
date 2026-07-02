@@ -1425,9 +1425,10 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
     material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+  if (!material_code?.trim()) { res.status(400).json({ error: "material_code is required" }); return; }
   const { rows } = await pool.query(
     "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null]
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code.trim(), description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null]
   );
   res.status(201).json(rows[0]);
 });
@@ -1440,9 +1441,10 @@ router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) =>
     material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
+  if (!material_code?.trim()) { res.status(400).json({ error: "material_code is required" }); return; }
   const { rows } = await pool.query(
     "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6, serving_qty=$7, kcal_per_serving=$8 WHERE id=$9 RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, Number(ingredientId)]
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code.trim(), description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, Number(ingredientId)]
   );
   if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   res.json(rows[0]);
@@ -2148,6 +2150,8 @@ router.post("/admin/super/centers/:centerId/upload/inventory", requireSuperAdmin
       if (type === "ingredient") {
         const name = String(row.name ?? "").trim();
         if (!name) { results.errors.push("ingredient missing name"); continue; }
+        const mc = String(row.material_code ?? "").trim();
+        if (!mc) { results.errors.push(`ingredient "${name}" missing material_code`); continue; }
         if (ingredientMap.has(name)) continue; // dedup
         const { rows: r } = await client.query(
           `INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving)
@@ -2156,7 +2160,7 @@ router.post("/admin/super/centers/:centerId/upload/inventory", requireSuperAdmin
             name,
             Number(row.pack_size ?? 1) || 1,
             String(row.pack_unit ?? "g").trim() || "g",
-            String(row.material_code ?? "").trim() || null,
+            mc,
             String(row.description ?? "").trim() || null,
             String(row.flavour ?? "").trim() || null,
             Number(row.serving_qty ?? 1) || 1,
