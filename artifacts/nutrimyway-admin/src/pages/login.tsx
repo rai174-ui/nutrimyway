@@ -94,6 +94,9 @@ export default function LoginPage() {
             Super Admin →
           </a>
         </p>
+        <p className="text-center text-[10px] text-muted-foreground/60 mt-2 pb-2">
+          Powered by Zero Limit Automation
+        </p>
       </div>
     </div>
   );

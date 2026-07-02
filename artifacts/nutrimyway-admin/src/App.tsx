@@ -66,7 +66,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <Router />
+        <div className="min-h-screen flex flex-col">
+          <div className="flex-1">
+            <Router />
+          </div>
+          <div className="text-center py-2 text-[10px] text-muted-foreground/60">
+            Powered by Zero Limit Automation
+          </div>
+        </div>
       </WouterRouter>
     </QueryClientProvider>
   );

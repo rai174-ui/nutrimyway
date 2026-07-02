@@ -207,8 +207,11 @@ export function Login() {
           )}
         </AnimatePresence>
       </div>
-      <p className="text-center pb-6 tracking-wide text-[18px] text-ring">
+      <p className="text-center pb-2 tracking-wide text-[18px] text-ring">
         Nutrition My Way
+      </p>
+      <p className="text-center pb-6 text-[10px] text-muted-foreground/60">
+        Powered by Zero Limit Automation
       </p>
     </div>
   );
