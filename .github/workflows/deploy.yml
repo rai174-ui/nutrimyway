@@ -63,6 +63,7 @@ jobs:
           username: ${{ secrets.HOSTINGER_USERNAME }}
           password: ${{ secrets.HOSTINGER_PASSWORD }}
           port: 21
+          protocol: ftp
           local-dir: ./deploy/
           server-dir: ./public_html/
           dangerous-clean-slate: false
