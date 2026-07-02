@@ -24,3 +24,9 @@ id = "Kh7FnOcNc3u1XPoDQlEmL"
 uri = "file://nutrimyway-admin-server.zip"
 type = "unspecified"
 title = "NutriMyWay Admin Server Deploy Package (.zip)"
+
+[[outputs]]
+id = "WnjuRx7Ktfo-lakYvFXNf"
+uri = "file://about-page.zip"
+type = "unspecified"
+title = "about.tsx — NutriMyWay About Page"
