@@ -1,5 +1,7 @@
 # NutriMyWay Deployment Guide
 
+> Last updated: 2026-07-02 — CI/CD pipeline active
+
 ## Architecture
 
 | Component | Hosting | Domain |
