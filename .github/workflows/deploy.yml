@@ -1,0 +1,71 @@
+name: Build and Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build API server (libs)
+        run: pnpm run typecheck:libs
+
+      - name: Build member app
+        run: PORT=8080 BASE_PATH=/ pnpm --filter @workspace/nutrimyway run build
+
+      - name: Build admin panel
+        run: BASE_PATH=/admin pnpm --filter @workspace/nutrimyway-admin run build
+
+      - name: Prepare deployment package
+        run: |
+          mkdir -p deploy/admin
+          cp -r artifacts/nutrimyway/dist/public/* deploy/
+          cp -r artifacts/nutrimyway-admin/dist/public/* deploy/admin/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nutrimyway-hostinger
+          path: deploy/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nutrimyway-hostinger
+          path: deploy/
+
+      - name: Deploy to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_HOST }}
+          username: ${{ secrets.HOSTINGER_USERNAME }}
+          password: ${{ secrets.HOSTINGER_PASSWORD }}
+          local-dir: ./deploy/
+          server-dir: ./
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
