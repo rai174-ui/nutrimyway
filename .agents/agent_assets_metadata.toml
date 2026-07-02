@@ -48,3 +48,9 @@ id = "IQtLdXo0piqC89acj8-N2"
 uri = "file://artifacts/nutrimyway/privacy-policy.txt"
 type = "text"
 title = "NutriMyWay Privacy Policy (Text)"
+
+[[outputs]]
+id = "PhJw6erRohncHAKY-HKrD"
+uri = "file://zerolimit-website-hostinger.tar.gz"
+type = "unspecified"
+title = "Zero Limit Automation Website - Hostinger Package"

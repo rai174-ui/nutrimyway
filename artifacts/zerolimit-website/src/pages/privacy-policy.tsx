@@ -7,7 +7,7 @@ export default function PrivacyPolicy() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center">
           <a
-            href="/zerolimit/"
+            href="/"
             className="flex items-center space-x-2 text-[#0d7377] hover:text-[#0a5c5f] transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -219,7 +219,7 @@ export default function PrivacyPolicy() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
           <div className="flex items-center justify-center space-x-3 mb-3">
             <img
-              src="/zerolimit/zerolimit-logo.png"
+              src="/zerolimit-logo.png"
               alt="Zero Limit Automation"
               className="h-8 w-auto"
             />

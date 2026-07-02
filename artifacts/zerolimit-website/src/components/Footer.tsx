@@ -59,7 +59,7 @@ export default function Footer() {
             <h4 className="font-semibold text-white mb-4">Legal</h4>
             <ul className="space-y-2">
               <li>
-                <a href="/zerolimit/privacy" className="text-gray-400 hover:text-[#0d7377] transition-colors text-sm">
+                <a href="/privacy" className="text-gray-400 hover:text-[#0d7377] transition-colors text-sm">
                   Privacy Policy
                 </a>
               </li>
