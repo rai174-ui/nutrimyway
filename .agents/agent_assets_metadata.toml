@@ -36,3 +36,9 @@ id = "CYMbRuaf6RF0FwKbPQoAf"
 uri = "file://nutrimyway-android.zip"
 type = "unspecified"
 title = "NutriMyWay Android Capacitor Project (.zip)"
+
+[[outputs]]
+id = "MpednsTqubNUIPvtz3UjD"
+uri = "file://nutrimyway-android-v2.tar.gz"
+type = "unspecified"
+title = "NutriMyWay Android Project v2 (Self-Contained)"
