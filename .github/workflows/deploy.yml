@@ -56,12 +56,14 @@ jobs:
           name: nutrimyway-hostinger
           path: deploy/
 
-      - name: Deploy to Hostinger via FTP
+      - name: Deploy to Hostinger via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.HOSTINGER_HOST }}
           username: ${{ secrets.HOSTINGER_USERNAME }}
           password: ${{ secrets.HOSTINGER_PASSWORD }}
+          protocol: ftps
+          port: 21
           local-dir: ./deploy/
           server-dir: ./
           dangerous-clean-slate: false
