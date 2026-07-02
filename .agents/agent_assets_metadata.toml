@@ -54,3 +54,9 @@ id = "PhJw6erRohncHAKY-HKrD"
 uri = "file://zerolimit-website-hostinger.tar.gz"
 type = "unspecified"
 title = "Zero Limit Automation Website - Hostinger Deployment Package"
+
+[[outputs]]
+id = "fpq6_mzV1nRR6NDd6Cvgs"
+uri = "file://hostinger-nutrimyway.tar.gz"
+type = "unspecified"
+title = "NutriMyWay Hostinger Deployment Package"
