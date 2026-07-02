@@ -8,7 +8,7 @@ import * as XLSX from "xlsx";
 import {
   isSuperAuthenticated, saveSuperAuth, clearSuperAuth, superFetch, type CenterWithStatus,
 } from "@/lib/api";
-import { UploadMembersDialog, UploadInventoryDialog } from "@/components/bulk-upload-dialogs";
+import { UploadMembersDialog, UploadInventoryDialog, UploadBatchesDialog } from "@/components/bulk-upload-dialogs";
 
 // ─── Reset password form (accessed via email link with ?token=xxx) ───────────
 
@@ -462,6 +462,7 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
   const [editCenter, setEditCenter] = useState<CenterWithStatus | null>(null);
   const [uploadMembersCenter, setUploadMembersCenter] = useState<CenterWithStatus | null>(null);
   const [uploadInventoryCenter, setUploadInventoryCenter] = useState<CenterWithStatus | null>(null);
+  const [showUploadBatches, setShowUploadBatches] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   function showToast(msg: string) {
@@ -561,6 +562,16 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
         />
       )}
 
+      {showUploadBatches && (
+        <UploadBatchesDialog
+          onClose={() => setShowUploadBatches(false)}
+          onSuccess={count => {
+            setShowUploadBatches(false);
+            showToast(`${count} batch${count !== 1 ? "es" : ""} uploaded`);
+          }}
+        />
+      )}
+
       <header className="bg-teal-dark text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-3">
           <ShieldCheck className="w-5 h-5 flex-shrink-0" />
@@ -582,14 +593,23 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
             <h1 className="text-2xl font-bold text-foreground">Center Management</h1>
             <p className="text-muted-foreground text-sm mt-0.5">Manage access, passwords and validity for all centers</p>
           </div>
-          <button
-            onClick={() => void load()}
-            disabled={loading}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowUploadBatches(true)}
+              className="flex items-center gap-1.5 text-sm bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors font-medium"
+            >
+              <Upload className="w-4 h-4" />
+              Upload Batches
+            </button>
+            <button
+              onClick={() => void load()}
+              disabled={loading}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4">

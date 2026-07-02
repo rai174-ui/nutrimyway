@@ -2218,4 +2218,100 @@ router.post("/admin/super/centers/:centerId/upload/inventory", requireSuperAdmin
   res.json(results);
 });
 
+// POST /api/admin/super/upload/batches
+// Columns: CenterID, MaterialCode, BatchLotNumber, Qty, Status (New|Open), ReceiptDate
+router.post("/admin/super/upload/batches", requireSuperAdmin, async (req, res) => {
+  const { rows } = req.body as { rows: Record<string, unknown>[] };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "rows array is required" }); return;
+  }
+
+  const results = { batches: 0, errors: [] as string[] };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Pre-load ingredient material_code -> id map
+    const { rows: ingRows } = await client.query("SELECT id, material_code FROM ingredients WHERE material_code IS NOT NULL");
+    const materialMap = new Map<string, number>();
+    for (const r of ingRows) {
+      if ((r as { material_code: string }).material_code) {
+        materialMap.set(String((r as { material_code: string }).material_code).trim().toLowerCase(), (r as { id: number }).id);
+      }
+    }
+
+    // Pre-load valid center ids
+    const { rows: centerRows } = await client.query("SELECT id FROM centers");
+    const centerIds = new Set<string>(centerRows.map((r: { id: string }) => String(r.id).trim()));
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2; // 1-indexed, row 1 is header
+
+      const centerId = String(row.CenterID ?? "").trim();
+      const materialCode = String(row.MaterialCode ?? "").trim();
+      const batchLotNumber = String(row.BatchLotNumber ?? "").trim();
+      const qty = row.Qty != null ? Number(row.Qty) : null;
+      const statusRaw = String(row.Status ?? "").trim().toLowerCase();
+      const receiptDateRaw = row.ReceiptDate ?? row.Receipt_Date ?? null;
+
+      if (!centerId) { results.errors.push(`Row ${rowNum}: CenterID is required`); continue; }
+      if (!materialCode) { results.errors.push(`Row ${rowNum}: MaterialCode is required`); continue; }
+      if (!batchLotNumber) { results.errors.push(`Row ${rowNum}: BatchLotNumber is required`); continue; }
+      if (qty === null || isNaN(qty)) { results.errors.push(`Row ${rowNum}: Qty is required and must be a number`); continue; }
+
+      if (!centerIds.has(centerId)) {
+        results.errors.push(`Row ${rowNum}: Unknown CenterID "${centerId}"`); continue;
+      }
+
+      const ingredientId = materialMap.get(materialCode.toLowerCase());
+      if (!ingredientId) {
+        results.errors.push(`Row ${rowNum}: No ingredient found with MaterialCode "${materialCode}"`); continue;
+      }
+
+      if (statusRaw !== "new" && statusRaw !== "open") {
+        results.errors.push(`Row ${rowNum}: Status must be "New" or "Open" (got "${row.Status}")`); continue;
+      }
+      const status = statusRaw as "new" | "open";
+
+      let receiptDate: Date | null = null;
+      if (receiptDateRaw != null && receiptDateRaw !== "") {
+        // Handle Excel serial numbers or date strings
+        if (typeof receiptDateRaw === "number") {
+          // Excel date serial
+          receiptDate = new Date(Math.round((receiptDateRaw - 25569) * 86400 * 1000));
+        } else {
+          receiptDate = new Date(String(receiptDateRaw));
+          if (isNaN(receiptDate.getTime())) receiptDate = null;
+        }
+      }
+
+      const openedAt = status === "open" ? (receiptDate ?? new Date()) : null;
+
+      // Check for duplicate batch_number + ingredient + center
+      const { rows: dup } = await client.query(
+        "SELECT id FROM ingredient_batches WHERE ingredient_id=$1 AND center_id=$2 AND batch_number=$3 LIMIT 1",
+        [ingredientId, centerId, batchLotNumber]
+      );
+      if (dup.length > 0) continue; // skip silently
+
+      await client.query(
+        `INSERT INTO ingredient_batches (ingredient_id, center_id, batch_number, status, received_qty, opened_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [ingredientId, centerId, batchLotNumber, status, qty, openedAt, receiptDate ?? new Date()]
+      );
+      results.batches++;
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    client.release();
+    res.status(500).json({ error: "Batch upload failed", detail: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  client.release();
+  res.json(results);
+});
+
 export default router;
