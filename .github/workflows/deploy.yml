@@ -56,18 +56,18 @@ jobs:
           name: nutrimyway-hostinger
           path: deploy/
 
-      - name: Deploy to Hostinger via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: 145.79.213.151
-          username: ${{ secrets.HOSTINGER_USERNAME }}
-          password: ${{ secrets.HOSTINGER_PASSWORD }}
-          port: 21
-          protocol: ftp
-          local-dir: ./deploy/
-          server-dir: ./public_html/
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Deploy to Hostinger via FTP (lftp)
+        run: |
+          lftp -u ${{ secrets.HOSTINGER_USERNAME }},${{ secrets.HOSTINGER_PASSWORD }} 145.79.213.151 <<EOF
+          set ftp:ssl-allow no
+          set ftp:passive-mode yes
+          set net:timeout 30
+          set net:max-retries 3
+          lcd deploy
+          cd public_html
+          mirror -R --parallel=2 --verbose
+          bye
+          EOF
