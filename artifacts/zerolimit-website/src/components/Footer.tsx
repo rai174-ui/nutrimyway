@@ -6,7 +6,7 @@ export default function Footer() {
   return (
     <footer className="bg-[#1a1a2e] text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
           {/* Brand */}
           <div className="md:col-span-2">
             <div className="flex items-center space-x-3 mb-4">
@@ -54,12 +54,31 @@ export default function Footer() {
             </ul>
           </div>
 
+          {/* Legal */}
+          <div>
+            <h4 className="font-semibold text-white mb-4">Legal</h4>
+            <ul className="space-y-2">
+              <li>
+                <a href="/zerolimit/privacy" className="text-gray-400 hover:text-[#0d7377] transition-colors text-sm">
+                  Privacy Policy
+                </a>
+              </li>
+              <li>
+                <a href="#contact" className="text-gray-400 hover:text-[#0d7377] transition-colors text-sm">
+                  Contact Us
+                </a>
+              </li>
+            </ul>
+          </div>
+
           {/* Products */}
           <div>
             <h4 className="font-semibold text-white mb-4">Products</h4>
             <ul className="space-y-2">
               <li>
-                <span className="text-gray-400 text-sm">NutriMyWay</span>
+                <a href="#products" className="text-gray-400 hover:text-[#0d7377] transition-colors text-sm">
+                  NutriMyWay
+                </a>
               </li>
               <li>
                 <span className="text-gray-500 text-sm italic">More coming soon...</span>
