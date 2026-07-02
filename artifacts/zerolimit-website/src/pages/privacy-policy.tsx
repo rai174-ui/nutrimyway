@@ -201,9 +201,8 @@ export default function PrivacyPolicy() {
               </p>
               <div className="text-gray-700">
                 <p className="font-semibold text-gray-900">Zero Limit Automation</p>
-                <p>Email: <a href="mailto:privacy@zerolimitautomation.com" className="text-[#0d7377] hover:underline">privacy@zerolimitautomation.com</a></p>
+                <p>Email: <a href="mailto:info@zerolimitautomation.com" className="text-[#0d7377] hover:underline">info@zerolimitautomation.com</a></p>
                 <p>Address: New Delhi, India</p>
-                <p>Phone: +91 99999 99999</p>
               </div>
               <p className="text-gray-500 text-sm mt-4">We will respond to your inquiry within 30 days.</p>
             </div>

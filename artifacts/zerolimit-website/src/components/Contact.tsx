@@ -1,4 +1,4 @@
-import { Mail, MapPin, Phone, Send, CheckCircle } from "lucide-react";
+import { Mail, MapPin, Send, CheckCircle } from "lucide-react";
 import { useState } from "react";
 
 export default function Contact() {
@@ -52,20 +52,8 @@ export default function Contact() {
                   </div>
                   <div>
                     <div className="font-medium text-gray-900">Email</div>
-                    <a href="mailto:hello@zerolimitautomation.com" className="text-[#0d7377] hover:underline">
-                      hello@zerolimitautomation.com
-                    </a>
-                  </div>
-                </div>
-
-                <div className="flex items-start space-x-4">
-                  <div className="w-10 h-10 bg-[#0d7377]/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Phone className="w-5 h-5 text-[#0d7377]" />
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-900">Phone</div>
-                    <a href="tel:+919999999999" className="text-gray-600">
-                      +91 99999 99999
+                    <a href="mailto:info@zerolimitautomation.com" className="text-[#0d7377] hover:underline">
+                      info@zerolimitautomation.com
                     </a>
                   </div>
                 </div>
