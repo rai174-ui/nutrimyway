@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { useGetMember, getGetMemberQueryKey, useGetMemberIssuances, getGetMemberIssuancesQueryKey } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
-import { Package, Calendar, LogOut, Camera, Loader2, X, CheckCircle2 } from "lucide-react";
+import { Package, Calendar, LogOut, Camera, Loader2, X, CheckCircle2, Info } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 
 const BASE = "/api";
 
@@ -89,6 +90,14 @@ export function Profile() {
   return (
     <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="p-4 space-y-6">
       <header className="pt-8 pb-4 flex flex-col items-center text-center space-y-3 relative">
+        <Link
+          href="/about"
+          className="absolute top-4 left-0 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="About"
+        >
+          <Info className="w-3.5 h-3.5" />
+          About
+        </Link>
         <button
           onClick={logout}
           className="absolute top-4 right-0 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"

@@ -9,6 +9,7 @@ import { Log } from "@/pages/log";
 import { Center } from "@/pages/center";
 import { Profile } from "@/pages/profile";
 import { Login } from "@/pages/login";
+import { About } from "@/pages/about";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ function ProtectedRouter() {
         <Route path="/log" component={Log} />
         <Route path="/center" component={Center} />
         <Route path="/profile" component={Profile} />
+        <Route path="/about" component={About} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
