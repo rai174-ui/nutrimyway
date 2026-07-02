@@ -31,20 +31,22 @@ nutrimyway-admin-server/
 ## Prerequisites
 
 1. **Hostinger Node.js Hosting** plan (or any VPS with Node.js 20+)
-2. **Supabase account** (free tier works for testing)
+2. **Railway account** (free tier works for testing) — for PostgreSQL database
 3. **Gmail account** with an App Password (for sending emails)
 
 ---
 
 ## Step-by-Step Setup
 
-### Step 1 — Create Supabase Database
+### Step 1 — Create Railway PostgreSQL Database
 
-1. Go to [supabase.com](https://supabase.com) and create a new project.
-2. Once created, go to **Project Settings → Database**.
-3. Copy the **Connection string** (URI mode, Transaction pooler).
-   - Looks like: `postgresql://postgres.abc123:password@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require`
-4. Save this string — you'll paste it into `.env` in Step 3.
+1. Go to [railway.app](https://railway.app) and create a new project.
+2. Click **New** → **Database** → **Add PostgreSQL**.
+3. Wait for the database to provision (takes ~1 minute).
+4. Click on the PostgreSQL service → **Connect** tab.
+5. Copy the **Public Connection** string (NOT the private/internal one).
+   - Looks like: `postgresql://postgres:password@containers-xxxxx.railway.app:5432/railway`
+6. Save this string — you'll paste it into `.env` in Step 3.
 
 ### Step 2 — Upload to Hostinger
 
@@ -67,7 +69,7 @@ In the Hostinger Node.js panel, add these environment variables:
 | Variable | Example Value |
 |----------|--------------|
 | `PORT` | `3000` (Hostinger will usually override this) |
-| `DATABASE_URL` | `postgresql://postgres.abc123:pwd@...pooler.supabase.com:6543/postgres?sslmode=require` |
+| `DATABASE_URL` | `postgresql://postgres:password@containers-xxxxx.railway.app:5432/railway` |
 | `SESSION_SECRET` | A 64-character random string |
 | `SMTP_HOST` | `smtp.gmail.com` |
 | `SMTP_USER` | `your-email@gmail.com` |
@@ -175,7 +177,7 @@ Hostinger provides free SSL. Make sure:
 
 | Problem | Likely Cause | Fix |
 |---------|-------------|-----|
-| "Database connection failed" | Wrong DATABASE_URL | Double-check Supabase connection string |
+| "Database connection failed" | Wrong DATABASE_URL | Double-check Railway connection string (use **public** host, not `postgres.railway.internal`) |
 | "SMTP connection failed" | Wrong SMTP_PASS | Use Gmail App Password, not your Gmail password |
 | Admin panel blank/404 | Wrong ADMIN_STATIC path | Set `ADMIN_STATIC=./admin` |
 | OTP emails not arriving | SMTP not configured | Check SMTP_HOST/USER/PASS/PORT in env vars |
