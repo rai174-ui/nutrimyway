@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "126171020028",
+    "project_id": "nutrimyway",
+    "storage_bucket": "nutrimyway.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:126171020028:android:491fdff3098c6ccf283579",
+        "android_client_info": {
+          "package_name": "com.zerolimitautomation.nutrimyway"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDsUKKWZTPc0TBMl-CRUI4mnZCWZva1njE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -569,4 +569,15 @@ router.post("/members/:memberId/broadcasts/:broadcastId/read", async (req, res) 
   res.json({ success: true });
 });
 
+// PUT /api/members/:id/push-token — register or update FCM push token
+router.put("/members/:id/push-token", async (req, res) => {
+  const { token, platform } = req.body as { token?: string; platform?: string };
+  if (!token) { res.status(400).json({ error: "token is required" }); return; }
+  await pool.query(
+    "UPDATE members SET push_token = $1, push_platform = $2 WHERE id = $3",
+    [token, platform ?? "android", Number(req.params.id)]
+  );
+  res.json({ success: true });
+});
+
 export default router;

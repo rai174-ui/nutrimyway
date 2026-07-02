@@ -667,6 +667,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables32();
   await migrateAdminTables33();
   await migrateAdminTables34();
+  await migrateAdminTables35();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -922,4 +923,10 @@ async function migrateAdminTables17(): Promise<void> {
       UNIQUE(checkin_id, ingredient_id)
     )
   `);
+}
+
+async function migrateAdminTables35(): Promise<void> {
+  // Push notification tokens for FCM
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS push_token TEXT`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS push_platform TEXT`);
 }

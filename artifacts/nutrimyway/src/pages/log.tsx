@@ -5,6 +5,7 @@ import { useCreateConsumptionLog, getGetDailySummaryQueryKey } from "@workspace/
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
+import { native, snapPhoto } from "@/lib/capacitor";
 
 function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
 const BASE = "/api";
@@ -228,13 +229,48 @@ export function Log() {
   function handleCameraClick() {
     const consented = localStorage.getItem(consentKey);
     if (hasGeminiKey) {
-      fileInputRef.current?.click();
+      if (native()) {
+        handleNativeCamera();
+      } else {
+        fileInputRef.current?.click();
+      }
     } else if (consented === "yes") {
       setWizardStep("setup-1");
       setShowWizard(true);
     } else {
       setWizardStep("permission");
       setShowWizard(true);
+    }
+  }
+
+  async function handleNativeCamera() {
+    if (!MEMBER_ID) return;
+    setAiLoading(true);
+    try {
+      const base64 = await snapPhoto();
+      if (!base64) {
+        setAiLoading(false);
+        return;
+      }
+      const res = await fetch(`${BASE}/members/${MEMBER_ID}/analyze-food-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_base64: base64, mime_type: "image/jpeg" }),
+      });
+      const data = await res.json() as { food_item?: string; calories_kcal?: number | null; protein_g?: number | null; error?: string };
+      if (!res.ok || data.error) {
+        toast({ title: data.error ?? "Could not identify food", variant: "destructive", duration: 6000 });
+        return;
+      }
+      setFoodItem(data.food_item ?? "");
+      setCustomKcal(data.calories_kcal != null ? String(Math.round(data.calories_kcal)) : "");
+      setCustomProtein(data.protein_g != null ? String(Math.round(data.protein_g)) : "");
+      setAiEstimated(true);
+      toast({ title: "AI estimate ready — review and save!" });
+    } catch {
+      toast({ title: "Photo analysis failed. Try again.", variant: "destructive" });
+    } finally {
+      setAiLoading(false);
     }
   }
 

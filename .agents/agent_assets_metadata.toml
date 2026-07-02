@@ -23,10 +23,16 @@ title = "NutriMyWay .env Template (for Hostinger Import)"
 id = "Kh7FnOcNc3u1XPoDQlEmL"
 uri = "file://nutrimyway-admin-server.zip"
 type = "unspecified"
-title = "NutriMyWay Admin Server Deploy Package (.zip)"
+title = "NutriMyWay Hostinger Deploy Package (.zip) - Updated"
 
 [[outputs]]
 id = "WnjuRx7Ktfo-lakYvFXNf"
 uri = "file://about-page.zip"
 type = "unspecified"
 title = "about.tsx — NutriMyWay About Page"
+
+[[outputs]]
+id = "CYMbRuaf6RF0FwKbPQoAf"
+uri = "file://nutrimyway-android.zip"
+type = "unspecified"
+title = "NutriMyWay Android Capacitor Project (.zip)"

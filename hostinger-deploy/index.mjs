@@ -73187,6 +73187,7 @@ async function initDb() {
   await migrateAdminTables32();
   await migrateAdminTables33();
   await migrateAdminTables34();
+  await migrateAdminTables35();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -73377,6 +73378,10 @@ async function migrateAdminTables17() {
       UNIQUE(checkin_id, ingredient_id)
     )
   `);
+}
+async function migrateAdminTables35() {
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS push_token TEXT`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS push_platform TEXT`);
 }
 
 // src/routes/health.ts
@@ -73939,6 +73944,18 @@ router2.post("/members/:memberId/broadcasts/:broadcastId/read", async (req, res)
      VALUES ($1, $2, NOW())
      ON CONFLICT (member_id, broadcast_id) DO NOTHING`,
     [memberId, broadcastId]
+  );
+  res.json({ success: true });
+});
+router2.put("/members/:id/push-token", async (req, res) => {
+  const { token, platform } = req.body;
+  if (!token) {
+    res.status(400).json({ error: "token is required" });
+    return;
+  }
+  await pool.query(
+    "UPDATE members SET push_token = $1, push_platform = $2 WHERE id = $3",
+    [token, platform ?? "android", Number(req.params.id)]
   );
   res.json({ success: true });
 });

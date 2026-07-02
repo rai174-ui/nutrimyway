@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NutriMyWay</string>
+    <string name="title_activity_main">NutriMyWay</string>
+    <string name="package_name">com.zerolimitautomation.nutrimyway</string>
+    <string name="custom_url_scheme">com.zerolimitautomation.nutrimyway</string>
+</resources>
