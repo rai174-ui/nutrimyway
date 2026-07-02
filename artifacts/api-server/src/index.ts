@@ -1,6 +1,7 @@
 import app, { startBroadcastScheduler, startPhotoCleanupScheduler } from "./app";
 import { logger } from "./lib/logger";
 import { initDb } from "./lib/sqlite";
+import { setDbReady } from "./routes/health";
 
 const rawPort = process.env["PORT"];
 
@@ -16,20 +17,20 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// Initialize database and seed from xlsx before starting server or scheduler
+// Start HTTP server FIRST to satisfy Hostinger's 3-second listen() check,
+// then initialize database and schedulers in the background.
+const server = app.listen(port, () => {
+  logger.info({ port }, "Server listening");
+});
+
 initDb()
   .then(() => {
+    setDbReady(true);
     startBroadcastScheduler();
     startPhotoCleanupScheduler();
-    app.listen(port, (err) => {
-      if (err) {
-        logger.error({ err }, "Error listening on port");
-        process.exit(1);
-      }
-      logger.info({ port }, "Server listening");
-    });
+    logger.info("Database initialized, schedulers started");
   })
   .catch((err) => {
     logger.error({ err }, "Failed to initialize database");
-    process.exit(1);
+    // Keep server running so the error is visible in logs; don't exit.
   });

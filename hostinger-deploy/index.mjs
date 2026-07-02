@@ -21278,13 +21278,13 @@ var require_application = __commonJS({
       tryRender(view, renderOptions, done);
     };
     app2.listen = function listen() {
-      var server = http.createServer(this);
+      var server2 = http.createServer(this);
       var args = slice.call(arguments);
       if (typeof args[args.length - 1] === "function") {
         var done = args[args.length - 1] = once(args[args.length - 1]);
-        server.once("error", done);
+        server2.once("error", done);
       }
-      return server.listen.apply(server, args);
+      return server2.listen.apply(server2, args);
     };
     function logerror(err) {
       if (this.get("env") !== "test") console.error(err.stack || err.toString());
@@ -72547,6 +72547,3938 @@ var import_express9 = __toESM(require_express2(), 1);
 // src/routes/health.ts
 var import_express = __toESM(require_express2(), 1);
 
+// ../../node_modules/.pnpm/pg@8.22.0/node_modules/pg/esm/index.mjs
+var import_lib = __toESM(require_lib5(), 1);
+var Client = import_lib.default.Client;
+var Pool = import_lib.default.Pool;
+var Connection = import_lib.default.Connection;
+var types = import_lib.default.types;
+var Query = import_lib.default.Query;
+var DatabaseError = import_lib.default.DatabaseError;
+var escapeIdentifier = import_lib.default.escapeIdentifier;
+var escapeLiteral = import_lib.default.escapeLiteral;
+var Result = import_lib.default.Result;
+var TypeOverrides = import_lib.default.TypeOverrides;
+var defaults = import_lib.default.defaults;
+var esm_default = import_lib.default;
+
+// src/lib/sqlite.ts
+import path from "path";
+import { existsSync } from "fs";
+
+// src/lib/logger.ts
+var import_pino = __toESM(require_pino(), 1);
+var isProduction = process.env.NODE_ENV === "production";
+var logger = (0, import_pino.default)({
+  level: process.env.LOG_LEVEL ?? "info",
+  redact: [
+    "req.headers.authorization",
+    "req.headers.cookie",
+    "res.headers['set-cookie']"
+  ],
+  ...isProduction ? {} : {
+    transport: {
+      target: "pino-pretty",
+      options: { colorize: true }
+    }
+  }
+});
+
+// src/lib/sqlite.ts
+var { Pool: Pool2 } = esm_default;
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
+}
+var pool = new Pool2({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes("supabase.co") ? { rejectUnauthorized: false } : void 0,
+  max: 10,
+  idleTimeoutMillis: 3e4,
+  connectionTimeoutMillis: 5e3
+});
+async function queryOne(text, params) {
+  const result = await pool.query(text, params);
+  return result.rows[0] ?? null;
+}
+async function migrateColumns() {
+  const newCols = [
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS body_fat_pct REAL",
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS visceral_fat REAL",
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS bmr REAL",
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS metabolic_age INTEGER",
+    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS muscle_mass_kg REAL",
+    "ALTER TABLE members ADD COLUMN IF NOT EXISTS mobile TEXT",
+    "ALTER TABLE members ADD COLUMN IF NOT EXISTS email TEXT",
+    "ALTER TABLE members ADD COLUMN IF NOT EXISTS membership_no TEXT",
+    "ALTER TABLE otps ADD COLUMN IF NOT EXISTS email TEXT",
+    "ALTER TABLE user_auth ADD COLUMN IF NOT EXISTS email TEXT",
+    // Allow mobile to be NULL so email-only OTPs/registrations work
+    "ALTER TABLE otps ALTER COLUMN mobile DROP NOT NULL",
+    "ALTER TABLE user_auth ALTER COLUMN mobile DROP NOT NULL"
+  ];
+  for (const sql of newCols) {
+    await pool.query(sql);
+  }
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS members_mobile_uidx ON members (mobile) WHERE mobile IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS members_email_uidx ON members (email) WHERE email IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS members_membership_no_uidx ON members (membership_no) WHERE membership_no IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS user_auth_email_uidx ON user_auth (email) WHERE email IS NOT NULL;
+  `);
+}
+async function createTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS centers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      auto_checkout_min INTEGER DEFAULT 180,
+      photo_retention_days INTEGER DEFAULT 2
+    );
+
+    CREATE TABLE IF NOT EXISTS members (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      date_of_joining TEXT,
+      height_cm INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS member_center_mapping (
+      member_id INTEGER REFERENCES members(id),
+      center_id TEXT REFERENCES centers(id),
+      PRIMARY KEY (member_id, center_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS health_records (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER REFERENCES members(id),
+      center_id TEXT REFERENCES centers(id),
+      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      weight_kg REAL,
+      body_fat_pct REAL,
+      visceral_fat REAL,
+      bmr REAL,
+      bmi REAL,
+      metabolic_age INTEGER,
+      muscle_mass_kg REAL,
+      resting_hr INTEGER,
+      notes TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS consumption_logs (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER REFERENCES members(id),
+      logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      meal_slot TEXT,
+      food_item TEXT NOT NULL,
+      quantity_g REAL,
+      calories_kcal REAL,
+      protein_g REAL,
+      carbs_g REAL,
+      fat_g REAL,
+      photo_url TEXT,
+      photo_uploaded_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS bom_items (
+      id SERIAL PRIMARY KEY,
+      plan_name TEXT,
+      food_item TEXT NOT NULL,
+      quantity_g REAL,
+      calories_kcal REAL,
+      protein_g REAL,
+      carbs_g REAL,
+      fat_g REAL
+    );
+
+    CREATE TABLE IF NOT EXISTS pack_sizes (
+      id SERIAL PRIMARY KEY,
+      item_name TEXT NOT NULL,
+      pack_label TEXT,
+      weight_g REAL,
+      calories_kcal REAL
+    );
+
+    CREATE TABLE IF NOT EXISTS issuances (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER REFERENCES members(id),
+      center_id TEXT REFERENCES centers(id),
+      pack_label TEXT,
+      issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      status TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS _seed_done (
+      done INTEGER PRIMARY KEY
+    );
+
+    CREATE TABLE IF NOT EXISTS otps (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER REFERENCES members(id) ON DELETE CASCADE,
+      mobile TEXT,
+      email TEXT,
+      otp TEXT NOT NULL,
+      otp_token TEXT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_auth (
+      id SERIAL PRIMARY KEY,
+      mobile TEXT,
+      email TEXT,
+      member_id INTEGER REFERENCES members(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS center_auth (
+      center_id TEXT PRIMARY KEY REFERENCES centers(id),
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS center_broadcast_settings (
+      center_id TEXT PRIMARY KEY REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      schedule_time TEXT NOT NULL DEFAULT '09:00',
+      is_active BOOLEAN NOT NULL DEFAULT FALSE,
+      retention_days INTEGER NOT NULL DEFAULT 7,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS member_broadcasts (
+      id SERIAL PRIMARY KEY,
+      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      sent_by TEXT NOT NULL DEFAULT 'scheduled',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS member_broadcasts_center_idx ON member_broadcasts(center_id);
+    CREATE INDEX IF NOT EXISTS member_broadcasts_sent_idx ON member_broadcasts(sent_at DESC);
+
+    CREATE TABLE IF NOT EXISTS member_broadcast_reads (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      broadcast_id INTEGER NOT NULL REFERENCES member_broadcasts(id) ON DELETE CASCADE,
+      read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(member_id, broadcast_id)
+    );
+    CREATE INDEX IF NOT EXISTS member_broadcast_reads_member_idx ON member_broadcast_reads(member_id);
+
+    CREATE TABLE IF NOT EXISTS menu_items (
+      id SERIAL PRIMARY KEY,
+      center_id TEXT NOT NULL REFERENCES centers(id),
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS menu_item_bom (
+      id SERIAL PRIMARY KEY,
+      menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+      ingredient TEXT NOT NULL,
+      quantity REAL NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'g',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+}
+async function migrateAdminTables() {
+  await pool.query(`
+    ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS menu_item_id INTEGER REFERENCES menu_items(id);
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS menu_items_center_name_uidx
+    ON menu_items (center_id, LOWER(name));
+  `);
+}
+async function migrateAdminTables3() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_check_ins (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER NOT NULL REFERENCES members(id),
+      center_id TEXT NOT NULL REFERENCES centers(id),
+      checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      checked_out_at TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS member_check_ins_active_idx
+    ON member_check_ins (member_id) WHERE checked_out_at IS NULL
+  `);
+  await pool.query(`CREATE SEQUENCE IF NOT EXISTS members_id_seq`);
+  const { rows } = await pool.query(`SELECT MAX(id) as max FROM members`);
+  const maxId = Number(rows[0]?.max ?? 0);
+  await pool.query(`SELECT setval('members_id_seq', $1)`, [Math.max(maxId, 1)]);
+  await pool.query(`ALTER TABLE members ALTER COLUMN id SET DEFAULT nextval('members_id_seq')`);
+}
+async function migrateAdminTables2() {
+  await pool.query(`
+    ALTER TABLE centers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS super_admin_auth (
+      id TEXT PRIMARY KEY DEFAULT 'superadmin',
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+}
+async function seedSuperAdmin() {
+  const { default: bcrypt } = await Promise.resolve().then(() => (init_bcryptjs(), bcryptjs_exports));
+  const { rows } = await pool.query("SELECT id FROM super_admin_auth WHERE id = 'superadmin'");
+  if (!rows[0]) {
+    const password = generateCenterPassword();
+    const hash2 = await bcrypt.hash(password, 10);
+    await pool.query(
+      "INSERT INTO super_admin_auth (id, password_hash) VALUES ('superadmin', $1) ON CONFLICT DO NOTHING",
+      [hash2]
+    );
+    logger.info(
+      { initialPassword: password },
+      "Super admin credentials seeded \u2014 save this password, it will not be shown again"
+    );
+  }
+}
+function generateCenterPassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let pwd = "";
+  for (let i = 0; i < 12; i++) {
+    pwd += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return pwd;
+}
+async function seedCenterPasswords() {
+  const { default: bcrypt } = await Promise.resolve().then(() => (init_bcryptjs(), bcryptjs_exports));
+  const { rows: centers } = await pool.query("SELECT id, name FROM centers");
+  for (const center of centers) {
+    const { rows } = await pool.query(
+      "SELECT center_id FROM center_auth WHERE center_id = $1",
+      [center.id]
+    );
+    if (!rows[0]) {
+      const password = generateCenterPassword();
+      const hash2 = await bcrypt.hash(password, 10);
+      await pool.query(
+        "INSERT INTO center_auth (center_id, password_hash) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+        [center.id, hash2]
+      );
+      logger.info(
+        { centerId: center.id, centerName: center.name, initialPassword: password },
+        "Admin credentials seeded for center \u2014 save this password, it will not be shown again"
+      );
+    }
+  }
+}
+function toDateStr(val) {
+  if (!val) return null;
+  if (typeof val === "string") return val.substring(0, 10);
+  if (typeof val === "number") {
+    const epoch = new Date(1900, 0, 0);
+    const ms = (val - 1) * 864e5;
+    return new Date(epoch.getTime() + ms).toISOString().substring(0, 10);
+  }
+  if (val instanceof Date) return val.toISOString().substring(0, 10);
+  return String(val).substring(0, 10);
+}
+function toDateTimeStr(val) {
+  if (!val) return (/* @__PURE__ */ new Date()).toISOString();
+  if (typeof val === "string") return val;
+  if (typeof val === "number") {
+    const epoch = new Date(1900, 0, 0);
+    const ms = (val - 1) * 864e5;
+    return new Date(epoch.getTime() + ms).toISOString();
+  }
+  if (val instanceof Date) return val.toISOString();
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function toNum(val) {
+  if (val === null || val === void 0 || val === "") return null;
+  const n = Number(val);
+  return isNaN(n) ? null : n;
+}
+async function seedFromXlsx() {
+  const done = await queryOne("SELECT done FROM _seed_done WHERE done = 1");
+  if (done) return;
+  const XLSX_PATH = path.resolve(process.cwd(), "data", "composition.xlsx");
+  if (!existsSync(XLSX_PATH)) {
+    logger.warn({ path: XLSX_PATH }, "composition.xlsx not found, inserting defaults");
+    await pool.query(`
+      INSERT INTO members (id, name, date_of_joining, height_cm) VALUES (1, 'Demo Member', '2024-01-01', 170) ON CONFLICT DO NOTHING;
+      INSERT INTO centers (id, name) VALUES ('CI-1', 'Center CI-1'), ('CI-2', 'Center CI-2'), ('Home', 'Home') ON CONFLICT DO NOTHING;
+      INSERT INTO member_center_mapping (member_id, center_id) VALUES (1, 'CI-1'), (1, 'Home') ON CONFLICT DO NOTHING;
+      INSERT INTO _seed_done (done) VALUES (1) ON CONFLICT DO NOTHING;
+    `);
+    return;
+  }
+  const XLSX = await Promise.resolve().then(() => __toESM(require_xlsx(), 1));
+  const workbook = XLSX.readFile(XLSX_PATH);
+  const mappingSheet = workbook.Sheets["Member-Center Mapping"] ?? workbook.Sheets[workbook.SheetNames[0]];
+  if (mappingSheet) {
+    const rows2 = XLSX.utils.sheet_to_json(mappingSheet, { defval: null });
+    for (const row of rows2) {
+      const memberId = toNum(row["Member ID"] ?? row["member_id"] ?? row["id"]);
+      const memberName = String(row["Member Name"] ?? row["name"] ?? row["Member"] ?? "Unknown");
+      const centerId = String(row["Center ID"] ?? row["center_id"] ?? "CI-1");
+      const centerName = String(row["Center Name"] ?? row["center"] ?? centerId);
+      const doj = toDateStr(row["Date of Joining"] ?? row["date_of_joining"]);
+      const height = toNum(row["Height (cm)"] ?? row["height_cm"] ?? row["Height"]);
+      if (!memberId) continue;
+      await pool.query(`INSERT INTO members (id, name, date_of_joining, height_cm) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [memberId, memberName, doj, height]);
+      await pool.query(`INSERT INTO centers (id, name) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [centerId, centerName]);
+      await pool.query(`INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [memberId, centerId]);
+    }
+  }
+  const healthSheet = workbook.Sheets["HealthRecord"] ?? workbook.Sheets["Health Records"];
+  if (healthSheet) {
+    const rows2 = XLSX.utils.sheet_to_json(healthSheet, { defval: null });
+    for (const row of rows2) {
+      const memberId = toNum(row["Member ID"] ?? row["member_id"]);
+      if (!memberId) continue;
+      await pool.query(
+        `INSERT INTO health_records (member_id, center_id, recorded_at, weight_kg, bmi, resting_hr, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          memberId,
+          row["Center ID"] ?? row["center_id"] ?? null,
+          toDateTimeStr(row["Recorded At"] ?? row["recorded_at"] ?? row["Date"]),
+          toNum(row["Weight (kg)"] ?? row["weight_kg"] ?? row["Weight"]),
+          toNum(row["BMI"] ?? row["bmi"]),
+          toNum(row["Resting HR"] ?? row["resting_hr"] ?? row["HR"]),
+          row["Notes"] ?? null
+        ]
+      );
+    }
+  }
+  const consumptionSheet = workbook.Sheets["Consumtion"] ?? workbook.Sheets["Consumption"] ?? workbook.Sheets["consumption_logs"];
+  if (consumptionSheet) {
+    const rows2 = XLSX.utils.sheet_to_json(consumptionSheet, { defval: null });
+    for (const row of rows2) {
+      const memberId = toNum(row["Member ID"] ?? row["member_id"]);
+      if (!memberId) continue;
+      await pool.query(
+        `INSERT INTO consumption_logs (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          memberId,
+          toDateTimeStr(row["Logged At"] ?? row["logged_at"] ?? row["Date"]),
+          String(row["Meal Slot"] ?? row["meal_slot"] ?? "Breakfast"),
+          String(row["Food Item"] ?? row["food_item"] ?? "Unknown"),
+          toNum(row["Quantity (g)"] ?? row["quantity_g"] ?? row["Qty"]),
+          toNum(row["Calories (kcal)"] ?? row["calories_kcal"] ?? row["Calories"]),
+          toNum(row["Protein (g)"] ?? row["protein_g"] ?? row["Protein"]),
+          toNum(row["Carbs (g)"] ?? row["carbs_g"] ?? row["Carbs"]),
+          toNum(row["Fat (g)"] ?? row["fat_g"] ?? row["Fat"])
+        ]
+      );
+    }
+  }
+  const bomSheet = workbook.Sheets["BOM"] ?? workbook.Sheets["bom"];
+  if (bomSheet) {
+    const rows2 = XLSX.utils.sheet_to_json(bomSheet, { defval: null });
+    for (const row of rows2) {
+      const foodItem = String(row["Food Item"] ?? row["food_item"] ?? row["Item"] ?? "");
+      if (!foodItem) continue;
+      await pool.query(
+        `INSERT INTO bom_items (plan_name, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          row["Plan Name"] ?? row["plan_name"] ?? row["Plan"] ?? null,
+          foodItem,
+          toNum(row["Quantity (g)"] ?? row["quantity_g"] ?? row["Qty"]),
+          toNum(row["Calories (kcal)"] ?? row["calories_kcal"] ?? row["Calories"]),
+          toNum(row["Protein (g)"] ?? row["protein_g"] ?? row["Protein"]),
+          toNum(row["Carbs (g)"] ?? row["carbs_g"] ?? row["Carbs"]),
+          toNum(row["Fat (g)"] ?? row["fat_g"] ?? row["Fat"])
+        ]
+      );
+    }
+  }
+  const packSheet = workbook.Sheets["PackSize"] ?? workbook.Sheets["Pack Sizes"];
+  if (packSheet) {
+    const rows2 = XLSX.utils.sheet_to_json(packSheet, { defval: null });
+    for (const row of rows2) {
+      const itemName = String(row["Item Name"] ?? row["item_name"] ?? row["Item"] ?? "");
+      if (!itemName) continue;
+      await pool.query(
+        `INSERT INTO pack_sizes (item_name, pack_label, weight_g, calories_kcal) VALUES ($1,$2,$3,$4)`,
+        [
+          itemName,
+          row["Pack Label"] ?? row["pack_label"] ?? null,
+          toNum(row["Weight (g)"] ?? row["weight_g"] ?? row["Weight"]),
+          toNum(row["Calories (kcal)"] ?? row["calories_kcal"] ?? row["Calories"])
+        ]
+      );
+    }
+  }
+  const issuanceSheet = workbook.Sheets["Issuing "] ?? workbook.Sheets["Issuing"] ?? workbook.Sheets["Issuances"];
+  if (issuanceSheet) {
+    const rows2 = XLSX.utils.sheet_to_json(issuanceSheet, { defval: null });
+    for (const row of rows2) {
+      const memberId = toNum(row["Member ID"] ?? row["member_id"]);
+      if (!memberId) continue;
+      await pool.query(
+        `INSERT INTO issuances (member_id, center_id, pack_label, issued_at, status) VALUES ($1,$2,$3,$4,$5)`,
+        [
+          memberId,
+          row["Center ID"] ?? row["center_id"] ?? null,
+          row["Pack Label"] ?? row["pack_label"] ?? null,
+          toDateTimeStr(row["Issued At"] ?? row["issued_at"] ?? row["Date"]),
+          row["Status"] ?? row["status"] ?? "Issued"
+        ]
+      );
+    }
+  }
+  const { rows } = await pool.query("SELECT COUNT(*) as c FROM members");
+  if (Number(rows[0].c) === 0) {
+    await pool.query(`
+      INSERT INTO members (id, name, date_of_joining, height_cm) VALUES (1, 'Demo Member', '2024-01-01', 170) ON CONFLICT DO NOTHING;
+      INSERT INTO centers (id, name) VALUES ('CI-1', 'Center CI-1'), ('CI-2', 'Center CI-2'), ('Home', 'Home') ON CONFLICT DO NOTHING;
+      INSERT INTO member_center_mapping (member_id, center_id) VALUES (1, 'CI-1') ON CONFLICT DO NOTHING;
+    `);
+  }
+  await pool.query("INSERT INTO _seed_done (done) VALUES (1) ON CONFLICT DO NOTHING");
+  logger.info("Database seeded from composition.xlsx");
+}
+async function migrateAdminTables4() {
+  await pool.query(`ALTER TABLE menu_item_bom ADD COLUMN IF NOT EXISTS kcal REAL`);
+}
+async function migrateAdminTables5() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ingredients (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      pack_size REAL NOT NULL DEFAULT 1,
+      pack_unit TEXT NOT NULL DEFAULT 'g',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ingredient_batches (
+      id SERIAL PRIMARY KEY,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      center_id TEXT NOT NULL REFERENCES centers(id),
+      batch_number TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'open', 'consumed')),
+      opened_at TIMESTAMPTZ,
+      consumed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uidx_ingredient_batches_open
+    ON ingredient_batches (ingredient_id, center_id)
+    WHERE status = 'open'
+  `);
+}
+async function migrateAdminTables6() {
+  await pool.query(
+    `ALTER TABLE menu_item_bom ADD COLUMN IF NOT EXISTS ingredient_id INTEGER REFERENCES ingredients(id)`
+  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS batch_consumption_logs (
+      id SERIAL PRIMARY KEY,
+      batch_id INTEGER NOT NULL REFERENCES ingredient_batches(id) ON DELETE CASCADE,
+      quantity REAL NOT NULL,
+      notes TEXT,
+      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+async function migrateAdminTables9() {
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS dob TEXT`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS age_at_joining REAL`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS valid_until DATE`);
+}
+async function migrateAdminTables10() {
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+}
+async function migrateAdminTables11() {
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS material_code TEXT`);
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS description TEXT`);
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS flavour TEXT`);
+}
+async function migrateAdminTables12() {
+  await pool.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS flavours TEXT NOT NULL DEFAULT ''`);
+}
+async function migrateAdminTables13() {
+  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS selected_flavour TEXT`);
+}
+async function migrateAdminTables15() {
+  await pool.query(`ALTER TABLE member_check_ins ADD COLUMN IF NOT EXISTS cancelled BOOLEAN NOT NULL DEFAULT FALSE`);
+}
+async function migrateAdminTables14() {
+  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS assigned_member_id INTEGER REFERENCES members(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS assigned_member_name TEXT`);
+  await pool.query(`DROP INDEX IF EXISTS uidx_ingredient_batches_open`);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uidx_ingredient_batches_open_center
+    ON ingredient_batches (ingredient_id, center_id)
+    WHERE status = 'open' AND assigned_member_id IS NULL
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS batch_adjustments (
+      id SERIAL PRIMARY KEY,
+      batch_id INTEGER NOT NULL REFERENCES ingredient_batches(id) ON DELETE CASCADE,
+      qty_change NUMERIC(10,3) NOT NULL,
+      note TEXT,
+      adjusted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+async function migrateAdminTables8() {
+  await pool.query(`ALTER TABLE center_auth ADD COLUMN IF NOT EXISTS valid_until DATE`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS super_admin_reset_tokens (
+      token TEXT PRIMARY KEY,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+async function migrateAdminTables7() {
+  await pool.query(
+    `ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS is_mandatory BOOLEAN NOT NULL DEFAULT FALSE`
+  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS visit_menu_selections (
+      id SERIAL PRIMARY KEY,
+      checkin_id INTEGER NOT NULL REFERENCES member_check_ins(id) ON DELETE CASCADE,
+      menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(checkin_id, menu_item_id)
+    )
+  `);
+}
+async function initDb() {
+  await createTables();
+  await migrateColumns();
+  await seedFromXlsx();
+  await migrateAdminTables();
+  await migrateAdminTables2();
+  await migrateAdminTables3();
+  await migrateAdminTables4();
+  await migrateAdminTables5();
+  await migrateAdminTables6();
+  await migrateAdminTables7();
+  await migrateAdminTables8();
+  await migrateAdminTables9();
+  await migrateAdminTables10();
+  await migrateAdminTables11();
+  await migrateAdminTables12();
+  await migrateAdminTables13();
+  await migrateAdminTables14();
+  await migrateAdminTables15();
+  await migrateAdminTables16();
+  await migrateAdminTables17();
+  await migrateAdminTables18();
+  await migrateAdminTables19();
+  await migrateAdminTables20();
+  await migrateAdminTables21();
+  await migrateAdminTables22();
+  await migrateAdminTables23();
+  await migrateAdminTables24();
+  await migrateAdminTables25();
+  await migrateAdminTables26();
+  await migrateAdminTables27();
+  await migrateAdminTables28();
+  await migrateAdminTables29();
+  await migrateAdminTables30();
+  await migrateAdminTables31();
+  await migrateAdminTables32();
+  await migrateAdminTables33();
+  await migrateAdminTables34();
+  await seedCenterPasswords();
+  await seedSuperAdmin();
+}
+async function migrateAdminTables20() {
+  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS received_qty REAL`);
+  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS received_unit TEXT`);
+}
+async function migrateAdminTables21() {
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS serving_qty REAL NOT NULL DEFAULT 1`);
+}
+async function migrateAdminTables23() {
+  await pool.query(
+    `ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS checkin_id INTEGER REFERENCES member_check_ins(id) ON DELETE SET NULL`
+  );
+}
+async function migrateAdminTables24() {
+  await pool.query(
+    `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS kcal_per_serving REAL`
+  );
+}
+async function migrateAdminTables25() {
+  await pool.query(
+    `ALTER TABLE centers ADD COLUMN IF NOT EXISTS auto_checkout_min INTEGER NOT NULL DEFAULT 180`
+  );
+}
+async function migrateAdminTables26() {
+  await pool.query(`ALTER TABLE otps ADD COLUMN IF NOT EXISTS member_id INTEGER REFERENCES members(id) ON DELETE CASCADE`);
+  await pool.query(`ALTER TABLE otps ADD COLUMN IF NOT EXISTS otp_token TEXT`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS otps_token_idx ON otps(otp_token)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS otps_member_idx ON otps(member_id)`);
+  await pool.query(`ALTER TABLE members DROP CONSTRAINT IF EXISTS members_email_uidx`);
+  await pool.query(`DROP INDEX IF EXISTS members_email_uidx`);
+  await pool.query(`ALTER TABLE user_auth DROP CONSTRAINT IF EXISTS user_auth_email_uidx`);
+  await pool.query(`DROP INDEX IF EXISTS user_auth_email_uidx`);
+  await pool.query(`ALTER TABLE user_auth DROP CONSTRAINT IF EXISTS user_auth_mobile_key`);
+  await pool.query(`DROP INDEX IF EXISTS user_auth_mobile_key`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS members_email_idx ON members(email)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS members_membership_no_idx ON members(membership_no)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS user_auth_email_idx ON user_auth(email)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS user_auth_mobile_idx ON user_auth(mobile)`);
+}
+async function migrateAdminTables27() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS center_broadcast_settings (
+      center_id TEXT PRIMARY KEY REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      schedule_time TEXT NOT NULL DEFAULT '09:00',
+      is_active BOOLEAN NOT NULL DEFAULT FALSE,
+      retention_days INTEGER NOT NULL DEFAULT 7,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_broadcasts (
+      id SERIAL PRIMARY KEY,
+      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      sent_by TEXT NOT NULL DEFAULT 'scheduled',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcasts_center_idx ON member_broadcasts(center_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcasts_sent_idx ON member_broadcasts(sent_at DESC)`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_broadcast_reads (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      broadcast_id INTEGER NOT NULL REFERENCES member_broadcasts(id) ON DELETE CASCADE,
+      read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(member_id, broadcast_id)
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcast_reads_member_idx ON member_broadcast_reads(member_id)`);
+}
+async function migrateAdminTables28() {
+  await pool.query(`ALTER TABLE center_broadcast_settings ADD COLUMN IF NOT EXISTS retention_days INTEGER NOT NULL DEFAULT 7`);
+}
+async function migrateAdminTables29() {
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS daily_kcal INTEGER`);
+}
+async function migrateAdminTables30() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS center_broadcast_schedules (
+      id SERIAL PRIMARY KEY,
+      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      schedule_time TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS center_broadcast_schedules_center_idx ON center_broadcast_schedules(center_id)`);
+}
+async function migrateAdminTables32() {
+  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS photo_url TEXT`);
+  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS photo_uploaded_at TIMESTAMPTZ`);
+}
+async function migrateAdminTables33() {
+  await pool.query(`ALTER TABLE centers ADD COLUMN IF NOT EXISTS photo_retention_days INTEGER DEFAULT 2`);
+}
+async function migrateAdminTables34() {
+  await pool.query(`CREATE INDEX IF NOT EXISTS consumption_logs_member_logged_idx
+    ON consumption_logs(member_id, logged_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS consumption_logs_checkin_idx
+    ON consumption_logs(checkin_id) WHERE checkin_id IS NOT NULL`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS consumption_logs_photo_idx
+    ON consumption_logs(photo_uploaded_at) WHERE photo_url IS NOT NULL`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS health_records_member_recorded_idx
+    ON health_records(member_id, recorded_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS issuances_member_issued_idx
+    ON issuances(member_id, issued_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS issuances_center_idx
+    ON issuances(center_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_check_ins_member_time_idx
+    ON member_check_ins(member_id, checked_in_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_check_ins_center_time_idx
+    ON member_check_ins(center_id, checked_in_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_center_mapping_center_idx
+    ON member_center_mapping(center_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS menu_items_center_idx
+    ON menu_items(center_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS menu_item_bom_menu_item_idx
+    ON menu_item_bom(menu_item_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS batch_consumption_logs_batch_idx
+    ON batch_consumption_logs(batch_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS batch_adjustments_batch_idx
+    ON batch_adjustments(batch_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS otps_expires_idx
+    ON otps(expires_at)`);
+  await pool.query(`ANALYZE consumption_logs, health_records, issuances,
+    member_check_ins, member_center_mapping, menu_items, menu_item_bom,
+    batch_consumption_logs, batch_adjustments, ingredient_batches, otps`);
+}
+async function migrateAdminTables31() {
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'center_broadcast_settings' AND column_name = 'message'
+      ) THEN
+        INSERT INTO center_broadcast_schedules (center_id, message, schedule_time, is_active)
+        SELECT center_id, message, schedule_time, is_active
+        FROM center_broadcast_settings
+        WHERE message IS NOT NULL AND message <> '' AND schedule_time IS NOT NULL
+        ON CONFLICT DO NOTHING;
+      END IF;
+    END $$;
+  `);
+  await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS message`);
+  await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS schedule_time`);
+  await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS is_active`);
+}
+async function migrateAdminTables22() {
+  await pool.query(`ALTER TABLE center_flavours ADD COLUMN IF NOT EXISTS serving_qty REAL NOT NULL DEFAULT 1`);
+  await pool.query(`ALTER TABLE center_flavours ADD COLUMN IF NOT EXISTS available_days TEXT NOT NULL DEFAULT 'all'`);
+}
+async function migrateAdminTables19() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS center_flavours (
+      id         SERIAL PRIMARY KEY,
+      center_id  TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
+      name       TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(center_id, name)
+    )
+  `);
+}
+async function migrateAdminTables18() {
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS gemini_api_key TEXT`);
+}
+async function migrateAdminTables16() {
+  await pool.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS available_days TEXT NOT NULL DEFAULT 'all'`);
+}
+async function migrateAdminTables17() {
+  await pool.query(`ALTER TABLE visit_menu_selections ADD COLUMN IF NOT EXISTS selected_flavour TEXT`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS visit_flavour_selections (
+      id SERIAL PRIMARY KEY,
+      checkin_id INTEGER NOT NULL REFERENCES member_check_ins(id) ON DELETE CASCADE,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      flavour TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(checkin_id, ingredient_id)
+    )
+  `);
+}
+
+// src/routes/health.ts
+var router = (0, import_express.Router)();
+var dbReady = false;
+function setDbReady(ready) {
+  dbReady = ready;
+}
+router.get("/healthz", async (_req, res) => {
+  let dbStatus = "unknown";
+  try {
+    await pool.query("SELECT 1");
+    dbStatus = "connected";
+  } catch {
+    dbStatus = "disconnected";
+  }
+  res.json({
+    status: dbReady && dbStatus === "connected" ? "ok" : "starting",
+    db: dbStatus,
+    ready: dbReady
+  });
+});
+var health_default = router;
+
+// src/routes/members.ts
+var import_express2 = __toESM(require_express2(), 1);
+import { GoogleGenerativeAI } from "@google/generative-ai";
+var router2 = (0, import_express2.Router)();
+router2.get("/members/:id", async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM members WHERE id = $1", [Number(req.params.id)]);
+  if (!rows[0]) {
+    res.status(404).json({ error: "Member not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
+router2.get("/members/:id/centers", async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT c.* FROM centers c JOIN member_center_mapping m ON m.center_id = c.id WHERE m.member_id = $1`,
+    [Number(req.params.id)]
+  );
+  res.json(rows);
+});
+router2.get("/members/:id/health-records", async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT * FROM health_records WHERE member_id = $1 ORDER BY recorded_at DESC",
+    [Number(req.params.id)]
+  );
+  res.json(rows);
+});
+router2.post("/members/:id/health-records", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const {
+    recorded_at,
+    center_id,
+    weight_kg,
+    body_fat_pct,
+    visceral_fat,
+    bmr,
+    bmi,
+    metabolic_age,
+    muscle_mass_kg,
+    resting_hr,
+    notes
+  } = req.body;
+  const recAt = recorded_at ? new Date(recorded_at) : /* @__PURE__ */ new Date();
+  const { rows } = await pool.query(
+    `INSERT INTO health_records
+       (member_id, center_id, recorded_at, weight_kg, body_fat_pct, visceral_fat,
+        bmr, bmi, metabolic_age, muscle_mass_kg, resting_hr, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [
+      memberId,
+      center_id ?? null,
+      recAt,
+      weight_kg ?? null,
+      body_fat_pct ?? null,
+      visceral_fat ?? null,
+      bmr ?? null,
+      bmi ?? null,
+      metabolic_age ?? null,
+      muscle_mass_kg ?? null,
+      resting_hr ?? null,
+      notes ?? null
+    ]
+  );
+  res.status(201).json(rows[0]);
+});
+router2.get("/members/:id/consumption", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const date = req.query.date;
+  if (date) {
+    const { rows } = await pool.query(
+      "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2 ORDER BY logged_at ASC",
+      [memberId, date]
+    );
+    res.json(rows);
+  } else {
+    const { rows } = await pool.query(
+      "SELECT * FROM consumption_logs WHERE member_id = $1 ORDER BY logged_at DESC LIMIT 100",
+      [memberId]
+    );
+    res.json(rows);
+  }
+});
+router2.post("/members/:id/consumption", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id, photo_url } = req.body;
+  if (!meal_slot || !food_item) {
+    res.status(400).json({ error: "meal_slot and food_item are required" });
+    return;
+  }
+  if (menu_item_id != null) {
+    const { rows: item } = await pool.query(
+      `SELECT mi.id FROM menu_items mi
+       JOIN member_center_mapping mcm ON mcm.center_id = mi.center_id
+       WHERE mi.id = $1 AND mcm.member_id = $2
+       LIMIT 1`,
+      [menu_item_id, memberId]
+    );
+    if (!item[0]) {
+      res.status(400).json({ error: "menu_item_id does not exist or does not belong to member's center" });
+      return;
+    }
+  }
+  const { rows } = await pool.query(
+    `INSERT INTO consumption_logs
+       (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id, photo_url, photo_uploaded_at)
+     VALUES ($1,NOW(),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [
+      memberId,
+      meal_slot,
+      food_item,
+      quantity_g ?? null,
+      calories_kcal ?? null,
+      protein_g ?? null,
+      carbs_g ?? null,
+      fat_g ?? null,
+      menu_item_id ?? null,
+      photo_url ?? null,
+      photo_url ? (/* @__PURE__ */ new Date()).toISOString() : null
+    ]
+  );
+  res.status(201).json(rows[0]);
+});
+function todayIST() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(/* @__PURE__ */ new Date());
+}
+router2.get("/members/:id/summary", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const date = req.query.date ?? todayIST();
+  const { rows: logs } = await pool.query(
+    "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2 ORDER BY logged_at ASC",
+    [memberId, date]
+  );
+  const totals = logs.reduce(
+    (acc, log) => {
+      acc.total_calories += Number(log.calories_kcal ?? 0);
+      acc.total_protein += Number(log.protein_g ?? 0);
+      acc.total_carbs += Number(log.carbs_g ?? 0);
+      acc.total_fat += Number(log.fat_g ?? 0);
+      return acc;
+    },
+    { total_calories: 0, total_protein: 0, total_carbs: 0, total_fat: 0 }
+  );
+  const logsBySlot = {};
+  for (const log of logs) {
+    const slot = log.meal_slot ?? "Other";
+    if (!logsBySlot[slot]) logsBySlot[slot] = [];
+    logsBySlot[slot].push(log);
+  }
+  const { rows: memberKcal } = await pool.query("SELECT daily_kcal FROM members WHERE id = $1", [memberId]);
+  const targetKcal = memberKcal[0]?.daily_kcal ?? 2e3;
+  res.json({ date, ...totals, target_calories: targetKcal, logs_by_slot: logsBySlot });
+});
+router2.get("/members/:id/issuances", async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT * FROM issuances WHERE member_id = $1 ORDER BY issued_at DESC",
+    [Number(req.params.id)]
+  );
+  res.json(rows);
+});
+router2.get("/members/:id/checkin/active", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows } = await pool.query(
+    `SELECT mci.id, mci.member_id, mci.center_id, mci.checked_in_at, mci.checked_out_at,
+            c.name AS center_name
+     FROM member_check_ins mci
+     JOIN centers c ON c.id = mci.center_id
+     WHERE mci.member_id = $1 AND mci.checked_out_at IS NULL
+     ORDER BY mci.checked_in_at DESC LIMIT 1`,
+    [memberId]
+  );
+  res.json(rows[0] ?? null);
+});
+router2.get("/members/:id/center-menu", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows: checkin } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
+    [memberId]
+  );
+  if (!checkin[0]) {
+    res.json([]);
+    return;
+  }
+  const centerId = checkin[0].center_id;
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1e3;
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayDay = dayNames[nowIst.getUTCDay()];
+  const { rows } = await pool.query(
+    `SELECT mi.id, mi.name, mi.description, mi.flavours, mi.available_days,
+       COALESCE(
+         json_agg(
+           json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit, 'kcal', mib.kcal)
+           ORDER BY mib.id
+         ) FILTER (WHERE mib.id IS NOT NULL),
+         '[]'::json
+       ) AS bom
+     FROM menu_items mi
+     LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
+     WHERE mi.center_id = $1
+       AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
+     GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.available_days, mi.created_at
+     ORDER BY mi.created_at`,
+    [centerId, `%${todayDay}%`]
+  );
+  res.json(rows);
+});
+router2.post("/members/:id/checkin", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { center_id } = req.body;
+  if (!center_id) {
+    res.status(400).json({ error: "center_id is required" });
+    return;
+  }
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [memberId, center_id]
+  );
+  if (!membership[0]) {
+    res.status(403).json({ error: "Not a member of this center" });
+    return;
+  }
+  const { rows: existing } = await pool.query(
+    `SELECT id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL`,
+    [memberId]
+  );
+  if (existing[0]) {
+    res.status(409).json({ error: "Already checked in" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
+    [memberId, center_id]
+  );
+  res.status(201).json(rows[0]);
+});
+router2.post("/members/:id/checkout", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows: ciRows } = await pool.query(
+    `SELECT id, center_id FROM member_check_ins
+     WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
+    [memberId]
+  );
+  if (!ciRows[0]) {
+    res.status(404).json({ error: "No active check-in found" });
+    return;
+  }
+  const checkin = ciRows[0];
+  const { rows: flavourSels } = await pool.query(
+    `SELECT vfs.ingredient_id, vfs.flavour, i.name
+     FROM visit_flavour_selections vfs
+     JOIN ingredients i ON i.id = vfs.ingredient_id
+     WHERE vfs.checkin_id = $1`,
+    [checkin.id]
+  );
+  for (const fsel of flavourSels) {
+    const { rows: batches } = await pool.query(
+      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty,
+              COALESCE(
+                (SELECT mb.quantity FROM menu_item_bom mb
+                 JOIN visit_menu_selections vms ON vms.menu_item_id = mb.menu_item_id
+                 WHERE vms.checkin_id = $3 AND mb.ingredient_id = $1 LIMIT 1),
+                i.serving_qty,
+                1
+              ) AS serving_qty
+       FROM ingredient_batches ib
+       JOIN ingredients i ON i.id = ib.ingredient_id
+       WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
+       ORDER BY ib.opened_at ASC LIMIT 1`,
+      [fsel.ingredient_id, checkin.center_id, checkin.id]
+    );
+    if (!batches[0]) continue;
+    const batchRow = batches[0];
+    await pool.query(
+      `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
+       VALUES ($1, $2, 'auto: flavour visit', NOW())`,
+      [batchRow.id, batchRow.serving_qty]
+    );
+    const { rows: bal } = await pool.query(
+      `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
+      [batchRow.id]
+    );
+    if (Number(bal[0].total) >= batchRow.total_qty) {
+      await pool.query(
+        `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
+         WHERE id = $1 AND status = 'open'`,
+        [batchRow.id]
+      );
+    }
+  }
+  const { rows } = await pool.query(
+    `UPDATE member_check_ins SET checked_out_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [checkin.id]
+  );
+  res.json(rows[0]);
+});
+router2.get("/members/:id/checkin-options", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows: checkinRows } = await pool.query(
+    `SELECT mci.id, mci.center_id, c.name AS center_name, mci.checked_in_at
+     FROM member_check_ins mci
+     JOIN centers c ON c.id = mci.center_id
+     WHERE mci.member_id = $1 AND mci.checked_out_at IS NULL LIMIT 1`,
+    [memberId]
+  );
+  if (!checkinRows[0]) {
+    res.json({ checkin: null, menuItems: [], directFlavours: [], selections: [] });
+    return;
+  }
+  const checkin = checkinRows[0];
+  const centerId = checkin.center_id;
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1e3;
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayDay = dayNames[nowIst.getUTCDay()];
+  const { rows: menuItems } = await pool.query(
+    `SELECT mi.id, mi.name, mi.description, mi.flavours, mi.available_days,
+       COALESCE(
+         json_agg(
+           json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit, 'kcal', mib.kcal)
+           ORDER BY mib.id
+         ) FILTER (WHERE mib.id IS NOT NULL),
+         '[]'::json
+       ) AS bom
+     FROM menu_items mi
+     LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
+     WHERE mi.center_id = $1
+       AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
+     GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.available_days, mi.created_at
+     ORDER BY mi.created_at`,
+    [centerId, `%${todayDay}%`]
+  );
+  const { rows: directFlavours } = await pool.query(
+    `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.pack_unit AS unit
+     FROM ingredients i
+     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
+     LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
+     WHERE i.flavour IS NOT NULL AND i.flavour != ''
+       AND ib.center_id = $1 AND ib.status = 'open'
+       AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
+     ORDER BY i.id, i.name`,
+    [centerId, `%${todayDay}%`]
+  );
+  const { rows: menuSels } = await pool.query(
+    `SELECT vms.menu_item_id, mi.name, vms.selected_flavour
+     FROM visit_menu_selections vms
+     JOIN menu_items mi ON mi.id = vms.menu_item_id
+     WHERE vms.checkin_id = $1`,
+    [checkin.id]
+  );
+  const { rows: flavourSels } = await pool.query(
+    `SELECT vfs.ingredient_id, i.name, vfs.flavour
+     FROM visit_flavour_selections vfs
+     JOIN ingredients i ON i.id = vfs.ingredient_id
+     WHERE vfs.checkin_id = $1`,
+    [checkin.id]
+  );
+  const selections = [
+    ...menuSels.map((s) => ({ type: "menu_item", menu_item_id: s.menu_item_id, name: s.name, selected_flavour: s.selected_flavour })),
+    ...flavourSels.map((s) => ({ type: "direct_flavour", ingredient_id: s.ingredient_id, name: s.name, flavour: s.flavour }))
+  ];
+  res.json({ checkin: { id: checkin.id, center_id: centerId }, menuItems, directFlavours, selections });
+});
+router2.post("/members/:id/checkin/selections", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows: checkinRows } = await pool.query(
+    `SELECT id, center_id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
+    [memberId]
+  );
+  if (!checkinRows[0]) {
+    res.status(409).json({ error: "No active check-in" });
+    return;
+  }
+  const checkin = checkinRows[0];
+  const { items } = req.body;
+  if (!Array.isArray(items)) {
+    res.status(400).json({ error: "items array required" });
+    return;
+  }
+  if (items.length > 3) {
+    res.status(400).json({ error: "Max 3 items allowed" });
+    return;
+  }
+  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id = $1`, [checkin.id]);
+  await pool.query(`DELETE FROM visit_flavour_selections WHERE checkin_id = $1`, [checkin.id]);
+  for (const item of items) {
+    if (item.type === "menu_item") {
+      await pool.query(
+        `INSERT INTO visit_menu_selections (checkin_id, menu_item_id, selected_flavour) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+        [checkin.id, item.menu_item_id, item.selected_flavour ?? null]
+      );
+    } else if (item.type === "direct_flavour") {
+      await pool.query(
+        `INSERT INTO visit_flavour_selections (checkin_id, ingredient_id, flavour) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+        [checkin.id, item.ingredient_id, item.flavour]
+      );
+    }
+  }
+  res.json({ saved: items.length });
+});
+router2.get("/members/:id/checkin-logs", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows } = await pool.query(
+    `SELECT ci.id,
+            ci.center_id,
+            c.name          AS center_name,
+            ci.checked_in_at,
+            ci.checked_out_at,
+            EXTRACT(EPOCH FROM (COALESCE(ci.checked_out_at, NOW()) - ci.checked_in_at)) / 60 AS duration_min
+     FROM member_check_ins ci
+     JOIN centers c ON c.id = ci.center_id
+     WHERE ci.member_id = $1
+     ORDER BY ci.checked_in_at DESC
+     LIMIT 30`,
+    [memberId]
+  );
+  res.json(rows);
+});
+router2.get("/members/:id/gemini-key", async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT gemini_api_key FROM members WHERE id = $1",
+    [Number(req.params.id)]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Member not found" });
+    return;
+  }
+  res.json({ has_key: !!rows[0].gemini_api_key });
+});
+router2.put("/members/:id/gemini-key", async (req, res) => {
+  const { key } = req.body;
+  const normalized = (key ?? "").trim();
+  await pool.query(
+    "UPDATE members SET gemini_api_key = $1 WHERE id = $2",
+    [normalized || null, Number(req.params.id)]
+  );
+  res.json({ has_key: !!normalized });
+});
+router2.post("/members/:id/analyze-food-photo", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { image_base64, mime_type } = req.body;
+  if (!image_base64 || !mime_type) {
+    res.status(400).json({ error: "image_base64 and mime_type are required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT gemini_api_key FROM members WHERE id = $1",
+    [memberId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Member not found" });
+    return;
+  }
+  if (!rows[0].gemini_api_key) {
+    res.status(402).json({ error: "No Gemini API key set. Add your key in Profile \u2192 AI Food Scan." });
+    return;
+  }
+  const genAI = new GoogleGenerativeAI(rows[0].gemini_api_key);
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const prompt = `Analyse this food image and respond with ONLY a valid JSON object, no markdown, no explanation:
+{
+  "food_item": "<name of the food>",
+  "calories_kcal": <estimated kcal as a number or null>,
+  "protein_g": <estimated protein in grams as a number or null>
+}
+If you cannot identify food, return: {"error": "No food detected"}`;
+  let text;
+  try {
+    const result = await model.generateContent([
+      prompt,
+      { inlineData: { data: image_base64, mimeType: mime_type } }
+    ]);
+    text = result.response.text().trim().replace(/^```json\s*|```\s*$/g, "");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("permission")) {
+      res.status(403).json({ error: "Your Gemini API key is not valid or has no quota. Go to aistudio.google.com/apikey to create a new one." });
+    } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
+      res.status(429).json({ error: "Gemini API quota exceeded. Try again later or create a new key." });
+    } else {
+      res.status(502).json({ error: "Gemini AI is not responding right now. Try again in a moment." });
+    }
+    req.log.error({ err: msg }, "Gemini API call failed");
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    res.status(422).json({ error: "Could not parse AI response. Try a clearer photo." });
+    return;
+  }
+  if (parsed.error) {
+    res.status(422).json({ error: String(parsed.error) });
+    return;
+  }
+  res.json({
+    food_item: String(parsed.food_item ?? ""),
+    calories_kcal: parsed.calories_kcal != null ? Number(parsed.calories_kcal) : null,
+    protein_g: parsed.protein_g != null ? Number(parsed.protein_g) : null
+  });
+});
+router2.get("/members/:memberId/broadcasts", async (req, res) => {
+  const memberId = Number(req.params.memberId);
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const { rows: centers } = await pool.query(
+    "SELECT center_id FROM member_center_mapping WHERE member_id = $1",
+    [memberId]
+  );
+  if (centers.length === 0) {
+    res.json([]);
+    return;
+  }
+  const centerIds = centers.map((c) => c.center_id);
+  const placeholders = centerIds.map((_, i) => "$" + (i + 2)).join(",");
+  const { rows } = await pool.query(
+    `SELECT b.id, b.center_id, b.message, b.sent_at, b.sent_by,
+            EXISTS(SELECT 1 FROM member_broadcast_reads r WHERE r.broadcast_id = b.id AND r.member_id = $1) AS is_read
+     FROM member_broadcasts b
+     WHERE b.center_id IN (${placeholders})
+       AND b.sent_at >= NOW() - (
+         SELECT COALESCE(NULLIF(cbs.retention_days, 0), 7) * INTERVAL '1 day'
+         FROM center_broadcast_settings cbs WHERE cbs.center_id = b.center_id
+       )
+     ORDER BY b.sent_at DESC
+     LIMIT $${centerIds.length + 2}`,
+    [memberId, ...centerIds, limit]
+  );
+  res.json(rows);
+});
+router2.post("/members/:memberId/broadcasts/:broadcastId/read", async (req, res) => {
+  const memberId = Number(req.params.memberId);
+  const broadcastId = Number(req.params.broadcastId);
+  await pool.query(
+    `INSERT INTO member_broadcast_reads (member_id, broadcast_id, read_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (member_id, broadcast_id) DO NOTHING`,
+    [memberId, broadcastId]
+  );
+  res.json({ success: true });
+});
+var members_default = router2;
+
+// src/routes/bom.ts
+var import_express3 = __toESM(require_express2(), 1);
+var router3 = (0, import_express3.Router)();
+router3.get("/bom", async (req, res) => {
+  const plan = req.query.plan;
+  if (plan) {
+    const { rows } = await pool.query("SELECT * FROM bom_items WHERE plan_name = $1 ORDER BY food_item", [plan]);
+    res.json(rows);
+  } else {
+    const { rows } = await pool.query("SELECT * FROM bom_items ORDER BY plan_name, food_item");
+    res.json(rows);
+  }
+});
+var bom_default = router3;
+
+// src/routes/packs.ts
+var import_express4 = __toESM(require_express2(), 1);
+var router4 = (0, import_express4.Router)();
+router4.get("/pack-sizes", async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM pack_sizes ORDER BY item_name");
+  res.json(rows);
+});
+var packs_default = router4;
+
+// src/routes/auth.ts
+var import_express5 = __toESM(require_express2(), 1);
+var import_jsonwebtoken = __toESM(require_jsonwebtoken(), 1);
+import nodemailer from "nodemailer";
+import { randomBytes as randomBytes2 } from "crypto";
+var router5 = (0, import_express5.Router)();
+var JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
+var OTP_TTL_MIN = 10;
+function generateOtp() {
+  return String(Math.floor(1e5 + Math.random() * 9e5));
+}
+function generateOtpToken() {
+  return randomBytes2(16).toString("hex");
+}
+function signToken(memberId, email) {
+  return import_jsonwebtoken.default.sign({ memberId, email }, JWT_SECRET, { expiresIn: "30d" });
+}
+async function sendOtpEmail(to, otp) {
+  const host = process.env["SMTP_HOST"];
+  const user = process.env["SMTP_USER"];
+  const pass = process.env["SMTP_PASS"];
+  const port2 = Number(process.env["SMTP_PORT"] ?? "587");
+  if (!host || !user || !pass) {
+    logger.warn({ to }, "SMTP not configured \u2014 OTP email skipped");
+    return false;
+  }
+  const transporter = nodemailer.createTransport({
+    host,
+    port: port2,
+    secure: port2 === 465,
+    auth: { user, pass }
+  });
+  try {
+    await transporter.sendMail({
+      from: `"NutriMyWay" <${user}>`,
+      to,
+      subject: "Your NutriMyWay Login Code",
+      html: `<div style="font-family:sans-serif;max-width:480px;margin:auto">
+        <h2 style="color:#0d9488">Login Code</h2>
+        <p>Use the following 6-digit code to log in to your NutriMyWay account:</p>
+        <div style="font-size:32px;font-weight:700;letter-spacing:0.2em;color:#0d9488;padding:16px 24px;background:#f0fdfa;border-radius:8px;display:inline-block;margin:8px 0">${otp}</div>
+        <p style="color:#6b7280;font-size:13px;margin-top:16px">This code expires in ${OTP_TTL_MIN} minutes.</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this code, please ignore this email.</p>
+      </div>`
+    });
+    return true;
+  } catch (err) {
+    logger.warn({ to, err }, "Failed to send OTP email");
+    return false;
+  }
+}
+router5.post("/auth/request-otp", async (req, res) => {
+  const body = req.body;
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const membershipNo = typeof body.membership_no === "string" ? body.membership_no.trim() : "";
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "A valid email address is required" });
+    return;
+  }
+  if (!membershipNo) {
+    res.status(400).json({ error: "Membership number is required" });
+    return;
+  }
+  const { rows: memberRows } = await pool.query(
+    "SELECT id, name, email, membership_no, is_active, valid_until FROM members WHERE membership_no = $1",
+    [membershipNo]
+  );
+  if (!memberRows[0]) {
+    res.status(404).json({ error: "No member found with this membership number. Please contact your wellness center." });
+    return;
+  }
+  const member = memberRows[0];
+  if (!member.is_active) {
+    res.status(403).json({ error: "Your membership is inactive. Please contact your wellness center." });
+    return;
+  }
+  if (member.valid_until && new Date(member.valid_until) < /* @__PURE__ */ new Date()) {
+    res.status(403).json({ error: "Your membership has expired. Please contact your wellness center to renew." });
+    return;
+  }
+  if (member.email !== email) {
+    res.status(401).json({ error: "Email does not match the membership number. Please contact your wellness center." });
+    return;
+  }
+  const otp = generateOtp();
+  const expiresAt = new Date(Date.now() + OTP_TTL_MIN * 6e4);
+  const otpToken = generateOtpToken();
+  await pool.query("UPDATE otps SET used = TRUE WHERE member_id = $1 AND used = FALSE", [member.id]);
+  await pool.query(
+    "INSERT INTO otps (member_id, email, otp, otp_token, expires_at) VALUES ($1,$2,$3,$4,$5)",
+    [member.id, email, otp, otpToken, expiresAt]
+  );
+  const sent = await sendOtpEmail(email, otp);
+  if (sent) {
+    res.json({ message: "OTP sent", otp_token: otpToken });
+  } else {
+    res.json({ message: "OTP sent", otp_token: otpToken, otp_preview: otp });
+  }
+});
+router5.post("/auth/verify-otp", async (req, res) => {
+  const body = req.body;
+  const otpToken = typeof body.otp_token === "string" ? body.otp_token.trim() : "";
+  const otp = typeof body.otp === "string" ? body.otp.trim() : "";
+  if (!otpToken || !otp) {
+    res.status(400).json({ error: "OTP token and OTP are required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT * FROM otps
+     WHERE otp_token = $1 AND otp = $2 AND used = FALSE AND expires_at > NOW()
+     ORDER BY id DESC LIMIT 1`,
+    [otpToken, otp]
+  );
+  if (!rows[0]) {
+    res.status(401).json({ error: "Invalid or expired OTP" });
+    return;
+  }
+  const otpRow = rows[0];
+  await pool.query("UPDATE otps SET used = TRUE WHERE id = $1", [otpRow.id]);
+  const memberId = otpRow.member_id;
+  const email = otpRow.email;
+  const { rows: memberRows } = await pool.query(
+    "SELECT is_active, valid_until FROM members WHERE id = $1",
+    [memberId]
+  );
+  const member = memberRows[0];
+  if (!member?.is_active) {
+    res.status(403).json({ error: "Your membership is inactive. Please contact your wellness center." });
+    return;
+  }
+  if (member.valid_until && new Date(member.valid_until) < /* @__PURE__ */ new Date()) {
+    res.status(403).json({ error: "Your membership has expired. Please contact your wellness center to renew." });
+    return;
+  }
+  const { rows: authRows } = await pool.query(
+    "SELECT id FROM user_auth WHERE member_id = $1",
+    [memberId]
+  );
+  if (!authRows[0]) {
+    await pool.query(
+      "INSERT INTO user_auth (member_id, email, created_at) VALUES ($1,$2,NOW())",
+      [memberId, email]
+    );
+  }
+  const token = signToken(memberId, email);
+  res.json({ token, member_id: memberId });
+});
+router5.post("/auth/register", async (_req, res) => {
+  res.status(403).json({ error: "Self-registration is disabled. Please contact your wellness center to get registered." });
+});
+router5.post("/auth/register_legacy", async (_req, res) => {
+  res.status(403).json({ error: "Self-registration is disabled. Please contact your wellness center to get registered." });
+});
+router5.get("/auth/me", async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const payload = import_jsonwebtoken.default.verify(auth.slice(7), JWT_SECRET);
+    const { rows } = await pool.query("SELECT * FROM members WHERE id = $1", [payload.memberId]);
+    if (!rows[0]) {
+      res.status(404).json({ error: "Member not found" });
+      return;
+    }
+    res.json(rows[0]);
+  } catch {
+    res.status(401).json({ error: "Invalid token" });
+  }
+});
+var auth_default = router5;
+
+// src/routes/centers.ts
+var import_express6 = __toESM(require_express2(), 1);
+var router6 = (0, import_express6.Router)();
+router6.get("/centers", async (_req, res) => {
+  const { rows } = await pool.query("SELECT * FROM centers ORDER BY name");
+  res.json(rows);
+});
+var centers_default = router6;
+
+// src/routes/admin.ts
+var import_express7 = __toESM(require_express2(), 1);
+var import_jsonwebtoken2 = __toESM(require_jsonwebtoken(), 1);
+init_bcryptjs();
+import nodemailer2 from "nodemailer";
+import { randomBytes as randomBytes3 } from "crypto";
+var SUPER_ADMIN_EMAIL = process.env["SUPER_ADMIN_EMAIL"] ?? "rai.174@gmail.com";
+var APP_URL = process.env["APP_URL"] ?? "http://localhost:8080";
+async function sendSuperAdminResetEmail(resetUrl) {
+  const host = process.env["SMTP_HOST"];
+  const user = process.env["SMTP_USER"];
+  const pass = process.env["SMTP_PASS"];
+  const port2 = Number(process.env["SMTP_PORT"] ?? "587");
+  if (!host || !user || !pass) {
+    logger.warn({ resetUrl }, "SMTP not configured \u2014 reset URL logged (copy it to use)");
+    return;
+  }
+  const transporter = nodemailer2.createTransport({
+    host,
+    port: port2,
+    secure: port2 === 465,
+    auth: { user, pass }
+  });
+  await transporter.sendMail({
+    from: `"NutriMyWay Admin" <${user}>`,
+    to: SUPER_ADMIN_EMAIL,
+    subject: "Super Admin Password Reset",
+    html: `<div style="font-family:sans-serif;max-width:480px;margin:auto">
+      <h2 style="color:#0d9488">Password Reset</h2>
+      <p>Click the button below to reset your Super Admin password. Link expires in <strong>1 hour</strong>.</p>
+      <a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#0d9488;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Reset Password</a>
+      <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this, ignore this email.</p>
+    </div>`
+  });
+}
+var router7 = (0, import_express7.Router)();
+var JWT_SECRET2 = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
+function signAdminToken(centerId) {
+  return import_jsonwebtoken2.default.sign({ centerId, role: "admin" }, JWT_SECRET2, { expiresIn: "12h" });
+}
+function signSuperAdminToken() {
+  return import_jsonwebtoken2.default.sign({ role: "superadmin" }, JWT_SECRET2, { expiresIn: "12h" });
+}
+function requireAdmin(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const payload = import_jsonwebtoken2.default.verify(auth.slice(7), JWT_SECRET2);
+    if (payload.role !== "admin") throw new Error("not admin");
+    req.adminCenterId = payload.centerId;
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid or expired admin token" });
+  }
+}
+function requireSuperAdmin(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const payload = import_jsonwebtoken2.default.verify(auth.slice(7), JWT_SECRET2);
+    if (payload.role !== "superadmin") throw new Error("not superadmin");
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid or expired super admin token" });
+  }
+}
+function slotForNowIST() {
+  const h = new Date(Date.now() + 5.5 * 60 * 60 * 1e3).getUTCHours();
+  if (h < 12) return "Breakfast";
+  if (h < 15) return "Lunch";
+  if (h < 18) return "Snack";
+  return "Dinner";
+}
+async function bookAndCheckout(checkinId, memberId, centerId) {
+  const { rows: selections } = await pool.query(
+    `SELECT vms.menu_item_id, mi.name
+     FROM visit_menu_selections vms
+     JOIN menu_items mi ON mi.id = vms.menu_item_id
+     WHERE vms.checkin_id = $1`,
+    [checkinId]
+  );
+  for (const sel of selections) {
+    const { rows: avail } = await pool.query(
+      `SELECT NOT EXISTS (
+         SELECT 1 FROM menu_item_bom mb
+         WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM ingredient_batches ib
+             WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $2 AND ib.status = 'open'
+           )
+       ) AS is_available`,
+      [sel.menu_item_id, centerId]
+    );
+    if (!avail[0].is_available) continue;
+    const { rows: kcalRows } = await pool.query(
+      `SELECT COALESCE(SUM(kcal), 0) AS total_kcal FROM menu_item_bom WHERE menu_item_id = $1`,
+      [sel.menu_item_id]
+    );
+    const totalKcal = Number(kcalRows[0].total_kcal) || null;
+    await pool.query(
+      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, calories_kcal, checkin_id, logged_at)
+       VALUES ($1, $5, $2, $3, $4, $6, NOW())`,
+      [memberId, sel.name, sel.menu_item_id, totalKcal, slotForNowIST(), checkinId]
+    );
+    const { rows: bom } = await pool.query(
+      `SELECT mb.ingredient_id, mb.quantity FROM menu_item_bom mb
+       WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL`,
+      [sel.menu_item_id]
+    );
+    for (const b of bom) {
+      const { rows: batches } = await pool.query(
+        `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size) AS pack_size FROM ingredient_batches ib
+         JOIN ingredients i ON i.id = ib.ingredient_id
+         WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
+         ORDER BY ib.opened_at ASC LIMIT 1`,
+        [b.ingredient_id, centerId]
+      );
+      if (batches[0]) {
+        const batchRow = batches[0];
+        await pool.query(
+          `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
+           VALUES ($1, $2, 'auto: member visit', NOW())`,
+          [batchRow.id, b.quantity]
+        );
+        const { rows: bal } = await pool.query(
+          `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
+          [batchRow.id]
+        );
+        if (Number(bal[0].total) >= batchRow.pack_size) {
+          await pool.query(
+            `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
+             WHERE id = $1 AND status = 'open'`,
+            [batchRow.id]
+          );
+        }
+      }
+    }
+  }
+  const { rows: flavourSels } = await pool.query(
+    `SELECT vfs.ingredient_id, vfs.flavour, i.name
+     FROM visit_flavour_selections vfs
+     JOIN ingredients i ON i.id = vfs.ingredient_id
+     WHERE vfs.checkin_id = $1`,
+    [checkinId]
+  );
+  for (const fsel of flavourSels) {
+    const { rows: batches } = await pool.query(
+      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty,
+              COALESCE(
+                (SELECT mb.quantity FROM menu_item_bom mb
+                 JOIN visit_menu_selections vms ON vms.menu_item_id = mb.menu_item_id
+                 WHERE vms.checkin_id = $3 AND mb.ingredient_id = $1 LIMIT 1),
+                i.serving_qty,
+                1
+              ) AS serving_qty
+       FROM ingredient_batches ib
+       JOIN ingredients i ON i.id = ib.ingredient_id
+       WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
+       ORDER BY ib.opened_at ASC LIMIT 1`,
+      [fsel.ingredient_id, centerId, checkinId]
+    );
+    if (!batches[0]) continue;
+    const batchRow = batches[0];
+    const foodLabel = `${fsel.name} \u2013 ${fsel.flavour}`;
+    const { rows: kcalIngRows } = await pool.query(
+      `SELECT kcal_per_serving FROM ingredients WHERE id = $1`,
+      [fsel.ingredient_id]
+    );
+    const kcalPerServing = kcalIngRows[0]?.kcal_per_serving ?? null;
+    await pool.query(
+      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, quantity_g, calories_kcal, checkin_id, logged_at)
+       VALUES ($1, $3, $2, $4, $5, $6, NOW())`,
+      [memberId, foodLabel, slotForNowIST(), batchRow.serving_qty, kcalPerServing, checkinId]
+    );
+    await pool.query(
+      `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
+       VALUES ($1, $2, 'auto: flavour visit', NOW())`,
+      [batchRow.id, batchRow.serving_qty]
+    );
+    const { rows: bal } = await pool.query(
+      `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
+      [batchRow.id]
+    );
+    if (Number(bal[0].total) >= batchRow.total_qty) {
+      await pool.query(
+        `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
+         WHERE id = $1 AND status = 'open'`,
+        [batchRow.id]
+      );
+    }
+  }
+  await pool.query(
+    `UPDATE member_check_ins SET checked_out_at = NOW() WHERE id = $1 AND checked_out_at IS NULL`,
+    [checkinId]
+  );
+}
+async function autoCheckoutExpired(centerId) {
+  const { rows: expired } = await pool.query(
+    `SELECT mci.id, mci.member_id FROM member_check_ins mci
+     JOIN centers c ON c.id = mci.center_id
+     WHERE mci.center_id = $1 AND mci.checked_out_at IS NULL
+       AND NOW() - mci.checked_in_at > (c.auto_checkout_min || ' minutes')::INTERVAL`,
+    [centerId]
+  );
+  for (const ci of expired) {
+    await bookAndCheckout(ci.id, ci.member_id, centerId);
+  }
+}
+router7.post("/admin/login", async (req, res) => {
+  const { center_id, password } = req.body;
+  if (!center_id || !password) {
+    res.status(400).json({ error: "center_id and password are required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT ca.password_hash, ca.valid_until, c.name, c.is_active
+     FROM center_auth ca JOIN centers c ON c.id = ca.center_id WHERE ca.center_id = $1`,
+    [center_id]
+  );
+  if (!rows[0]) {
+    res.status(401).json({ error: "Invalid center or password" });
+    return;
+  }
+  if (!rows[0].is_active) {
+    res.status(403).json({ error: "This center has been deactivated. Contact the super admin." });
+    return;
+  }
+  if (rows[0].valid_until && new Date(rows[0].valid_until) < /* @__PURE__ */ new Date()) {
+    res.status(403).json({ error: "This center's access has expired. Contact the super admin." });
+    return;
+  }
+  const ok = await bcryptjs_default.compare(password, rows[0].password_hash);
+  if (!ok) {
+    res.status(401).json({ error: "Invalid center or password" });
+    return;
+  }
+  const token = signAdminToken(center_id);
+  res.json({ token, center_id, center_name: rows[0].name });
+});
+router7.post("/admin/super/login", async (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    res.status(400).json({ error: "password is required" });
+    return;
+  }
+  const { rows } = await pool.query("SELECT password_hash FROM super_admin_auth WHERE id = 'superadmin'");
+  if (!rows[0]) {
+    res.status(401).json({ error: "Invalid password" });
+    return;
+  }
+  const ok = await bcryptjs_default.compare(password, rows[0].password_hash);
+  if (!ok) {
+    res.status(401).json({ error: "Invalid password" });
+    return;
+  }
+  res.json({ token: signSuperAdminToken() });
+});
+router7.get("/admin/super/centers", requireSuperAdmin, async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT c.id, c.name, c.is_active, ca.valid_until
+    FROM centers c
+    LEFT JOIN center_auth ca ON ca.center_id = c.id
+    ORDER BY c.name
+  `);
+  res.json(rows);
+});
+router7.patch("/admin/super/centers/:centerId/activate", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { rows } = await pool.query(
+    "UPDATE centers SET is_active = TRUE WHERE id = $1 RETURNING id, name, is_active",
+    [centerId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Center not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
+router7.patch("/admin/super/centers/:centerId/deactivate", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { rows } = await pool.query(
+    "UPDATE centers SET is_active = FALSE WHERE id = $1 RETURNING id, name, is_active",
+    [centerId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Center not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
+router7.patch("/admin/super/centers/:centerId/password", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { password } = req.body;
+  if (!password || password.length < 8) {
+    res.status(400).json({ error: "password must be at least 8 characters" });
+    return;
+  }
+  const hash2 = await bcryptjs_default.hash(password, 10);
+  const { rowCount } = await pool.query(
+    "UPDATE center_auth SET password_hash = $1 WHERE center_id = $2",
+    [hash2, centerId]
+  );
+  if (!rowCount) {
+    res.status(404).json({ error: "Center not found" });
+    return;
+  }
+  res.json({ ok: true });
+});
+router7.patch("/admin/super/centers/:centerId", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { name } = req.body;
+  if (!name?.trim()) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "UPDATE centers SET name = $1 WHERE id = $2 RETURNING id, name, is_active",
+    [name.trim(), centerId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Center not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
+router7.patch("/admin/super/centers/:centerId/validity", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { valid_until } = req.body;
+  await pool.query(
+    "UPDATE center_auth SET valid_until = $1 WHERE center_id = $2",
+    [valid_until ?? null, centerId]
+  );
+  const { rows } = await pool.query(
+    `SELECT c.id, c.name, c.is_active, ca.valid_until
+     FROM centers c LEFT JOIN center_auth ca ON ca.center_id = c.id WHERE c.id = $1`,
+    [centerId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Center not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
+router7.post("/admin/super/forgot-password", async (_req, res) => {
+  const token = randomBytes3(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1e3);
+  await pool.query(
+    "INSERT INTO super_admin_reset_tokens (token, expires_at) VALUES ($1, $2)",
+    [token, expiresAt]
+  );
+  const resetUrl = `${APP_URL}/admin/super?token=${token}`;
+  try {
+    await sendSuperAdminResetEmail(resetUrl);
+  } catch (err) {
+    logger.error({ err }, "Failed to send super admin reset email");
+  }
+  res.json({ ok: true });
+});
+router7.post("/admin/super/reset-password", async (req, res) => {
+  const { token, new_password } = req.body;
+  if (!token || !new_password) {
+    res.status(400).json({ error: "token and new_password are required" });
+    return;
+  }
+  if (new_password.length < 8) {
+    res.status(400).json({ error: "new_password must be at least 8 characters" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT token, expires_at, used_at FROM super_admin_reset_tokens WHERE token = $1",
+    [token]
+  );
+  if (!rows[0]) {
+    res.status(400).json({ error: "Invalid or expired reset link" });
+    return;
+  }
+  if (rows[0].used_at) {
+    res.status(400).json({ error: "This reset link has already been used" });
+    return;
+  }
+  if (new Date(rows[0].expires_at) < /* @__PURE__ */ new Date()) {
+    res.status(400).json({ error: "Reset link has expired \u2014 request a new one" });
+    return;
+  }
+  const hash2 = await bcryptjs_default.hash(new_password, 10);
+  await pool.query("UPDATE super_admin_auth SET password_hash = $1 WHERE id = 'superadmin'", [hash2]);
+  await pool.query("UPDATE super_admin_reset_tokens SET used_at = NOW() WHERE token = $1", [token]);
+  res.json({ ok: true });
+});
+router7.post("/admin/me/password", requireAdmin, async (req, res) => {
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password) {
+    res.status(400).json({ error: "current_password and new_password are required" });
+    return;
+  }
+  if (new_password.length < 8) {
+    res.status(400).json({ error: "New password must be at least 8 characters" });
+    return;
+  }
+  const centerId = req.adminCenterId;
+  const { rows } = await pool.query(
+    "SELECT password_hash FROM center_auth WHERE center_id = $1",
+    [centerId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Center not found" });
+    return;
+  }
+  const ok = await bcryptjs_default.compare(current_password, rows[0].password_hash);
+  if (!ok) {
+    res.status(401).json({ error: "Current password is incorrect" });
+    return;
+  }
+  const newHash = await bcryptjs_default.hash(new_password, 10);
+  await pool.query("UPDATE center_auth SET password_hash = $1 WHERE center_id = $2", [newHash, centerId]);
+  res.status(204).end();
+});
+router7.get("/admin/centers", async (_req, res) => {
+  const { rows } = await pool.query("SELECT id, name FROM centers WHERE is_active = TRUE ORDER BY name");
+  res.json(rows);
+});
+router7.get("/admin/centers/:centerId/settings", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query("SELECT auto_checkout_min FROM centers WHERE id = $1", [centerId]);
+  if (!rows[0]) {
+    res.status(404).json({ error: "Center not found" });
+    return;
+  }
+  res.json({ auto_checkout_min: rows[0].auto_checkout_min, photo_retention_days: rows[0].photo_retention_days ?? 2 });
+});
+router7.patch("/admin/centers/:centerId/settings", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { auto_checkout_min, photo_retention_days } = req.body;
+  const updates = [];
+  const values = [];
+  if (auto_checkout_min != null) {
+    const mins = Number(auto_checkout_min);
+    if (!Number.isFinite(mins) || mins < 10 || mins > 480) {
+      res.status(400).json({ error: "auto_checkout_min must be a number between 10 and 480" });
+      return;
+    }
+    updates.push(`auto_checkout_min = $${updates.length + 1}`);
+    values.push(mins);
+  }
+  if (photo_retention_days != null) {
+    const days = Number(photo_retention_days);
+    if (!Number.isFinite(days) || days < 1 || days > 30) {
+      res.status(400).json({ error: "photo_retention_days must be between 1 and 30" });
+      return;
+    }
+    updates.push(`photo_retention_days = $${updates.length + 1}`);
+    values.push(days);
+  }
+  if (updates.length === 0) {
+    res.status(400).json({ error: "No valid fields to update" });
+    return;
+  }
+  values.push(centerId);
+  await pool.query(`UPDATE centers SET ${updates.join(", ")} WHERE id = $${values.length}`, values);
+  const { rows } = await pool.query("SELECT auto_checkout_min, photo_retention_days FROM centers WHERE id = $1", [centerId]);
+  res.json({ auto_checkout_min: rows[0].auto_checkout_min, photo_retention_days: rows[0].photo_retention_days });
+});
+router7.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(/* @__PURE__ */ new Date());
+  const [memberRes, menuRes, kcalRes, activeRes, expiringRes, weeklyRes] = await Promise.all([
+    pool.query("SELECT COUNT(*) as count FROM member_center_mapping WHERE center_id = $1", [centerId]),
+    pool.query("SELECT COUNT(*) as count FROM menu_items WHERE center_id = $1", [centerId]),
+    pool.query(
+      `SELECT COALESCE(SUM(
+         COALESCE(
+           cl.calories_kcal,
+           (SELECT SUM(mb.kcal) FROM menu_item_bom mb WHERE mb.menu_item_id = cl.menu_item_id AND mb.kcal IS NOT NULL)
+         )
+       ), 0) AS total_calories
+       FROM consumption_logs cl
+       JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+       WHERE mcm.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2`,
+      [centerId, today]
+    ),
+    pool.query(
+      `SELECT COUNT(DISTINCT member_id) AS count
+       FROM member_check_ins
+       WHERE center_id = $1 AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') = $2`,
+      [centerId, today]
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS count
+       FROM members m
+       JOIN member_center_mapping mcm ON mcm.member_id = m.id
+       WHERE mcm.center_id = $1
+         AND m.valid_until IS NOT NULL
+         AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '10 days'`,
+      [centerId]
+    ),
+    pool.query(
+      `SELECT DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') AS day,
+              COUNT(DISTINCT member_id) AS count
+       FROM member_check_ins
+       WHERE center_id = $1
+         AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') >= DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Kolkata')
+         AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') <  DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Kolkata') + INTERVAL '1 month'
+       GROUP BY day ORDER BY day`,
+      [centerId]
+    )
+  ]);
+  res.json({
+    member_count: Number(memberRes.rows[0].count),
+    menu_item_count: Number(menuRes.rows[0].count),
+    today_calories: Number(kcalRes.rows[0].total_calories),
+    today_active_members: Number(activeRes.rows[0].count),
+    expiring_soon_count: Number(expiringRes.rows[0].count),
+    monthly_checkins: weeklyRes.rows
+  });
+});
+router7.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows: items } = await pool.query(
+    `SELECT mi.id, mi.center_id, mi.name, mi.description, mi.is_mandatory, mi.flavours, mi.available_days, mi.created_at,
+       NOT EXISTS (
+         SELECT 1 FROM menu_item_bom mb
+         WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM ingredient_batches ib
+             WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $1 AND ib.status = 'open'
+           )
+       ) AS is_available
+     FROM menu_items mi
+     WHERE mi.center_id = $1
+     ORDER BY mi.is_mandatory DESC, mi.name`,
+    [centerId]
+  );
+  const result = await Promise.all(items.map(async (item) => {
+    const { rows: bom } = await pool.query(
+      "SELECT id, ingredient, ingredient_id, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
+      [item.id]
+    );
+    return { ...item, bom };
+  }));
+  res.json(result);
+});
+router7.post("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { name, description, flavours, available_days } = req.body;
+  if (!name?.trim()) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "INSERT INTO menu_items (center_id, name, description, flavours, available_days) VALUES ($1,$2,$3,$4,$5) RETURNING *",
+    [centerId, name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all"]
+  );
+  res.status(201).json({ ...rows[0], bom: [] });
+});
+router7.put("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const adminReq = req;
+  const { rows: existing } = await pool.query("SELECT center_id FROM menu_items WHERE id = $1", [itemId]);
+  if (!existing[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (existing[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { name, description, flavours, available_days } = req.body;
+  if (!name?.trim()) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "UPDATE menu_items SET name=$1, description=$2, flavours=$3, available_days=$4 WHERE id=$5 RETURNING *",
+    [name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all", itemId]
+  );
+  res.json(rows[0]);
+});
+router7.get("/admin/centers/:centerId/open-flavours", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT DISTINCT i.flavour, i.name AS ingredient_name, i.id AS ingredient_id
+     FROM ingredients i
+     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
+     WHERE i.flavour IS NOT NULL AND i.flavour != ''
+       AND ib.center_id = $1 AND ib.status = 'open'
+     ORDER BY i.flavour`,
+    [centerId]
+  );
+  res.json(rows);
+});
+router7.delete("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const adminReq = req;
+  const { rows: existing } = await pool.query("SELECT center_id FROM menu_items WHERE id = $1", [itemId]);
+  if (!existing[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (existing[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  await pool.query("UPDATE consumption_logs SET menu_item_id = NULL WHERE menu_item_id = $1", [itemId]);
+  await pool.query("DELETE FROM menu_items WHERE id = $1", [itemId]);
+  res.status(204).send();
+});
+router7.patch("/admin/menu-items/:itemId/toggle-mandatory", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const adminReq = req;
+  const { rows: existing } = await pool.query("SELECT center_id, is_mandatory FROM menu_items WHERE id = $1", [itemId]);
+  if (!existing[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (existing[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "UPDATE menu_items SET is_mandatory = NOT is_mandatory WHERE id = $1 RETURNING *",
+    [itemId]
+  );
+  res.json(rows[0]);
+});
+router7.get("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const adminReq = req;
+  const { rows: item } = await pool.query(
+    "SELECT center_id FROM menu_items WHERE id = $1",
+    [itemId]
+  );
+  if (!item[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (item[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT id, ingredient, ingredient_id, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
+    [itemId]
+  );
+  res.json(rows);
+});
+router7.post("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const adminReq = req;
+  const { rows: item } = await pool.query("SELECT center_id FROM menu_items WHERE id = $1", [itemId]);
+  if (!item[0]) {
+    res.status(404).json({ error: "Menu item not found" });
+    return;
+  }
+  if (item[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { ingredient_id, ingredient, quantity, unit, kcal } = req.body;
+  let resolvedName = ingredient?.trim() ?? "";
+  if (ingredient_id) {
+    const { rows: ing } = await pool.query("SELECT name FROM ingredients WHERE id=$1", [ingredient_id]);
+    if (!ing[0]) {
+      res.status(400).json({ error: "Ingredient not found in master" });
+      return;
+    }
+    resolvedName = ing[0].name;
+  }
+  if (!resolvedName) {
+    res.status(400).json({ error: "ingredient or ingredient_id is required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "INSERT INTO menu_item_bom (menu_item_id, ingredient, ingredient_id, quantity, unit, kcal) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
+    [itemId, resolvedName, ingredient_id ?? null, quantity ?? 0, unit?.trim() ?? "g", kcal ?? null]
+  );
+  res.status(201).json(rows[0]);
+});
+router7.put("/admin/menu-items/:itemId/bom/:bomId", requireAdmin, async (req, res) => {
+  const { itemId, bomId } = req.params;
+  const adminReq = req;
+  const { rows: existing } = await pool.query(
+    `SELECT mb.id, mi.center_id FROM menu_item_bom mb
+     JOIN menu_items mi ON mi.id = mb.menu_item_id
+     WHERE mb.id = $1 AND mb.menu_item_id = $2`,
+    [bomId, itemId]
+  );
+  if (!existing[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (existing[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { ingredient_id, ingredient, quantity, unit, kcal } = req.body;
+  let resolvedName = ingredient?.trim() ?? "";
+  if (ingredient_id) {
+    const { rows: ing } = await pool.query("SELECT name FROM ingredients WHERE id=$1", [ingredient_id]);
+    if (!ing[0]) {
+      res.status(400).json({ error: "Ingredient not found in master" });
+      return;
+    }
+    resolvedName = ing[0].name;
+  }
+  if (!resolvedName) {
+    res.status(400).json({ error: "ingredient or ingredient_id is required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "UPDATE menu_item_bom SET ingredient=$1, ingredient_id=$2, quantity=$3, unit=$4, kcal=$5 WHERE id=$6 RETURNING *",
+    [resolvedName, ingredient_id ?? null, quantity ?? 0, unit?.trim() ?? "g", kcal ?? null, bomId]
+  );
+  res.json(rows[0]);
+});
+router7.delete("/admin/menu-items/:itemId/bom/:bomId", requireAdmin, async (req, res) => {
+  const { itemId, bomId } = req.params;
+  const adminReq = req;
+  const { rows: existing } = await pool.query(
+    `SELECT mb.id, mi.center_id FROM menu_item_bom mb
+     JOIN menu_items mi ON mi.id = mb.menu_item_id
+     WHERE mb.id = $1 AND mb.menu_item_id = $2`,
+    [bomId, itemId]
+  );
+  if (!existing[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (existing[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  await pool.query("DELETE FROM menu_item_bom WHERE id = $1", [bomId]);
+  res.status(204).send();
+});
+router7.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const from = typeof req.query.from === "string" ? req.query.from : today;
+  const to = typeof req.query.to === "string" ? req.query.to : today;
+  const { rows: byComponent } = await pool.query(
+    `WITH resolved AS (
+       SELECT
+         cl.id,
+         cl.member_id,
+         COALESCE(
+           -- FK path: only trust it if the item actually belongs to this center
+           (SELECT mi.id FROM menu_items mi
+            WHERE mi.id = cl.menu_item_id AND mi.center_id = $1
+            LIMIT 1),
+           -- Name-fallback for legacy logs
+           (SELECT mi2.id FROM menu_items mi2
+            WHERE mi2.center_id = $1
+              AND LOWER(mi2.name) = LOWER(cl.food_item)
+            LIMIT 1)
+         ) AS menu_item_id
+       FROM consumption_logs cl
+       JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+       WHERE mcm.center_id = $1
+         AND cl.checkin_id IS NOT NULL
+         AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     )
+     SELECT
+       mb.ingredient,
+       mb.unit,
+       SUM(mb.quantity)         AS total_quantity,
+       COUNT(DISTINCT r.member_id) AS member_count,
+       COUNT(DISTINCT r.id)     AS log_count
+     FROM resolved r
+     JOIN menu_item_bom mb ON mb.menu_item_id = r.menu_item_id
+     WHERE r.menu_item_id IS NOT NULL
+     GROUP BY mb.ingredient, mb.unit
+     ORDER BY total_quantity DESC`,
+    [centerId, from, to]
+  );
+  const { rows: logsRaw } = await pool.query(
+    `SELECT cl.id, cl.member_id, m.name AS member_name, cl.logged_at, cl.meal_slot,
+            cl.food_item, cl.checkin_id,
+            COALESCE(
+              cl.quantity_g,
+              (SELECT SUM(mb.quantity) FROM menu_item_bom mb
+               WHERE mb.menu_item_id = cl.menu_item_id)
+            ) AS quantity_g,
+            COALESCE(
+              cl.calories_kcal,
+              (SELECT SUM(mb.kcal) FROM menu_item_bom mb
+               WHERE mb.menu_item_id = cl.menu_item_id AND mb.kcal IS NOT NULL)
+            ) AS calories_kcal,
+            COALESCE(
+              (SELECT mi.id FROM menu_items mi
+               WHERE mi.id = cl.menu_item_id AND mi.center_id = $1 LIMIT 1),
+              (SELECT mi2.id FROM menu_items mi2
+               WHERE mi2.center_id = $1
+                 AND LOWER(mi2.name) = LOWER(cl.food_item)
+               LIMIT 1)
+            ) AS menu_item_id,
+            COALESCE(
+              (SELECT mi.name FROM menu_items mi
+               WHERE mi.id = cl.menu_item_id AND mi.center_id = $1 LIMIT 1),
+              (SELECT mi2.name FROM menu_items mi2
+               WHERE mi2.center_id = $1
+                 AND LOWER(mi2.name) = LOWER(cl.food_item)
+               LIMIT 1)
+            ) AS menu_item_name
+     FROM consumption_logs cl
+     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+     JOIN members m ON m.id = cl.member_id
+     WHERE mcm.center_id = $1
+       AND cl.checkin_id IS NOT NULL
+       AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     ORDER BY cl.logged_at DESC`,
+    [centerId, from, to]
+  );
+  res.json({ from, to, by_component: byComponent, logs: logsRaw });
+});
+router7.get("/admin/centers/:centerId/member-self-logs", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const from = typeof req.query.from === "string" ? req.query.from : today;
+  const to = typeof req.query.to === "string" ? req.query.to : today;
+  const { rows } = await pool.query(
+    `SELECT cl.id, cl.member_id, m.name AS member_name,
+            cl.food_item, cl.meal_slot, cl.quantity_g, cl.calories_kcal, cl.logged_at, cl.photo_url
+     FROM consumption_logs cl
+     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
+     JOIN members m ON m.id = cl.member_id
+     WHERE mcm.center_id = $1
+       AND cl.checkin_id IS NULL
+       AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     ORDER BY cl.logged_at DESC`,
+    [centerId, from, to]
+  );
+  res.json({ from, to, logs: rows });
+});
+router7.get("/admin/members/lookup", requireAdmin, async (req, res) => {
+  const { mobile, email, membership_no } = req.query;
+  if (!mobile && !email && !membership_no) {
+    res.status(400).json({ error: "mobile, email or membership_no is required" });
+    return;
+  }
+  const cols = "id, name, mobile, email, membership_no, height_cm, date_of_joining";
+  let row;
+  if (mobile) {
+    const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE mobile = $1 LIMIT 1`, [mobile.trim()]);
+    row = rows[0];
+  }
+  if (!row && email) {
+    const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email.trim()]);
+    row = rows[0];
+  }
+  if (!row && membership_no) {
+    const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE membership_no = $1 LIMIT 1`, [membership_no.trim()]);
+    row = rows[0];
+  }
+  res.json(row ?? null);
+});
+router7.post("/admin/centers/:centerId/members/link", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { member_id } = req.body;
+  if (!member_id) {
+    res.status(400).json({ error: "member_id is required" });
+    return;
+  }
+  const { rows: member } = await pool.query("SELECT id, name FROM members WHERE id = $1", [member_id]);
+  if (!member[0]) {
+    res.status(404).json({ error: "Member not found" });
+    return;
+  }
+  await pool.query(
+    `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+    [member_id, centerId]
+  );
+  res.status(201).json(member[0]);
+});
+router7.get("/admin/centers/:centerId/checkin-logs", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const from = req.query.from ?? today;
+  const to = req.query.to ?? today;
+  const { rows } = await pool.query(
+    `SELECT ci.id,
+            ci.member_id,
+            m.name         AS member_name,
+            m.mobile       AS member_mobile,
+            ci.checked_in_at,
+            ci.checked_out_at,
+            EXTRACT(EPOCH FROM (COALESCE(ci.checked_out_at, NOW()) - ci.checked_in_at)) / 60 AS duration_min
+     FROM member_check_ins ci
+     JOIN members m ON m.id = ci.member_id
+     WHERE ci.center_id = $1
+       AND DATE(ci.checked_in_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     ORDER BY ci.checked_in_at DESC`,
+    [centerId, from, to]
+  );
+  res.json(rows);
+});
+router7.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const expiringSoon = req.query.expiring_soon === "true";
+  await autoCheckoutExpired(centerId);
+  const { rows } = await pool.query(
+    `SELECT
+       m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
+       m.dob, m.age_at_joining, m.valid_until, m.is_active,
+       ci.id          AS checkin_id,
+       ci.checked_in_at,
+       ci.checked_out_at,
+       EXISTS (
+         SELECT 1 FROM member_check_ins mci2
+         WHERE mci2.member_id = m.id
+           AND mci2.center_id = $1
+           AND DATE(mci2.checked_in_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+           AND mci2.checked_out_at IS NOT NULL
+       ) AS already_consumed_today
+     FROM members m
+     JOIN member_center_mapping mcm ON mcm.member_id = m.id
+     LEFT JOIN member_check_ins ci
+       ON ci.member_id = m.id AND ci.center_id = $1 AND ci.checked_out_at IS NULL
+     WHERE mcm.center_id = $1
+       ${expiringSoon ? "AND m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '10 days'" : ""}
+     ORDER BY m.valid_until ASC NULLS LAST, m.name`,
+    [centerId]
+  );
+  res.json(rows);
+});
+router7.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until } = req.body;
+  if (!name?.trim()) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  if (!mobile?.trim() && !email?.trim()) {
+    res.status(400).json({ error: "mobile or email is required" });
+    return;
+  }
+  if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
+    res.status(400).json({ error: "age_at_joining must be between 0 and 100" });
+    return;
+  }
+  const { rows: memberRows } = await pool.query(
+    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null]
+  );
+  const member = memberRows[0];
+  await pool.query(
+    `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+    [member.id, centerId]
+  );
+  res.status(201).json(member);
+});
+router7.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) {
+    res.status(404).json({ error: "Member not found in this center" });
+    return;
+  }
+  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until, daily_kcal } = req.body;
+  if (name !== void 0 && !name?.trim()) {
+    res.status(400).json({ error: "name cannot be blank" });
+    return;
+  }
+  if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
+    res.status(400).json({ error: "age_at_joining must be between 0 and 100" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `UPDATE members SET
+       name           = COALESCE($1, name),
+       mobile         = $2,
+       email          = $3,
+       membership_no  = $4,
+       height_cm      = $5,
+       date_of_joining= $6,
+       dob            = $7,
+       age_at_joining = $8,
+       valid_until    = $9,
+       daily_kcal     = $10
+     WHERE id = $11 RETURNING *`,
+    [
+      name?.trim() ?? null,
+      mobile?.trim() || null,
+      email?.trim() || null,
+      membership_no?.trim() || null,
+      height_cm ?? null,
+      date_of_joining ?? null,
+      dob?.trim() || null,
+      age_at_joining ?? null,
+      valid_until ?? null,
+      daily_kcal ?? null,
+      Number(memberId)
+    ]
+  );
+  res.json(rows[0]);
+});
+router7.patch("/admin/centers/:centerId/members/:memberId/status", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) {
+    res.status(404).json({ error: "Member not found in this center" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `UPDATE members SET is_active = NOT is_active WHERE id = $1 RETURNING id, is_active`,
+    [Number(memberId)]
+  );
+  res.json(rows[0]);
+});
+router7.delete("/admin/centers/:centerId/members/:memberId/hard-delete", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const mid = Number(memberId);
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [mid, centerId]
+  );
+  if (!membership[0]) {
+    res.status(404).json({ error: "Member not found in this center" });
+    return;
+  }
+  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id IN (SELECT id FROM member_check_ins WHERE member_id = $1)`, [mid]);
+  await pool.query(`DELETE FROM member_check_ins WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM consumption_logs WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM issuances WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM health_records WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM member_center_mapping WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM user_auth WHERE member_id = $1`, [mid]);
+  await pool.query(`DELETE FROM members WHERE id = $1`, [mid]);
+  res.status(204).send();
+});
+router7.patch("/admin/centers/:centerId/members/:memberId/renew", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) {
+    res.status(404).json({ error: "Member not found in this center" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `UPDATE members SET valid_until = CURRENT_DATE + INTERVAL '32 days' WHERE id = $1 RETURNING valid_until`,
+    [Number(memberId)]
+  );
+  res.json({ valid_until: rows[0].valid_until });
+});
+router7.delete("/admin/centers/:centerId/members/:memberId", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  await pool.query(
+    `DELETE FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  res.status(204).send();
+});
+router7.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) {
+    res.status(404).json({ error: "Member not found in this center" });
+    return;
+  }
+  const { rows: existing } = await pool.query(
+    `SELECT id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL`,
+    [Number(memberId)]
+  );
+  if (existing[0]) {
+    res.status(409).json({ error: "Member is already checked in" });
+    return;
+  }
+  const { weight_kg } = req.body;
+  const { rows } = await pool.query(
+    `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
+    [Number(memberId), centerId]
+  );
+  const checkin = rows[0];
+  if (weight_kg !== void 0 && weight_kg > 0) {
+    await pool.query(
+      `INSERT INTO health_records (member_id, center_id, weight_kg, recorded_at) VALUES ($1,$2,$3,NOW())`,
+      [Number(memberId), centerId, weight_kg]
+    );
+  }
+  const { rows: todayLogs } = await pool.query(
+    `SELECT 1 FROM member_check_ins
+     WHERE member_id = $1
+       AND center_id = $2
+       AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+       AND checked_out_at IS NOT NULL
+     LIMIT 1`,
+    [Number(memberId), centerId]
+  );
+  const alreadyConsumedToday = !!todayLogs[0];
+  if (!alreadyConsumedToday) {
+    const { rows: mandatory } = await pool.query(
+      `SELECT mi.id FROM menu_items mi
+       WHERE mi.center_id = $1 AND mi.is_mandatory = TRUE
+         AND NOT EXISTS (
+           SELECT 1 FROM menu_item_bom mb
+           WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM ingredient_batches ib
+               WHERE ib.ingredient_id = mb.ingredient_id
+                 AND ib.center_id = $1 AND ib.status = 'open'
+             )
+         )`,
+      [centerId]
+    );
+    for (const mi of mandatory) {
+      await pool.query(
+        `INSERT INTO visit_menu_selections (checkin_id, menu_item_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [checkin.id, mi.id]
+      );
+    }
+  }
+  res.status(201).json({ ...checkin, already_consumed_today: alreadyConsumedToday });
+});
+router7.post("/admin/centers/:centerId/members/:memberId/checkout", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT id FROM member_check_ins
+     WHERE member_id = $1 AND center_id = $2 AND checked_out_at IS NULL`,
+    [Number(memberId), centerId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "No active check-in found" });
+    return;
+  }
+  const checkinId = rows[0].id;
+  await bookAndCheckout(checkinId, Number(memberId), centerId);
+  res.json({ checked_out: true, checkin_id: checkinId });
+});
+router7.post("/admin/centers/:centerId/members/:memberId/cancel-checkin", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT id FROM member_check_ins
+     WHERE member_id = $1 AND center_id = $2 AND checked_out_at IS NULL`,
+    [Number(memberId), centerId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "No active check-in found" });
+    return;
+  }
+  const checkinId = rows[0].id;
+  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id = $1`, [checkinId]);
+  await pool.query(
+    `UPDATE member_check_ins SET checked_out_at = NOW(), cancelled = TRUE WHERE id = $1`,
+    [checkinId]
+  );
+  res.json({ cancelled: true, checkin_id: checkinId });
+});
+router7.get("/admin/centers/:centerId/members/:memberId/health-records", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT id, member_id, center_id, recorded_at,
+            weight_kg, bmi, body_fat_pct, visceral_fat,
+            bmr, metabolic_age, muscle_mass_kg, resting_hr, notes
+     FROM health_records
+     WHERE member_id = $1 AND center_id = $2
+     ORDER BY recorded_at DESC`,
+    [Number(memberId), centerId]
+  );
+  res.json(rows);
+});
+router7.post("/admin/centers/:centerId/members/:memberId/health-records", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const {
+    recorded_at,
+    weight_kg,
+    bmi,
+    body_fat_pct,
+    visceral_fat,
+    bmr,
+    metabolic_age,
+    muscle_mass_kg,
+    resting_hr,
+    notes
+  } = req.body;
+  const { rows } = await pool.query(
+    `INSERT INTO health_records
+       (member_id, center_id, recorded_at, weight_kg, bmi, body_fat_pct, visceral_fat,
+        bmr, metabolic_age, muscle_mass_kg, resting_hr, notes)
+     VALUES ($1,$2,$3::timestamptz,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     RETURNING *`,
+    [
+      Number(memberId),
+      centerId,
+      recorded_at ? new Date(recorded_at).toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
+      weight_kg ?? null,
+      bmi ?? null,
+      body_fat_pct ?? null,
+      visceral_fat ?? null,
+      bmr ?? null,
+      metabolic_age ?? null,
+      muscle_mass_kg ?? null,
+      resting_hr ?? null,
+      notes ?? null
+    ]
+  );
+  res.status(201).json(rows[0]);
+});
+router7.get("/admin/centers/:centerId/health-records", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { from, to, member_ids } = req.query;
+  const toDate = to ? new Date(to) : /* @__PURE__ */ new Date();
+  toDate.setHours(23, 59, 59, 999);
+  const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3);
+  fromDate.setHours(0, 0, 0, 0);
+  const memberIdList = member_ids ? member_ids.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n)) : [];
+  let query;
+  let params;
+  if (memberIdList.length > 0) {
+    const placeholders = memberIdList.map((_, i) => `$${i + 4}`).join(",");
+    query = `
+      SELECT hr.id, hr.member_id, m.name AS member_name,
+             hr.center_id, hr.recorded_at,
+             hr.weight_kg, hr.bmi, hr.body_fat_pct, hr.visceral_fat,
+             hr.bmr, hr.metabolic_age, hr.muscle_mass_kg, hr.resting_hr, hr.notes
+      FROM health_records hr
+      JOIN members m ON m.id = hr.member_id
+      JOIN member_center_mapping mcm ON mcm.member_id = hr.member_id
+      WHERE hr.center_id = $1
+        AND hr.recorded_at >= $2 AND hr.recorded_at <= $3
+        AND hr.member_id IN (${placeholders})
+        AND mcm.center_id = $1
+      ORDER BY hr.recorded_at DESC`;
+    params = [centerId, fromDate, toDate, ...memberIdList];
+  } else {
+    query = `
+      SELECT hr.id, hr.member_id, m.name AS member_name,
+             hr.center_id, hr.recorded_at,
+             hr.weight_kg, hr.bmi, hr.body_fat_pct, hr.visceral_fat,
+             hr.bmr, hr.metabolic_age, hr.muscle_mass_kg, hr.resting_hr, hr.notes
+      FROM health_records hr
+      JOIN members m ON m.id = hr.member_id
+      JOIN member_center_mapping mcm ON mcm.member_id = hr.member_id
+      WHERE hr.center_id = $1
+        AND hr.recorded_at >= $2 AND hr.recorded_at <= $3
+        AND mcm.center_id = $1
+      ORDER BY hr.recorded_at DESC`;
+    params = [centerId, fromDate, toDate];
+  }
+  const { rows } = await pool.query(query, params);
+  res.json(rows);
+});
+router7.get("/admin/centers/:centerId/flavours", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT id, center_id, name, serving_qty, available_days, created_at FROM center_flavours WHERE center_id = $1 ORDER BY name",
+    [centerId]
+  );
+  res.json(rows);
+});
+router7.post("/admin/centers/:centerId/flavours", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { name, available_days } = req.body;
+  if (!name?.trim()) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "INSERT INTO center_flavours (center_id, name, available_days) VALUES ($1, $2, $3) ON CONFLICT (center_id, name) DO NOTHING RETURNING *",
+    [centerId, name.trim(), available_days ?? "all"]
+  );
+  if (!rows[0]) {
+    res.status(409).json({ error: "Flavour already exists" });
+    return;
+  }
+  res.status(201).json(rows[0]);
+});
+router7.patch("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, async (req, res) => {
+  const { centerId, flavourId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { available_days } = req.body;
+  const { rows } = await pool.query(
+    `UPDATE center_flavours
+     SET available_days = COALESCE($1, available_days)
+     WHERE id = $2 AND center_id = $3
+     RETURNING *`,
+    [available_days ?? null, Number(flavourId), centerId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
+router7.delete("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, async (req, res) => {
+  const { centerId, flavourId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  await pool.query("DELETE FROM center_flavours WHERE id = $1 AND center_id = $2", [Number(flavourId), centerId]);
+  res.status(204).end();
+});
+router7.get("/admin/ingredients", requireAdmin, async (_req, res) => {
+  const { rows } = await pool.query(
+    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, created_at FROM ingredients ORDER BY name"
+  );
+  res.json(rows);
+});
+router7.post("/admin/ingredients", requireAdmin, async (req, res) => {
+  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving } = req.body;
+  if (!name?.trim()) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null]
+  );
+  res.status(201).json(rows[0]);
+});
+router7.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
+  const { ingredientId } = req.params;
+  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving } = req.body;
+  if (!name?.trim()) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6, serving_qty=$7, kcal_per_serving=$8 WHERE id=$9 RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, Number(ingredientId)]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
+router7.delete("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
+  const { ingredientId } = req.params;
+  await pool.query("DELETE FROM ingredients WHERE id=$1", [Number(ingredientId)]);
+  res.status(204).end();
+});
+router7.get("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT ib.id, ib.ingredient_id, i.name AS ingredient_name, i.pack_size, i.pack_unit,
+            ib.received_qty, ib.received_unit,
+            ib.center_id, ib.batch_number, ib.status, ib.opened_at, ib.consumed_at, ib.created_at,
+            ib.assigned_member_id, ib.assigned_member_name,
+            COALESCE((
+              SELECT SUM(bcl.quantity)
+              FROM batch_consumption_logs bcl
+              WHERE bcl.batch_id = ib.id
+            ), 0) + COALESCE((
+              SELECT SUM(ba.qty_change)
+              FROM batch_adjustments ba
+              WHERE ba.batch_id = ib.id
+            ), 0) AS consumed_qty
+     FROM ingredient_batches ib
+     JOIN ingredients i ON i.id = ib.ingredient_id
+     WHERE ib.center_id = $1
+     ORDER BY i.name, ib.status DESC, ib.created_at DESC`,
+    [centerId]
+  );
+  res.json(rows);
+});
+router7.get("/admin/centers/:centerId/ingredient-requirements", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT mb.ingredient_id, i.name AS ingredient_name, i.pack_unit,
+            COALESCE(SUM(mb.quantity), 0) AS min_serving_qty
+     FROM menu_item_bom mb
+     JOIN ingredients i ON i.id = mb.ingredient_id
+     JOIN menu_items mi ON mi.id = mb.menu_item_id
+     WHERE mi.center_id = $1 AND mb.ingredient_id IS NOT NULL
+     GROUP BY mb.ingredient_id, i.name, i.pack_unit
+     ORDER BY i.name`,
+    [centerId]
+  );
+  res.json(rows);
+});
+router7.post("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { ingredient_id, batch_number, assigned_member_id, assigned_member_name, received_qty, received_unit } = req.body;
+  if (!ingredient_id) {
+    res.status(400).json({ error: "ingredient_id is required" });
+    return;
+  }
+  if (!batch_number?.trim()) {
+    res.status(400).json({ error: "batch_number is required" });
+    return;
+  }
+  const isMemberPack = assigned_member_id != null;
+  const { rows } = await pool.query(
+    `INSERT INTO ingredient_batches (ingredient_id, center_id, batch_number, status, opened_at, assigned_member_id, assigned_member_name, received_qty, received_unit)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [
+      ingredient_id,
+      centerId,
+      batch_number.trim(),
+      isMemberPack ? "open" : "new",
+      isMemberPack ? /* @__PURE__ */ new Date() : null,
+      assigned_member_id ?? null,
+      assigned_member_name?.trim() ?? null,
+      received_qty ?? null,
+      received_unit?.trim() ?? null
+    ]
+  );
+  res.status(201).json(rows[0]);
+});
+router7.patch("/admin/ingredient-batches/:batchId/open", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req;
+  const { rows: existing } = await pool.query(
+    "SELECT * FROM ingredient_batches WHERE id=$1",
+    [Number(batchId)]
+  );
+  if (!existing[0]) {
+    res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  if (existing[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (existing[0].status !== "new") {
+    res.status(409).json({ error: "Only a 'new' batch can be opened" });
+    return;
+  }
+  if (!existing[0].assigned_member_id) {
+    const { rows: openCheck } = await pool.query(
+      "SELECT id FROM ingredient_batches WHERE ingredient_id=$1 AND center_id=$2 AND status='open' AND assigned_member_id IS NULL",
+      [existing[0].ingredient_id, existing[0].center_id]
+    );
+    if (openCheck.length > 0) {
+      res.status(409).json({ error: "There is already an open batch for this ingredient. Mark it as consumed first." });
+      return;
+    }
+  }
+  const { rows } = await pool.query(
+    "UPDATE ingredient_batches SET status='open', opened_at=NOW() WHERE id=$1 RETURNING *",
+    [Number(batchId)]
+  );
+  res.json(rows[0]);
+});
+router7.patch("/admin/ingredient-batches/:batchId/consume", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req;
+  const { rows: existing } = await pool.query(
+    "SELECT * FROM ingredient_batches WHERE id=$1",
+    [Number(batchId)]
+  );
+  if (!existing[0]) {
+    res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  if (existing[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (existing[0].status !== "open") {
+    res.status(409).json({ error: "Only an 'open' batch can be marked as consumed" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "UPDATE ingredient_batches SET status='consumed', consumed_at=NOW() WHERE id=$1 RETURNING *",
+    [Number(batchId)]
+  );
+  res.json(rows[0]);
+});
+router7.delete("/admin/ingredient-batches/:batchId", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req;
+  const { rows: existing } = await pool.query(
+    "SELECT * FROM ingredient_batches WHERE id=$1",
+    [Number(batchId)]
+  );
+  if (!existing[0]) {
+    res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  if (existing[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (existing[0].status !== "new") {
+    res.status(409).json({ error: "Only 'new' batches can be deleted" });
+    return;
+  }
+  await pool.query("DELETE FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  res.status(204).end();
+});
+router7.get("/admin/ingredient-batches/:batchId/consumption-logs", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req;
+  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  if (!batch[0]) {
+    res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  if (batch[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT id, batch_id, quantity, notes, recorded_at FROM batch_consumption_logs WHERE batch_id=$1 ORDER BY recorded_at DESC",
+    [Number(batchId)]
+  );
+  res.json(rows);
+});
+router7.post("/admin/ingredient-batches/:batchId/consumption-logs", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req;
+  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  if (!batch[0]) {
+    res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  if (batch[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (batch[0].status !== "open") {
+    res.status(409).json({ error: "Consumption can only be recorded for an open batch" });
+    return;
+  }
+  const { quantity, notes } = req.body;
+  if (!quantity || quantity <= 0) {
+    res.status(400).json({ error: "quantity must be a positive number" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "INSERT INTO batch_consumption_logs (batch_id, quantity, notes) VALUES ($1,$2,$3) RETURNING *",
+    [Number(batchId), quantity, notes?.trim() ?? null]
+  );
+  res.status(201).json(rows[0]);
+});
+router7.post("/admin/ingredient-batches/:batchId/adjust", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req;
+  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  if (!batch[0]) {
+    res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  if (batch[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (batch[0].status !== "open") {
+    res.status(409).json({ error: "Adjustments can only be made to open batches" });
+    return;
+  }
+  const { qty_change, note } = req.body;
+  if (qty_change === void 0 || qty_change === null) {
+    res.status(400).json({ error: "qty_change is required" });
+    return;
+  }
+  if (qty_change === 0) {
+    res.status(400).json({ error: "qty_change must be non-zero" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "INSERT INTO batch_adjustments (batch_id, qty_change, note) VALUES ($1,$2,$3) RETURNING *",
+    [Number(batchId), qty_change, note?.trim() ?? null]
+  );
+  res.status(201).json(rows[0]);
+});
+router7.get("/admin/ingredient-batches/:batchId/adjustments", requireAdmin, async (req, res) => {
+  const { batchId } = req.params;
+  const adminReq = req;
+  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
+  if (!batch[0]) {
+    res.status(404).json({ error: "Batch not found" });
+    return;
+  }
+  if (batch[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT id, batch_id, qty_change, note, adjusted_at FROM batch_adjustments WHERE batch_id=$1 ORDER BY adjusted_at DESC",
+    [Number(batchId)]
+  );
+  res.json(rows);
+});
+router7.delete("/admin/consumption-logs/:logId", requireAdmin, async (req, res) => {
+  const { logId } = req.params;
+  const adminReq = req;
+  const { rows } = await pool.query(
+    `SELECT bcl.*, ib.center_id FROM batch_consumption_logs bcl
+     JOIN ingredient_batches ib ON ib.id = bcl.batch_id
+     WHERE bcl.id=$1`,
+    [Number(logId)]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (rows[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  await pool.query("DELETE FROM batch_consumption_logs WHERE id=$1", [Number(logId)]);
+  res.status(204).end();
+});
+router7.get("/admin/checkins/:checkinId/menu-selections", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req;
+  const { rows: ci } = await pool.query(
+    `SELECT ci.center_id FROM member_check_ins ci WHERE ci.id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ci[0]) {
+    res.status(404).json({ error: "Check-in not found" });
+    return;
+  }
+  if (ci[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT vms.id, vms.checkin_id, vms.menu_item_id, mi.name AS menu_item_name,
+            mi.is_mandatory, vms.created_at
+     FROM visit_menu_selections vms
+     JOIN menu_items mi ON mi.id = vms.menu_item_id
+     WHERE vms.checkin_id = $1
+     ORDER BY mi.is_mandatory DESC, mi.name`,
+    [Number(checkinId)]
+  );
+  res.json(rows);
+});
+router7.post("/admin/checkins/:checkinId/menu-selections", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req;
+  const { menu_item_id } = req.body;
+  if (!menu_item_id) {
+    res.status(400).json({ error: "menu_item_id is required" });
+    return;
+  }
+  const { rows: ci } = await pool.query(
+    `SELECT ci.center_id, ci.checked_out_at FROM member_check_ins ci WHERE ci.id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ci[0]) {
+    res.status(404).json({ error: "Check-in not found" });
+    return;
+  }
+  const ciRow = ci[0];
+  if (ciRow.center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (ciRow.checked_out_at) {
+    res.status(409).json({ error: "Session already checked out" });
+    return;
+  }
+  const { rows: mi } = await pool.query(
+    `SELECT id, name, is_mandatory FROM menu_items WHERE id = $1 AND center_id = $2`,
+    [menu_item_id, adminReq.adminCenterId]
+  );
+  if (!mi[0]) {
+    res.status(404).json({ error: "Menu item not found in this center" });
+    return;
+  }
+  const { rows: avail } = await pool.query(
+    `SELECT NOT EXISTS (
+       SELECT 1 FROM menu_item_bom mb
+       WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM ingredient_batches ib
+           WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $2 AND ib.status = 'open'
+         )
+     ) AS is_available`,
+    [menu_item_id, adminReq.adminCenterId]
+  );
+  if (!avail[0].is_available) {
+    res.status(409).json({ error: "Cannot add this item: one or more ingredients have no open batch. Open a batch in Inventory first." });
+    return;
+  }
+  const { rows } = await pool.query(
+    `INSERT INTO visit_menu_selections (checkin_id, menu_item_id)
+     VALUES ($1, $2)
+     ON CONFLICT (checkin_id, menu_item_id) DO NOTHING
+     RETURNING id, checkin_id, menu_item_id, created_at`,
+    [Number(checkinId), menu_item_id]
+  );
+  const miRow = mi[0];
+  const result = rows[0] ? { ...rows[0], menu_item_name: miRow.name, is_mandatory: miRow.is_mandatory } : null;
+  res.status(201).json(result);
+});
+router7.get("/admin/checkins/:checkinId/flavour-options", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req;
+  const { rows: ciRows } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ciRows[0]) {
+    res.status(404).json({ error: "Check-in not found" });
+    return;
+  }
+  const centerId = ciRows[0].center_id;
+  if (centerId !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1e3;
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayDay = dayNames[nowIst.getUTCDay()];
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.pack_unit AS unit
+     FROM ingredients i
+     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
+     LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
+     WHERE i.flavour IS NOT NULL AND i.flavour != ''
+       AND ib.center_id = $1 AND ib.status = 'open'
+       AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
+     ORDER BY i.id, i.name`,
+    [centerId, `%${todayDay}%`]
+  );
+  res.json(rows);
+});
+router7.get("/admin/checkins/:checkinId/flavour-selections", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req;
+  const { rows: ciRows } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ciRows[0]) {
+    res.status(404).json({ error: "Check-in not found" });
+    return;
+  }
+  if (ciRows[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT id, checkin_id, ingredient_id, flavour, created_at FROM visit_flavour_selections WHERE checkin_id = $1`,
+    [Number(checkinId)]
+  );
+  res.json(rows);
+});
+router7.post("/admin/checkins/:checkinId/flavour-selections", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req;
+  const { rows: ciRows } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ciRows[0]) {
+    res.status(404).json({ error: "Check-in not found" });
+    return;
+  }
+  if (ciRows[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { ingredient_id, flavour } = req.body;
+  if (!ingredient_id || !flavour) {
+    res.status(400).json({ error: "ingredient_id and flavour are required" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `INSERT INTO visit_flavour_selections (checkin_id, ingredient_id, flavour)
+     VALUES ($1, $2, $3) RETURNING *`,
+    [Number(checkinId), ingredient_id, flavour]
+  );
+  res.status(201).json(rows[0]);
+});
+router7.delete("/admin/flavour-selections/:selId", requireAdmin, async (req, res) => {
+  const { selId } = req.params;
+  const adminReq = req;
+  const { rows } = await pool.query(
+    `SELECT vfs.id, mci.center_id
+     FROM visit_flavour_selections vfs
+     JOIN member_check_ins mci ON mci.id = vfs.checkin_id
+     WHERE vfs.id = $1`,
+    [Number(selId)]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (rows[0].center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  await pool.query("DELETE FROM visit_flavour_selections WHERE id = $1", [Number(selId)]);
+  res.status(204).end();
+});
+router7.delete("/admin/checkin-selections/:selectionId", requireAdmin, async (req, res) => {
+  const { selectionId } = req.params;
+  const adminReq = req;
+  const { rows } = await pool.query(
+    `SELECT vms.id, mi.is_mandatory, ci.center_id
+     FROM visit_menu_selections vms
+     JOIN menu_items mi ON mi.id = vms.menu_item_id
+     JOIN member_check_ins ci ON ci.id = vms.checkin_id
+     WHERE vms.id = $1`,
+    [Number(selectionId)]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const row = rows[0];
+  if (row.center_id !== adminReq.adminCenterId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (row.is_mandatory) {
+    res.status(400).json({ error: "Cannot remove a mandatory item" });
+    return;
+  }
+  await pool.query("DELETE FROM visit_menu_selections WHERE id = $1", [Number(selectionId)]);
+  res.status(204).end();
+});
+router7.get("/admin/centers/:centerId/broadcast-settings", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT center_id, retention_days, created_at, updated_at FROM center_broadcast_settings WHERE center_id = $1",
+    [centerId]
+  );
+  res.json(rows[0] ?? { center_id: centerId, retention_days: 7 });
+});
+router7.put("/admin/centers/:centerId/broadcast-settings", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { retention_days } = req.body;
+  const retention = Number.isFinite(retention_days) ? Math.max(1, Math.min(90, Math.round(retention_days ?? 7))) : 7;
+  await pool.query(
+    `INSERT INTO center_broadcast_settings (center_id, retention_days, created_at, updated_at)
+     VALUES ($1, $2, NOW(), NOW())
+     ON CONFLICT (center_id) DO UPDATE SET
+       retention_days = EXCLUDED.retention_days,
+       updated_at = NOW()`,
+    [centerId, retention]
+  );
+  res.json({ center_id: centerId, retention_days: retention });
+});
+router7.get("/admin/centers/:centerId/broadcast-schedules", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT id, center_id, message, schedule_time, is_active, last_sent_at, created_at, updated_at FROM center_broadcast_schedules WHERE center_id = $1 ORDER BY schedule_time",
+    [centerId]
+  );
+  res.json(rows);
+});
+router7.post("/admin/centers/:centerId/broadcast-schedules", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { message, schedule_time } = req.body;
+  if (!message || typeof message !== "string" || message.trim().length === 0) {
+    res.status(400).json({ error: "Message is required" });
+    return;
+  }
+  const timeStr = typeof schedule_time === "string" ? schedule_time.trim() : "09:00";
+  if (!/^([0-1]\d|2[0-3]):([0-5]\d)$/.test(timeStr)) {
+    res.status(400).json({ error: "schedule_time must be HH:MM (24-hour format)" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `INSERT INTO center_broadcast_schedules (center_id, message, schedule_time, is_active, created_at, updated_at)
+     VALUES ($1, $2, $3, TRUE, NOW(), NOW()) RETURNING *`,
+    [centerId, message.trim(), timeStr]
+  );
+  res.status(201).json(rows[0]);
+});
+router7.put("/admin/centers/:centerId/broadcast-schedules/:scheduleId", requireAdmin, async (req, res) => {
+  const { centerId, scheduleId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { message, schedule_time, is_active } = req.body;
+  const updates = [];
+  const values = [];
+  let idx = 1;
+  if (message !== void 0) {
+    if (typeof message !== "string" || message.trim().length === 0) {
+      res.status(400).json({ error: "Message is required" });
+      return;
+    }
+    updates.push(`message = $${idx++}`);
+    values.push(message.trim());
+  }
+  if (schedule_time !== void 0) {
+    const timeStr = typeof schedule_time === "string" ? schedule_time.trim() : "09:00";
+    if (!/^([0-1]\d|2[0-3]):([0-5]\d)$/.test(timeStr)) {
+      res.status(400).json({ error: "schedule_time must be HH:MM (24-hour format)" });
+      return;
+    }
+    updates.push(`schedule_time = $${idx++}`);
+    values.push(timeStr);
+  }
+  if (is_active !== void 0) {
+    updates.push(`is_active = $${idx++}`);
+    values.push(Boolean(is_active));
+  }
+  if (updates.length === 0) {
+    res.status(400).json({ error: "No fields to update" });
+    return;
+  }
+  updates.push(`updated_at = NOW()`);
+  values.push(Number(scheduleId));
+  const { rows } = await pool.query(
+    `UPDATE center_broadcast_schedules SET ${updates.join(", ")} WHERE id = $${idx} AND center_id = $${idx + 1} RETURNING *`,
+    [...values, centerId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Schedule not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
+router7.delete("/admin/centers/:centerId/broadcast-schedules/:scheduleId", requireAdmin, async (req, res) => {
+  const { centerId, scheduleId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rowCount } = await pool.query(
+    "DELETE FROM center_broadcast_schedules WHERE id = $1 AND center_id = $2",
+    [Number(scheduleId), centerId]
+  );
+  if (!rowCount) {
+    res.status(404).json({ error: "Schedule not found" });
+    return;
+  }
+  res.status(204).end();
+});
+router7.post("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { message } = req.body;
+  if (!message || typeof message !== "string" || message.trim().length === 0) {
+    res.status(400).json({ error: "Message is required" });
+    return;
+  }
+  const trimmed = message.trim();
+  const { rows } = await pool.query(
+    `INSERT INTO member_broadcasts (center_id, message, sent_at, sent_by)
+     VALUES ($1, $2, NOW(), 'manual') RETURNING id`,
+    [centerId, trimmed]
+  );
+  const broadcastId = rows[0].id;
+  res.json({ id: broadcastId, message: trimmed, sent_at: (/* @__PURE__ */ new Date()).toISOString(), sent_by: "manual" });
+});
+router7.get("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const { rows } = await pool.query(
+    `SELECT id, center_id, message, sent_at, sent_by
+     FROM member_broadcasts WHERE center_id = $1
+     ORDER BY sent_at DESC LIMIT $2`,
+    [centerId, limit]
+  );
+  res.json(rows);
+});
+router7.delete("/admin/centers/:centerId/broadcasts/:broadcastId", requireAdmin, async (req, res) => {
+  const { centerId, broadcastId } = req.params;
+  const adminReq = req;
+  if (adminReq.adminCenterId !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { rows } = await pool.query(
+    "SELECT center_id FROM member_broadcasts WHERE id = $1",
+    [Number(broadcastId)]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Broadcast not found" });
+    return;
+  }
+  if (rows[0].center_id !== centerId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  await pool.query("DELETE FROM member_broadcasts WHERE id = $1", [Number(broadcastId)]);
+  res.status(204).end();
+});
+router7.post("/admin/super/centers/:centerId/upload/members", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { rows, format } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "rows array is required" });
+    return;
+  }
+  const results = { created: 0, skipped: 0, errors: [] };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const row of rows) {
+      const name = String(row.name ?? "").trim();
+      const membershipNo = String(row.membership_no ?? "").trim();
+      if (!name || !membershipNo) {
+        results.errors.push(`Row missing name or membership_no`);
+        continue;
+      }
+      const { rows: dup } = await client.query("SELECT id FROM members WHERE membership_no = $1", [membershipNo]);
+      if (dup[0]) {
+        results.skipped++;
+        continue;
+      }
+      const email = String(row.email ?? "").trim() || null;
+      const mobile = String(row.mobile ?? "").trim() || null;
+      const heightCm = row.height_cm != null ? Number(row.height_cm) : null;
+      const doj = String(row.date_of_joining ?? "").trim() || null;
+      const dob = String(row.dob ?? "").trim() || null;
+      const age = row.age_at_joining != null ? Number(row.age_at_joining) : null;
+      const validUntil = String(row.valid_until ?? "").trim() || null;
+      const { rows: m } = await client.query(
+        `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [name, heightCm, doj, mobile, email, membershipNo, dob, age, validUntil]
+      );
+      await client.query(
+        `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [m[0].id, centerId]
+      );
+      results.created++;
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    client.release();
+    res.status(500).json({ error: "Bulk insert failed", detail: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  client.release();
+  res.json(results);
+});
+router7.post("/admin/super/centers/:centerId/upload/inventory", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { rows } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "rows array is required" });
+    return;
+  }
+  const results = { ingredients: 0, menuItems: 0, bom: 0, errors: [] };
+  const ingredientMap = /* @__PURE__ */ new Map();
+  const menuMap = /* @__PURE__ */ new Map();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: existingIng } = await client.query("SELECT id, name FROM ingredients");
+    for (const r of existingIng) ingredientMap.set(r.name, r.id);
+    const { rows: existingMi } = await client.query("SELECT id, name FROM menu_items WHERE center_id = $1", [centerId]);
+    for (const r of existingMi) menuMap.set(r.name, r.id);
+    for (const row of rows) {
+      const type = String(row.item_type ?? "").trim().toLowerCase();
+      if (!type) {
+        results.errors.push("Missing item_type (ingredient | menu_item | bom)");
+        continue;
+      }
+      if (type === "ingredient") {
+        const name = String(row.name ?? "").trim();
+        if (!name) {
+          results.errors.push("ingredient missing name");
+          continue;
+        }
+        if (ingredientMap.has(name)) continue;
+        const { rows: r } = await client.query(
+          `INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+          [
+            name,
+            Number(row.pack_size ?? 1) || 1,
+            String(row.pack_unit ?? "g").trim() || "g",
+            String(row.material_code ?? "").trim() || null,
+            String(row.description ?? "").trim() || null,
+            String(row.flavour ?? "").trim() || null,
+            Number(row.serving_qty ?? 1) || 1,
+            row.kcal_per_serving != null ? Number(row.kcal_per_serving) : null
+          ]
+        );
+        ingredientMap.set(name, r[0].id);
+        results.ingredients++;
+      } else if (type === "menu_item") {
+        const name = String(row.name ?? "").trim();
+        if (!name) {
+          results.errors.push("menu_item missing name");
+          continue;
+        }
+        if (menuMap.has(name)) continue;
+        const isMandatory = String(row.is_mandatory ?? "").trim().toLowerCase() === "yes";
+        const flavours = String(row.flavours ?? "").trim() || null;
+        const availableDays = String(row.available_days ?? "").trim() || "all";
+        const { rows: r } = await client.query(
+          `INSERT INTO menu_items (center_id, name, description, is_mandatory, flavours, available_days)
+           VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+          [centerId, name, String(row.description ?? "").trim() || null, isMandatory, flavours, availableDays]
+        );
+        menuMap.set(name, r[0].id);
+        results.menuItems++;
+      } else if (type === "bom") {
+        const miName = String(row.menu_item_name ?? "").trim();
+        const ingName = String(row.ingredient_name ?? "").trim();
+        if (!miName || !ingName) {
+          results.errors.push("bom missing menu_item_name or ingredient_name");
+          continue;
+        }
+        const menuId = menuMap.get(miName);
+        const ingId = ingredientMap.get(ingName);
+        if (!menuId) {
+          results.errors.push(`BOM references unknown menu_item: ${miName}`);
+          continue;
+        }
+        if (!ingId) {
+          results.errors.push(`BOM references unknown ingredient: ${ingName}`);
+          continue;
+        }
+        await client.query(
+          `INSERT INTO menu_item_bom (menu_item_id, ingredient, ingredient_id, quantity, unit, kcal)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [
+            menuId,
+            ingName,
+            ingId,
+            Number(row.quantity ?? 0) || 0,
+            String(row.unit ?? "g").trim() || "g",
+            row.kcal != null ? Number(row.kcal) : null
+          ]
+        );
+        results.bom++;
+      } else {
+        results.errors.push(`Unknown item_type: ${type}`);
+      }
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    client.release();
+    res.status(500).json({ error: "Bulk inventory insert failed", detail: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  client.release();
+  res.json(results);
+});
+var admin_default = router7;
+
+// src/routes/storage.ts
+var import_express8 = __toESM(require_express2(), 1);
+import { Readable as Readable2 } from "stream";
+
 // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/util.js
 var util;
 (function(util2) {
@@ -76634,3926 +80566,6 @@ var GetPackSizesResponseItem = objectType({
 });
 var GetPackSizesResponse = arrayType(GetPackSizesResponseItem);
 
-// src/routes/health.ts
-var router = (0, import_express.Router)();
-router.get("/healthz", (_req, res) => {
-  const data = HealthCheckResponse.parse({ status: "ok" });
-  res.json(data);
-});
-var health_default = router;
-
-// src/routes/members.ts
-var import_express2 = __toESM(require_express2(), 1);
-
-// ../../node_modules/.pnpm/pg@8.22.0/node_modules/pg/esm/index.mjs
-var import_lib = __toESM(require_lib5(), 1);
-var Client = import_lib.default.Client;
-var Pool = import_lib.default.Pool;
-var Connection = import_lib.default.Connection;
-var types = import_lib.default.types;
-var Query = import_lib.default.Query;
-var DatabaseError = import_lib.default.DatabaseError;
-var escapeIdentifier = import_lib.default.escapeIdentifier;
-var escapeLiteral = import_lib.default.escapeLiteral;
-var Result = import_lib.default.Result;
-var TypeOverrides = import_lib.default.TypeOverrides;
-var defaults = import_lib.default.defaults;
-var esm_default = import_lib.default;
-
-// src/lib/sqlite.ts
-import path from "path";
-import { existsSync } from "fs";
-
-// src/lib/logger.ts
-var import_pino = __toESM(require_pino(), 1);
-var isProduction = process.env.NODE_ENV === "production";
-var logger = (0, import_pino.default)({
-  level: process.env.LOG_LEVEL ?? "info",
-  redact: [
-    "req.headers.authorization",
-    "req.headers.cookie",
-    "res.headers['set-cookie']"
-  ],
-  ...isProduction ? {} : {
-    transport: {
-      target: "pino-pretty",
-      options: { colorize: true }
-    }
-  }
-});
-
-// src/lib/sqlite.ts
-var { Pool: Pool2 } = esm_default;
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
-}
-var pool = new Pool2({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes("supabase.co") ? { rejectUnauthorized: false } : void 0,
-  max: 10,
-  idleTimeoutMillis: 3e4,
-  connectionTimeoutMillis: 5e3
-});
-async function queryOne(text, params) {
-  const result = await pool.query(text, params);
-  return result.rows[0] ?? null;
-}
-async function migrateColumns() {
-  const newCols = [
-    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS body_fat_pct REAL",
-    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS visceral_fat REAL",
-    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS bmr REAL",
-    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS metabolic_age INTEGER",
-    "ALTER TABLE health_records ADD COLUMN IF NOT EXISTS muscle_mass_kg REAL",
-    "ALTER TABLE members ADD COLUMN IF NOT EXISTS mobile TEXT",
-    "ALTER TABLE members ADD COLUMN IF NOT EXISTS email TEXT",
-    "ALTER TABLE members ADD COLUMN IF NOT EXISTS membership_no TEXT",
-    "ALTER TABLE otps ADD COLUMN IF NOT EXISTS email TEXT",
-    "ALTER TABLE user_auth ADD COLUMN IF NOT EXISTS email TEXT",
-    // Allow mobile to be NULL so email-only OTPs/registrations work
-    "ALTER TABLE otps ALTER COLUMN mobile DROP NOT NULL",
-    "ALTER TABLE user_auth ALTER COLUMN mobile DROP NOT NULL"
-  ];
-  for (const sql of newCols) {
-    await pool.query(sql);
-  }
-  await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS members_mobile_uidx ON members (mobile) WHERE mobile IS NOT NULL;
-    CREATE UNIQUE INDEX IF NOT EXISTS members_email_uidx ON members (email) WHERE email IS NOT NULL;
-    CREATE UNIQUE INDEX IF NOT EXISTS members_membership_no_uidx ON members (membership_no) WHERE membership_no IS NOT NULL;
-    CREATE UNIQUE INDEX IF NOT EXISTS user_auth_email_uidx ON user_auth (email) WHERE email IS NOT NULL;
-  `);
-}
-async function createTables() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS centers (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      auto_checkout_min INTEGER DEFAULT 180,
-      photo_retention_days INTEGER DEFAULT 2
-    );
-
-    CREATE TABLE IF NOT EXISTS members (
-      id INTEGER PRIMARY KEY,
-      name TEXT NOT NULL,
-      date_of_joining TEXT,
-      height_cm INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS member_center_mapping (
-      member_id INTEGER REFERENCES members(id),
-      center_id TEXT REFERENCES centers(id),
-      PRIMARY KEY (member_id, center_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS health_records (
-      id SERIAL PRIMARY KEY,
-      member_id INTEGER REFERENCES members(id),
-      center_id TEXT REFERENCES centers(id),
-      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      weight_kg REAL,
-      body_fat_pct REAL,
-      visceral_fat REAL,
-      bmr REAL,
-      bmi REAL,
-      metabolic_age INTEGER,
-      muscle_mass_kg REAL,
-      resting_hr INTEGER,
-      notes TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS consumption_logs (
-      id SERIAL PRIMARY KEY,
-      member_id INTEGER REFERENCES members(id),
-      logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      meal_slot TEXT,
-      food_item TEXT NOT NULL,
-      quantity_g REAL,
-      calories_kcal REAL,
-      protein_g REAL,
-      carbs_g REAL,
-      fat_g REAL,
-      photo_url TEXT,
-      photo_uploaded_at TIMESTAMPTZ
-    );
-
-    CREATE TABLE IF NOT EXISTS bom_items (
-      id SERIAL PRIMARY KEY,
-      plan_name TEXT,
-      food_item TEXT NOT NULL,
-      quantity_g REAL,
-      calories_kcal REAL,
-      protein_g REAL,
-      carbs_g REAL,
-      fat_g REAL
-    );
-
-    CREATE TABLE IF NOT EXISTS pack_sizes (
-      id SERIAL PRIMARY KEY,
-      item_name TEXT NOT NULL,
-      pack_label TEXT,
-      weight_g REAL,
-      calories_kcal REAL
-    );
-
-    CREATE TABLE IF NOT EXISTS issuances (
-      id SERIAL PRIMARY KEY,
-      member_id INTEGER REFERENCES members(id),
-      center_id TEXT REFERENCES centers(id),
-      pack_label TEXT,
-      issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      status TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS _seed_done (
-      done INTEGER PRIMARY KEY
-    );
-
-    CREATE TABLE IF NOT EXISTS otps (
-      id SERIAL PRIMARY KEY,
-      member_id INTEGER REFERENCES members(id) ON DELETE CASCADE,
-      mobile TEXT,
-      email TEXT,
-      otp TEXT NOT NULL,
-      otp_token TEXT,
-      expires_at TIMESTAMPTZ NOT NULL,
-      used BOOLEAN NOT NULL DEFAULT FALSE
-    );
-
-    CREATE TABLE IF NOT EXISTS user_auth (
-      id SERIAL PRIMARY KEY,
-      mobile TEXT,
-      email TEXT,
-      member_id INTEGER REFERENCES members(id),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS center_auth (
-      center_id TEXT PRIMARY KEY REFERENCES centers(id),
-      password_hash TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS center_broadcast_settings (
-      center_id TEXT PRIMARY KEY REFERENCES centers(id) ON DELETE CASCADE,
-      message TEXT NOT NULL,
-      schedule_time TEXT NOT NULL DEFAULT '09:00',
-      is_active BOOLEAN NOT NULL DEFAULT FALSE,
-      retention_days INTEGER NOT NULL DEFAULT 7,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS member_broadcasts (
-      id SERIAL PRIMARY KEY,
-      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
-      message TEXT NOT NULL,
-      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      sent_by TEXT NOT NULL DEFAULT 'scheduled',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS member_broadcasts_center_idx ON member_broadcasts(center_id);
-    CREATE INDEX IF NOT EXISTS member_broadcasts_sent_idx ON member_broadcasts(sent_at DESC);
-
-    CREATE TABLE IF NOT EXISTS member_broadcast_reads (
-      id SERIAL PRIMARY KEY,
-      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-      broadcast_id INTEGER NOT NULL REFERENCES member_broadcasts(id) ON DELETE CASCADE,
-      read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(member_id, broadcast_id)
-    );
-    CREATE INDEX IF NOT EXISTS member_broadcast_reads_member_idx ON member_broadcast_reads(member_id);
-
-    CREATE TABLE IF NOT EXISTS menu_items (
-      id SERIAL PRIMARY KEY,
-      center_id TEXT NOT NULL REFERENCES centers(id),
-      name TEXT NOT NULL,
-      description TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS menu_item_bom (
-      id SERIAL PRIMARY KEY,
-      menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
-      ingredient TEXT NOT NULL,
-      quantity REAL NOT NULL DEFAULT 0,
-      unit TEXT NOT NULL DEFAULT 'g',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-}
-async function migrateAdminTables() {
-  await pool.query(`
-    ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS menu_item_id INTEGER REFERENCES menu_items(id);
-  `);
-  await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS menu_items_center_name_uidx
-    ON menu_items (center_id, LOWER(name));
-  `);
-}
-async function migrateAdminTables3() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS member_check_ins (
-      id SERIAL PRIMARY KEY,
-      member_id INTEGER NOT NULL REFERENCES members(id),
-      center_id TEXT NOT NULL REFERENCES centers(id),
-      checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      checked_out_at TIMESTAMPTZ
-    )
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS member_check_ins_active_idx
-    ON member_check_ins (member_id) WHERE checked_out_at IS NULL
-  `);
-  await pool.query(`CREATE SEQUENCE IF NOT EXISTS members_id_seq`);
-  const { rows } = await pool.query(`SELECT MAX(id) as max FROM members`);
-  const maxId = Number(rows[0]?.max ?? 0);
-  await pool.query(`SELECT setval('members_id_seq', $1)`, [Math.max(maxId, 1)]);
-  await pool.query(`ALTER TABLE members ALTER COLUMN id SET DEFAULT nextval('members_id_seq')`);
-}
-async function migrateAdminTables2() {
-  await pool.query(`
-    ALTER TABLE centers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS super_admin_auth (
-      id TEXT PRIMARY KEY DEFAULT 'superadmin',
-      password_hash TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-}
-async function seedSuperAdmin() {
-  const { default: bcrypt } = await Promise.resolve().then(() => (init_bcryptjs(), bcryptjs_exports));
-  const { rows } = await pool.query("SELECT id FROM super_admin_auth WHERE id = 'superadmin'");
-  if (!rows[0]) {
-    const password = generateCenterPassword();
-    const hash2 = await bcrypt.hash(password, 10);
-    await pool.query(
-      "INSERT INTO super_admin_auth (id, password_hash) VALUES ('superadmin', $1) ON CONFLICT DO NOTHING",
-      [hash2]
-    );
-    logger.info(
-      { initialPassword: password },
-      "Super admin credentials seeded \u2014 save this password, it will not be shown again"
-    );
-  }
-}
-function generateCenterPassword() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let pwd = "";
-  for (let i = 0; i < 12; i++) {
-    pwd += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return pwd;
-}
-async function seedCenterPasswords() {
-  const { default: bcrypt } = await Promise.resolve().then(() => (init_bcryptjs(), bcryptjs_exports));
-  const { rows: centers } = await pool.query("SELECT id, name FROM centers");
-  for (const center of centers) {
-    const { rows } = await pool.query(
-      "SELECT center_id FROM center_auth WHERE center_id = $1",
-      [center.id]
-    );
-    if (!rows[0]) {
-      const password = generateCenterPassword();
-      const hash2 = await bcrypt.hash(password, 10);
-      await pool.query(
-        "INSERT INTO center_auth (center_id, password_hash) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-        [center.id, hash2]
-      );
-      logger.info(
-        { centerId: center.id, centerName: center.name, initialPassword: password },
-        "Admin credentials seeded for center \u2014 save this password, it will not be shown again"
-      );
-    }
-  }
-}
-function toDateStr(val) {
-  if (!val) return null;
-  if (typeof val === "string") return val.substring(0, 10);
-  if (typeof val === "number") {
-    const epoch = new Date(1900, 0, 0);
-    const ms = (val - 1) * 864e5;
-    return new Date(epoch.getTime() + ms).toISOString().substring(0, 10);
-  }
-  if (val instanceof Date) return val.toISOString().substring(0, 10);
-  return String(val).substring(0, 10);
-}
-function toDateTimeStr(val) {
-  if (!val) return (/* @__PURE__ */ new Date()).toISOString();
-  if (typeof val === "string") return val;
-  if (typeof val === "number") {
-    const epoch = new Date(1900, 0, 0);
-    const ms = (val - 1) * 864e5;
-    return new Date(epoch.getTime() + ms).toISOString();
-  }
-  if (val instanceof Date) return val.toISOString();
-  return (/* @__PURE__ */ new Date()).toISOString();
-}
-function toNum(val) {
-  if (val === null || val === void 0 || val === "") return null;
-  const n = Number(val);
-  return isNaN(n) ? null : n;
-}
-async function seedFromXlsx() {
-  const done = await queryOne("SELECT done FROM _seed_done WHERE done = 1");
-  if (done) return;
-  const XLSX_PATH = path.resolve(process.cwd(), "data", "composition.xlsx");
-  if (!existsSync(XLSX_PATH)) {
-    logger.warn({ path: XLSX_PATH }, "composition.xlsx not found, inserting defaults");
-    await pool.query(`
-      INSERT INTO members (id, name, date_of_joining, height_cm) VALUES (1, 'Demo Member', '2024-01-01', 170) ON CONFLICT DO NOTHING;
-      INSERT INTO centers (id, name) VALUES ('CI-1', 'Center CI-1'), ('CI-2', 'Center CI-2'), ('Home', 'Home') ON CONFLICT DO NOTHING;
-      INSERT INTO member_center_mapping (member_id, center_id) VALUES (1, 'CI-1'), (1, 'Home') ON CONFLICT DO NOTHING;
-      INSERT INTO _seed_done (done) VALUES (1) ON CONFLICT DO NOTHING;
-    `);
-    return;
-  }
-  const XLSX = await Promise.resolve().then(() => __toESM(require_xlsx(), 1));
-  const workbook = XLSX.readFile(XLSX_PATH);
-  const mappingSheet = workbook.Sheets["Member-Center Mapping"] ?? workbook.Sheets[workbook.SheetNames[0]];
-  if (mappingSheet) {
-    const rows2 = XLSX.utils.sheet_to_json(mappingSheet, { defval: null });
-    for (const row of rows2) {
-      const memberId = toNum(row["Member ID"] ?? row["member_id"] ?? row["id"]);
-      const memberName = String(row["Member Name"] ?? row["name"] ?? row["Member"] ?? "Unknown");
-      const centerId = String(row["Center ID"] ?? row["center_id"] ?? "CI-1");
-      const centerName = String(row["Center Name"] ?? row["center"] ?? centerId);
-      const doj = toDateStr(row["Date of Joining"] ?? row["date_of_joining"]);
-      const height = toNum(row["Height (cm)"] ?? row["height_cm"] ?? row["Height"]);
-      if (!memberId) continue;
-      await pool.query(`INSERT INTO members (id, name, date_of_joining, height_cm) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [memberId, memberName, doj, height]);
-      await pool.query(`INSERT INTO centers (id, name) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [centerId, centerName]);
-      await pool.query(`INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [memberId, centerId]);
-    }
-  }
-  const healthSheet = workbook.Sheets["HealthRecord"] ?? workbook.Sheets["Health Records"];
-  if (healthSheet) {
-    const rows2 = XLSX.utils.sheet_to_json(healthSheet, { defval: null });
-    for (const row of rows2) {
-      const memberId = toNum(row["Member ID"] ?? row["member_id"]);
-      if (!memberId) continue;
-      await pool.query(
-        `INSERT INTO health_records (member_id, center_id, recorded_at, weight_kg, bmi, resting_hr, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [
-          memberId,
-          row["Center ID"] ?? row["center_id"] ?? null,
-          toDateTimeStr(row["Recorded At"] ?? row["recorded_at"] ?? row["Date"]),
-          toNum(row["Weight (kg)"] ?? row["weight_kg"] ?? row["Weight"]),
-          toNum(row["BMI"] ?? row["bmi"]),
-          toNum(row["Resting HR"] ?? row["resting_hr"] ?? row["HR"]),
-          row["Notes"] ?? null
-        ]
-      );
-    }
-  }
-  const consumptionSheet = workbook.Sheets["Consumtion"] ?? workbook.Sheets["Consumption"] ?? workbook.Sheets["consumption_logs"];
-  if (consumptionSheet) {
-    const rows2 = XLSX.utils.sheet_to_json(consumptionSheet, { defval: null });
-    for (const row of rows2) {
-      const memberId = toNum(row["Member ID"] ?? row["member_id"]);
-      if (!memberId) continue;
-      await pool.query(
-        `INSERT INTO consumption_logs (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [
-          memberId,
-          toDateTimeStr(row["Logged At"] ?? row["logged_at"] ?? row["Date"]),
-          String(row["Meal Slot"] ?? row["meal_slot"] ?? "Breakfast"),
-          String(row["Food Item"] ?? row["food_item"] ?? "Unknown"),
-          toNum(row["Quantity (g)"] ?? row["quantity_g"] ?? row["Qty"]),
-          toNum(row["Calories (kcal)"] ?? row["calories_kcal"] ?? row["Calories"]),
-          toNum(row["Protein (g)"] ?? row["protein_g"] ?? row["Protein"]),
-          toNum(row["Carbs (g)"] ?? row["carbs_g"] ?? row["Carbs"]),
-          toNum(row["Fat (g)"] ?? row["fat_g"] ?? row["Fat"])
-        ]
-      );
-    }
-  }
-  const bomSheet = workbook.Sheets["BOM"] ?? workbook.Sheets["bom"];
-  if (bomSheet) {
-    const rows2 = XLSX.utils.sheet_to_json(bomSheet, { defval: null });
-    for (const row of rows2) {
-      const foodItem = String(row["Food Item"] ?? row["food_item"] ?? row["Item"] ?? "");
-      if (!foodItem) continue;
-      await pool.query(
-        `INSERT INTO bom_items (plan_name, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [
-          row["Plan Name"] ?? row["plan_name"] ?? row["Plan"] ?? null,
-          foodItem,
-          toNum(row["Quantity (g)"] ?? row["quantity_g"] ?? row["Qty"]),
-          toNum(row["Calories (kcal)"] ?? row["calories_kcal"] ?? row["Calories"]),
-          toNum(row["Protein (g)"] ?? row["protein_g"] ?? row["Protein"]),
-          toNum(row["Carbs (g)"] ?? row["carbs_g"] ?? row["Carbs"]),
-          toNum(row["Fat (g)"] ?? row["fat_g"] ?? row["Fat"])
-        ]
-      );
-    }
-  }
-  const packSheet = workbook.Sheets["PackSize"] ?? workbook.Sheets["Pack Sizes"];
-  if (packSheet) {
-    const rows2 = XLSX.utils.sheet_to_json(packSheet, { defval: null });
-    for (const row of rows2) {
-      const itemName = String(row["Item Name"] ?? row["item_name"] ?? row["Item"] ?? "");
-      if (!itemName) continue;
-      await pool.query(
-        `INSERT INTO pack_sizes (item_name, pack_label, weight_g, calories_kcal) VALUES ($1,$2,$3,$4)`,
-        [
-          itemName,
-          row["Pack Label"] ?? row["pack_label"] ?? null,
-          toNum(row["Weight (g)"] ?? row["weight_g"] ?? row["Weight"]),
-          toNum(row["Calories (kcal)"] ?? row["calories_kcal"] ?? row["Calories"])
-        ]
-      );
-    }
-  }
-  const issuanceSheet = workbook.Sheets["Issuing "] ?? workbook.Sheets["Issuing"] ?? workbook.Sheets["Issuances"];
-  if (issuanceSheet) {
-    const rows2 = XLSX.utils.sheet_to_json(issuanceSheet, { defval: null });
-    for (const row of rows2) {
-      const memberId = toNum(row["Member ID"] ?? row["member_id"]);
-      if (!memberId) continue;
-      await pool.query(
-        `INSERT INTO issuances (member_id, center_id, pack_label, issued_at, status) VALUES ($1,$2,$3,$4,$5)`,
-        [
-          memberId,
-          row["Center ID"] ?? row["center_id"] ?? null,
-          row["Pack Label"] ?? row["pack_label"] ?? null,
-          toDateTimeStr(row["Issued At"] ?? row["issued_at"] ?? row["Date"]),
-          row["Status"] ?? row["status"] ?? "Issued"
-        ]
-      );
-    }
-  }
-  const { rows } = await pool.query("SELECT COUNT(*) as c FROM members");
-  if (Number(rows[0].c) === 0) {
-    await pool.query(`
-      INSERT INTO members (id, name, date_of_joining, height_cm) VALUES (1, 'Demo Member', '2024-01-01', 170) ON CONFLICT DO NOTHING;
-      INSERT INTO centers (id, name) VALUES ('CI-1', 'Center CI-1'), ('CI-2', 'Center CI-2'), ('Home', 'Home') ON CONFLICT DO NOTHING;
-      INSERT INTO member_center_mapping (member_id, center_id) VALUES (1, 'CI-1') ON CONFLICT DO NOTHING;
-    `);
-  }
-  await pool.query("INSERT INTO _seed_done (done) VALUES (1) ON CONFLICT DO NOTHING");
-  logger.info("Database seeded from composition.xlsx");
-}
-async function migrateAdminTables4() {
-  await pool.query(`ALTER TABLE menu_item_bom ADD COLUMN IF NOT EXISTS kcal REAL`);
-}
-async function migrateAdminTables5() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ingredients (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      pack_size REAL NOT NULL DEFAULT 1,
-      pack_unit TEXT NOT NULL DEFAULT 'g',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ingredient_batches (
-      id SERIAL PRIMARY KEY,
-      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
-      center_id TEXT NOT NULL REFERENCES centers(id),
-      batch_number TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'open', 'consumed')),
-      opened_at TIMESTAMPTZ,
-      consumed_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS uidx_ingredient_batches_open
-    ON ingredient_batches (ingredient_id, center_id)
-    WHERE status = 'open'
-  `);
-}
-async function migrateAdminTables6() {
-  await pool.query(
-    `ALTER TABLE menu_item_bom ADD COLUMN IF NOT EXISTS ingredient_id INTEGER REFERENCES ingredients(id)`
-  );
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS batch_consumption_logs (
-      id SERIAL PRIMARY KEY,
-      batch_id INTEGER NOT NULL REFERENCES ingredient_batches(id) ON DELETE CASCADE,
-      quantity REAL NOT NULL,
-      notes TEXT,
-      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-}
-async function migrateAdminTables9() {
-  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS dob TEXT`);
-  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS age_at_joining REAL`);
-  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS valid_until DATE`);
-}
-async function migrateAdminTables10() {
-  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
-}
-async function migrateAdminTables11() {
-  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS material_code TEXT`);
-  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS description TEXT`);
-  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS flavour TEXT`);
-}
-async function migrateAdminTables12() {
-  await pool.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS flavours TEXT NOT NULL DEFAULT ''`);
-}
-async function migrateAdminTables13() {
-  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS selected_flavour TEXT`);
-}
-async function migrateAdminTables15() {
-  await pool.query(`ALTER TABLE member_check_ins ADD COLUMN IF NOT EXISTS cancelled BOOLEAN NOT NULL DEFAULT FALSE`);
-}
-async function migrateAdminTables14() {
-  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS assigned_member_id INTEGER REFERENCES members(id) ON DELETE SET NULL`);
-  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS assigned_member_name TEXT`);
-  await pool.query(`DROP INDEX IF EXISTS uidx_ingredient_batches_open`);
-  await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS uidx_ingredient_batches_open_center
-    ON ingredient_batches (ingredient_id, center_id)
-    WHERE status = 'open' AND assigned_member_id IS NULL
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS batch_adjustments (
-      id SERIAL PRIMARY KEY,
-      batch_id INTEGER NOT NULL REFERENCES ingredient_batches(id) ON DELETE CASCADE,
-      qty_change NUMERIC(10,3) NOT NULL,
-      note TEXT,
-      adjusted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-}
-async function migrateAdminTables8() {
-  await pool.query(`ALTER TABLE center_auth ADD COLUMN IF NOT EXISTS valid_until DATE`);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS super_admin_reset_tokens (
-      token TEXT PRIMARY KEY,
-      expires_at TIMESTAMPTZ NOT NULL,
-      used_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-}
-async function migrateAdminTables7() {
-  await pool.query(
-    `ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS is_mandatory BOOLEAN NOT NULL DEFAULT FALSE`
-  );
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS visit_menu_selections (
-      id SERIAL PRIMARY KEY,
-      checkin_id INTEGER NOT NULL REFERENCES member_check_ins(id) ON DELETE CASCADE,
-      menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(checkin_id, menu_item_id)
-    )
-  `);
-}
-async function initDb() {
-  await createTables();
-  await migrateColumns();
-  await seedFromXlsx();
-  await migrateAdminTables();
-  await migrateAdminTables2();
-  await migrateAdminTables3();
-  await migrateAdminTables4();
-  await migrateAdminTables5();
-  await migrateAdminTables6();
-  await migrateAdminTables7();
-  await migrateAdminTables8();
-  await migrateAdminTables9();
-  await migrateAdminTables10();
-  await migrateAdminTables11();
-  await migrateAdminTables12();
-  await migrateAdminTables13();
-  await migrateAdminTables14();
-  await migrateAdminTables15();
-  await migrateAdminTables16();
-  await migrateAdminTables17();
-  await migrateAdminTables18();
-  await migrateAdminTables19();
-  await migrateAdminTables20();
-  await migrateAdminTables21();
-  await migrateAdminTables22();
-  await migrateAdminTables23();
-  await migrateAdminTables24();
-  await migrateAdminTables25();
-  await migrateAdminTables26();
-  await migrateAdminTables27();
-  await migrateAdminTables28();
-  await migrateAdminTables29();
-  await migrateAdminTables30();
-  await migrateAdminTables31();
-  await migrateAdminTables32();
-  await migrateAdminTables33();
-  await migrateAdminTables34();
-  await seedCenterPasswords();
-  await seedSuperAdmin();
-}
-async function migrateAdminTables20() {
-  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS received_qty REAL`);
-  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS received_unit TEXT`);
-}
-async function migrateAdminTables21() {
-  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS serving_qty REAL NOT NULL DEFAULT 1`);
-}
-async function migrateAdminTables23() {
-  await pool.query(
-    `ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS checkin_id INTEGER REFERENCES member_check_ins(id) ON DELETE SET NULL`
-  );
-}
-async function migrateAdminTables24() {
-  await pool.query(
-    `ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS kcal_per_serving REAL`
-  );
-}
-async function migrateAdminTables25() {
-  await pool.query(
-    `ALTER TABLE centers ADD COLUMN IF NOT EXISTS auto_checkout_min INTEGER NOT NULL DEFAULT 180`
-  );
-}
-async function migrateAdminTables26() {
-  await pool.query(`ALTER TABLE otps ADD COLUMN IF NOT EXISTS member_id INTEGER REFERENCES members(id) ON DELETE CASCADE`);
-  await pool.query(`ALTER TABLE otps ADD COLUMN IF NOT EXISTS otp_token TEXT`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS otps_token_idx ON otps(otp_token)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS otps_member_idx ON otps(member_id)`);
-  await pool.query(`ALTER TABLE members DROP CONSTRAINT IF EXISTS members_email_uidx`);
-  await pool.query(`DROP INDEX IF EXISTS members_email_uidx`);
-  await pool.query(`ALTER TABLE user_auth DROP CONSTRAINT IF EXISTS user_auth_email_uidx`);
-  await pool.query(`DROP INDEX IF EXISTS user_auth_email_uidx`);
-  await pool.query(`ALTER TABLE user_auth DROP CONSTRAINT IF EXISTS user_auth_mobile_key`);
-  await pool.query(`DROP INDEX IF EXISTS user_auth_mobile_key`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS members_email_idx ON members(email)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS members_membership_no_idx ON members(membership_no)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS user_auth_email_idx ON user_auth(email)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS user_auth_mobile_idx ON user_auth(mobile)`);
-}
-async function migrateAdminTables27() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS center_broadcast_settings (
-      center_id TEXT PRIMARY KEY REFERENCES centers(id) ON DELETE CASCADE,
-      message TEXT NOT NULL,
-      schedule_time TEXT NOT NULL DEFAULT '09:00',
-      is_active BOOLEAN NOT NULL DEFAULT FALSE,
-      retention_days INTEGER NOT NULL DEFAULT 7,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS member_broadcasts (
-      id SERIAL PRIMARY KEY,
-      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
-      message TEXT NOT NULL,
-      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      sent_by TEXT NOT NULL DEFAULT 'scheduled',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcasts_center_idx ON member_broadcasts(center_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcasts_sent_idx ON member_broadcasts(sent_at DESC)`);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS member_broadcast_reads (
-      id SERIAL PRIMARY KEY,
-      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-      broadcast_id INTEGER NOT NULL REFERENCES member_broadcasts(id) ON DELETE CASCADE,
-      read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(member_id, broadcast_id)
-    )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS member_broadcast_reads_member_idx ON member_broadcast_reads(member_id)`);
-}
-async function migrateAdminTables28() {
-  await pool.query(`ALTER TABLE center_broadcast_settings ADD COLUMN IF NOT EXISTS retention_days INTEGER NOT NULL DEFAULT 7`);
-}
-async function migrateAdminTables29() {
-  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS daily_kcal INTEGER`);
-}
-async function migrateAdminTables30() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS center_broadcast_schedules (
-      id SERIAL PRIMARY KEY,
-      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
-      message TEXT NOT NULL,
-      schedule_time TEXT NOT NULL,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      last_sent_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS center_broadcast_schedules_center_idx ON center_broadcast_schedules(center_id)`);
-}
-async function migrateAdminTables32() {
-  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS photo_url TEXT`);
-  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS photo_uploaded_at TIMESTAMPTZ`);
-}
-async function migrateAdminTables33() {
-  await pool.query(`ALTER TABLE centers ADD COLUMN IF NOT EXISTS photo_retention_days INTEGER DEFAULT 2`);
-}
-async function migrateAdminTables34() {
-  await pool.query(`CREATE INDEX IF NOT EXISTS consumption_logs_member_logged_idx
-    ON consumption_logs(member_id, logged_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS consumption_logs_checkin_idx
-    ON consumption_logs(checkin_id) WHERE checkin_id IS NOT NULL`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS consumption_logs_photo_idx
-    ON consumption_logs(photo_uploaded_at) WHERE photo_url IS NOT NULL`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS health_records_member_recorded_idx
-    ON health_records(member_id, recorded_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS issuances_member_issued_idx
-    ON issuances(member_id, issued_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS issuances_center_idx
-    ON issuances(center_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS member_check_ins_member_time_idx
-    ON member_check_ins(member_id, checked_in_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS member_check_ins_center_time_idx
-    ON member_check_ins(center_id, checked_in_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS member_center_mapping_center_idx
-    ON member_center_mapping(center_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS menu_items_center_idx
-    ON menu_items(center_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS menu_item_bom_menu_item_idx
-    ON menu_item_bom(menu_item_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS batch_consumption_logs_batch_idx
-    ON batch_consumption_logs(batch_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS batch_adjustments_batch_idx
-    ON batch_adjustments(batch_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS otps_expires_idx
-    ON otps(expires_at)`);
-  await pool.query(`ANALYZE consumption_logs, health_records, issuances,
-    member_check_ins, member_center_mapping, menu_items, menu_item_bom,
-    batch_consumption_logs, batch_adjustments, ingredient_batches, otps`);
-}
-async function migrateAdminTables31() {
-  await pool.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'center_broadcast_settings' AND column_name = 'message'
-      ) THEN
-        INSERT INTO center_broadcast_schedules (center_id, message, schedule_time, is_active)
-        SELECT center_id, message, schedule_time, is_active
-        FROM center_broadcast_settings
-        WHERE message IS NOT NULL AND message <> '' AND schedule_time IS NOT NULL
-        ON CONFLICT DO NOTHING;
-      END IF;
-    END $$;
-  `);
-  await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS message`);
-  await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS schedule_time`);
-  await pool.query(`ALTER TABLE center_broadcast_settings DROP COLUMN IF EXISTS is_active`);
-}
-async function migrateAdminTables22() {
-  await pool.query(`ALTER TABLE center_flavours ADD COLUMN IF NOT EXISTS serving_qty REAL NOT NULL DEFAULT 1`);
-  await pool.query(`ALTER TABLE center_flavours ADD COLUMN IF NOT EXISTS available_days TEXT NOT NULL DEFAULT 'all'`);
-}
-async function migrateAdminTables19() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS center_flavours (
-      id         SERIAL PRIMARY KEY,
-      center_id  TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
-      name       TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(center_id, name)
-    )
-  `);
-}
-async function migrateAdminTables18() {
-  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS gemini_api_key TEXT`);
-}
-async function migrateAdminTables16() {
-  await pool.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS available_days TEXT NOT NULL DEFAULT 'all'`);
-}
-async function migrateAdminTables17() {
-  await pool.query(`ALTER TABLE visit_menu_selections ADD COLUMN IF NOT EXISTS selected_flavour TEXT`);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS visit_flavour_selections (
-      id SERIAL PRIMARY KEY,
-      checkin_id INTEGER NOT NULL REFERENCES member_check_ins(id) ON DELETE CASCADE,
-      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
-      flavour TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(checkin_id, ingredient_id)
-    )
-  `);
-}
-
-// src/routes/members.ts
-import { GoogleGenerativeAI } from "@google/generative-ai";
-var router2 = (0, import_express2.Router)();
-router2.get("/members/:id", async (req, res) => {
-  const { rows } = await pool.query("SELECT * FROM members WHERE id = $1", [Number(req.params.id)]);
-  if (!rows[0]) {
-    res.status(404).json({ error: "Member not found" });
-    return;
-  }
-  res.json(rows[0]);
-});
-router2.get("/members/:id/centers", async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT c.* FROM centers c JOIN member_center_mapping m ON m.center_id = c.id WHERE m.member_id = $1`,
-    [Number(req.params.id)]
-  );
-  res.json(rows);
-});
-router2.get("/members/:id/health-records", async (req, res) => {
-  const { rows } = await pool.query(
-    "SELECT * FROM health_records WHERE member_id = $1 ORDER BY recorded_at DESC",
-    [Number(req.params.id)]
-  );
-  res.json(rows);
-});
-router2.post("/members/:id/health-records", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const {
-    recorded_at,
-    center_id,
-    weight_kg,
-    body_fat_pct,
-    visceral_fat,
-    bmr,
-    bmi,
-    metabolic_age,
-    muscle_mass_kg,
-    resting_hr,
-    notes
-  } = req.body;
-  const recAt = recorded_at ? new Date(recorded_at) : /* @__PURE__ */ new Date();
-  const { rows } = await pool.query(
-    `INSERT INTO health_records
-       (member_id, center_id, recorded_at, weight_kg, body_fat_pct, visceral_fat,
-        bmr, bmi, metabolic_age, muscle_mass_kg, resting_hr, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [
-      memberId,
-      center_id ?? null,
-      recAt,
-      weight_kg ?? null,
-      body_fat_pct ?? null,
-      visceral_fat ?? null,
-      bmr ?? null,
-      bmi ?? null,
-      metabolic_age ?? null,
-      muscle_mass_kg ?? null,
-      resting_hr ?? null,
-      notes ?? null
-    ]
-  );
-  res.status(201).json(rows[0]);
-});
-router2.get("/members/:id/consumption", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const date = req.query.date;
-  if (date) {
-    const { rows } = await pool.query(
-      "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2 ORDER BY logged_at ASC",
-      [memberId, date]
-    );
-    res.json(rows);
-  } else {
-    const { rows } = await pool.query(
-      "SELECT * FROM consumption_logs WHERE member_id = $1 ORDER BY logged_at DESC LIMIT 100",
-      [memberId]
-    );
-    res.json(rows);
-  }
-});
-router2.post("/members/:id/consumption", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id, photo_url } = req.body;
-  if (!meal_slot || !food_item) {
-    res.status(400).json({ error: "meal_slot and food_item are required" });
-    return;
-  }
-  if (menu_item_id != null) {
-    const { rows: item } = await pool.query(
-      `SELECT mi.id FROM menu_items mi
-       JOIN member_center_mapping mcm ON mcm.center_id = mi.center_id
-       WHERE mi.id = $1 AND mcm.member_id = $2
-       LIMIT 1`,
-      [menu_item_id, memberId]
-    );
-    if (!item[0]) {
-      res.status(400).json({ error: "menu_item_id does not exist or does not belong to member's center" });
-      return;
-    }
-  }
-  const { rows } = await pool.query(
-    `INSERT INTO consumption_logs
-       (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id, photo_url, photo_uploaded_at)
-     VALUES ($1,NOW(),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-    [
-      memberId,
-      meal_slot,
-      food_item,
-      quantity_g ?? null,
-      calories_kcal ?? null,
-      protein_g ?? null,
-      carbs_g ?? null,
-      fat_g ?? null,
-      menu_item_id ?? null,
-      photo_url ?? null,
-      photo_url ? (/* @__PURE__ */ new Date()).toISOString() : null
-    ]
-  );
-  res.status(201).json(rows[0]);
-});
-function todayIST() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(/* @__PURE__ */ new Date());
-}
-router2.get("/members/:id/summary", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const date = req.query.date ?? todayIST();
-  const { rows: logs } = await pool.query(
-    "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2 ORDER BY logged_at ASC",
-    [memberId, date]
-  );
-  const totals = logs.reduce(
-    (acc, log) => {
-      acc.total_calories += Number(log.calories_kcal ?? 0);
-      acc.total_protein += Number(log.protein_g ?? 0);
-      acc.total_carbs += Number(log.carbs_g ?? 0);
-      acc.total_fat += Number(log.fat_g ?? 0);
-      return acc;
-    },
-    { total_calories: 0, total_protein: 0, total_carbs: 0, total_fat: 0 }
-  );
-  const logsBySlot = {};
-  for (const log of logs) {
-    const slot = log.meal_slot ?? "Other";
-    if (!logsBySlot[slot]) logsBySlot[slot] = [];
-    logsBySlot[slot].push(log);
-  }
-  const { rows: memberKcal } = await pool.query("SELECT daily_kcal FROM members WHERE id = $1", [memberId]);
-  const targetKcal = memberKcal[0]?.daily_kcal ?? 2e3;
-  res.json({ date, ...totals, target_calories: targetKcal, logs_by_slot: logsBySlot });
-});
-router2.get("/members/:id/issuances", async (req, res) => {
-  const { rows } = await pool.query(
-    "SELECT * FROM issuances WHERE member_id = $1 ORDER BY issued_at DESC",
-    [Number(req.params.id)]
-  );
-  res.json(rows);
-});
-router2.get("/members/:id/checkin/active", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const { rows } = await pool.query(
-    `SELECT mci.id, mci.member_id, mci.center_id, mci.checked_in_at, mci.checked_out_at,
-            c.name AS center_name
-     FROM member_check_ins mci
-     JOIN centers c ON c.id = mci.center_id
-     WHERE mci.member_id = $1 AND mci.checked_out_at IS NULL
-     ORDER BY mci.checked_in_at DESC LIMIT 1`,
-    [memberId]
-  );
-  res.json(rows[0] ?? null);
-});
-router2.get("/members/:id/center-menu", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const { rows: checkin } = await pool.query(
-    `SELECT center_id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
-    [memberId]
-  );
-  if (!checkin[0]) {
-    res.json([]);
-    return;
-  }
-  const centerId = checkin[0].center_id;
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1e3;
-  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const todayDay = dayNames[nowIst.getUTCDay()];
-  const { rows } = await pool.query(
-    `SELECT mi.id, mi.name, mi.description, mi.flavours, mi.available_days,
-       COALESCE(
-         json_agg(
-           json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit, 'kcal', mib.kcal)
-           ORDER BY mib.id
-         ) FILTER (WHERE mib.id IS NOT NULL),
-         '[]'::json
-       ) AS bom
-     FROM menu_items mi
-     LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
-     WHERE mi.center_id = $1
-       AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
-     GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.available_days, mi.created_at
-     ORDER BY mi.created_at`,
-    [centerId, `%${todayDay}%`]
-  );
-  res.json(rows);
-});
-router2.post("/members/:id/checkin", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const { center_id } = req.body;
-  if (!center_id) {
-    res.status(400).json({ error: "center_id is required" });
-    return;
-  }
-  const { rows: membership } = await pool.query(
-    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
-    [memberId, center_id]
-  );
-  if (!membership[0]) {
-    res.status(403).json({ error: "Not a member of this center" });
-    return;
-  }
-  const { rows: existing } = await pool.query(
-    `SELECT id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL`,
-    [memberId]
-  );
-  if (existing[0]) {
-    res.status(409).json({ error: "Already checked in" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
-    [memberId, center_id]
-  );
-  res.status(201).json(rows[0]);
-});
-router2.post("/members/:id/checkout", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const { rows: ciRows } = await pool.query(
-    `SELECT id, center_id FROM member_check_ins
-     WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
-    [memberId]
-  );
-  if (!ciRows[0]) {
-    res.status(404).json({ error: "No active check-in found" });
-    return;
-  }
-  const checkin = ciRows[0];
-  const { rows: flavourSels } = await pool.query(
-    `SELECT vfs.ingredient_id, vfs.flavour, i.name
-     FROM visit_flavour_selections vfs
-     JOIN ingredients i ON i.id = vfs.ingredient_id
-     WHERE vfs.checkin_id = $1`,
-    [checkin.id]
-  );
-  for (const fsel of flavourSels) {
-    const { rows: batches } = await pool.query(
-      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty,
-              COALESCE(
-                (SELECT mb.quantity FROM menu_item_bom mb
-                 JOIN visit_menu_selections vms ON vms.menu_item_id = mb.menu_item_id
-                 WHERE vms.checkin_id = $3 AND mb.ingredient_id = $1 LIMIT 1),
-                i.serving_qty,
-                1
-              ) AS serving_qty
-       FROM ingredient_batches ib
-       JOIN ingredients i ON i.id = ib.ingredient_id
-       WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
-       ORDER BY ib.opened_at ASC LIMIT 1`,
-      [fsel.ingredient_id, checkin.center_id, checkin.id]
-    );
-    if (!batches[0]) continue;
-    const batchRow = batches[0];
-    await pool.query(
-      `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
-       VALUES ($1, $2, 'auto: flavour visit', NOW())`,
-      [batchRow.id, batchRow.serving_qty]
-    );
-    const { rows: bal } = await pool.query(
-      `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
-      [batchRow.id]
-    );
-    if (Number(bal[0].total) >= batchRow.total_qty) {
-      await pool.query(
-        `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
-         WHERE id = $1 AND status = 'open'`,
-        [batchRow.id]
-      );
-    }
-  }
-  const { rows } = await pool.query(
-    `UPDATE member_check_ins SET checked_out_at = NOW()
-     WHERE id = $1
-     RETURNING *`,
-    [checkin.id]
-  );
-  res.json(rows[0]);
-});
-router2.get("/members/:id/checkin-options", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const { rows: checkinRows } = await pool.query(
-    `SELECT mci.id, mci.center_id, c.name AS center_name, mci.checked_in_at
-     FROM member_check_ins mci
-     JOIN centers c ON c.id = mci.center_id
-     WHERE mci.member_id = $1 AND mci.checked_out_at IS NULL LIMIT 1`,
-    [memberId]
-  );
-  if (!checkinRows[0]) {
-    res.json({ checkin: null, menuItems: [], directFlavours: [], selections: [] });
-    return;
-  }
-  const checkin = checkinRows[0];
-  const centerId = checkin.center_id;
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1e3;
-  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const todayDay = dayNames[nowIst.getUTCDay()];
-  const { rows: menuItems } = await pool.query(
-    `SELECT mi.id, mi.name, mi.description, mi.flavours, mi.available_days,
-       COALESCE(
-         json_agg(
-           json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit, 'kcal', mib.kcal)
-           ORDER BY mib.id
-         ) FILTER (WHERE mib.id IS NOT NULL),
-         '[]'::json
-       ) AS bom
-     FROM menu_items mi
-     LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
-     WHERE mi.center_id = $1
-       AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
-     GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.available_days, mi.created_at
-     ORDER BY mi.created_at`,
-    [centerId, `%${todayDay}%`]
-  );
-  const { rows: directFlavours } = await pool.query(
-    `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.pack_unit AS unit
-     FROM ingredients i
-     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
-     LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
-     WHERE i.flavour IS NOT NULL AND i.flavour != ''
-       AND ib.center_id = $1 AND ib.status = 'open'
-       AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
-     ORDER BY i.id, i.name`,
-    [centerId, `%${todayDay}%`]
-  );
-  const { rows: menuSels } = await pool.query(
-    `SELECT vms.menu_item_id, mi.name, vms.selected_flavour
-     FROM visit_menu_selections vms
-     JOIN menu_items mi ON mi.id = vms.menu_item_id
-     WHERE vms.checkin_id = $1`,
-    [checkin.id]
-  );
-  const { rows: flavourSels } = await pool.query(
-    `SELECT vfs.ingredient_id, i.name, vfs.flavour
-     FROM visit_flavour_selections vfs
-     JOIN ingredients i ON i.id = vfs.ingredient_id
-     WHERE vfs.checkin_id = $1`,
-    [checkin.id]
-  );
-  const selections = [
-    ...menuSels.map((s) => ({ type: "menu_item", menu_item_id: s.menu_item_id, name: s.name, selected_flavour: s.selected_flavour })),
-    ...flavourSels.map((s) => ({ type: "direct_flavour", ingredient_id: s.ingredient_id, name: s.name, flavour: s.flavour }))
-  ];
-  res.json({ checkin: { id: checkin.id, center_id: centerId }, menuItems, directFlavours, selections });
-});
-router2.post("/members/:id/checkin/selections", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const { rows: checkinRows } = await pool.query(
-    `SELECT id, center_id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
-    [memberId]
-  );
-  if (!checkinRows[0]) {
-    res.status(409).json({ error: "No active check-in" });
-    return;
-  }
-  const checkin = checkinRows[0];
-  const { items } = req.body;
-  if (!Array.isArray(items)) {
-    res.status(400).json({ error: "items array required" });
-    return;
-  }
-  if (items.length > 3) {
-    res.status(400).json({ error: "Max 3 items allowed" });
-    return;
-  }
-  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id = $1`, [checkin.id]);
-  await pool.query(`DELETE FROM visit_flavour_selections WHERE checkin_id = $1`, [checkin.id]);
-  for (const item of items) {
-    if (item.type === "menu_item") {
-      await pool.query(
-        `INSERT INTO visit_menu_selections (checkin_id, menu_item_id, selected_flavour) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-        [checkin.id, item.menu_item_id, item.selected_flavour ?? null]
-      );
-    } else if (item.type === "direct_flavour") {
-      await pool.query(
-        `INSERT INTO visit_flavour_selections (checkin_id, ingredient_id, flavour) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-        [checkin.id, item.ingredient_id, item.flavour]
-      );
-    }
-  }
-  res.json({ saved: items.length });
-});
-router2.get("/members/:id/checkin-logs", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const { rows } = await pool.query(
-    `SELECT ci.id,
-            ci.center_id,
-            c.name          AS center_name,
-            ci.checked_in_at,
-            ci.checked_out_at,
-            EXTRACT(EPOCH FROM (COALESCE(ci.checked_out_at, NOW()) - ci.checked_in_at)) / 60 AS duration_min
-     FROM member_check_ins ci
-     JOIN centers c ON c.id = ci.center_id
-     WHERE ci.member_id = $1
-     ORDER BY ci.checked_in_at DESC
-     LIMIT 30`,
-    [memberId]
-  );
-  res.json(rows);
-});
-router2.get("/members/:id/gemini-key", async (req, res) => {
-  const { rows } = await pool.query(
-    "SELECT gemini_api_key FROM members WHERE id = $1",
-    [Number(req.params.id)]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Member not found" });
-    return;
-  }
-  res.json({ has_key: !!rows[0].gemini_api_key });
-});
-router2.put("/members/:id/gemini-key", async (req, res) => {
-  const { key } = req.body;
-  const normalized = (key ?? "").trim();
-  await pool.query(
-    "UPDATE members SET gemini_api_key = $1 WHERE id = $2",
-    [normalized || null, Number(req.params.id)]
-  );
-  res.json({ has_key: !!normalized });
-});
-router2.post("/members/:id/analyze-food-photo", async (req, res) => {
-  const memberId = Number(req.params.id);
-  const { image_base64, mime_type } = req.body;
-  if (!image_base64 || !mime_type) {
-    res.status(400).json({ error: "image_base64 and mime_type are required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "SELECT gemini_api_key FROM members WHERE id = $1",
-    [memberId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Member not found" });
-    return;
-  }
-  if (!rows[0].gemini_api_key) {
-    res.status(402).json({ error: "No Gemini API key set. Add your key in Profile \u2192 AI Food Scan." });
-    return;
-  }
-  const genAI = new GoogleGenerativeAI(rows[0].gemini_api_key);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const prompt = `Analyse this food image and respond with ONLY a valid JSON object, no markdown, no explanation:
-{
-  "food_item": "<name of the food>",
-  "calories_kcal": <estimated kcal as a number or null>,
-  "protein_g": <estimated protein in grams as a number or null>
-}
-If you cannot identify food, return: {"error": "No food detected"}`;
-  let text;
-  try {
-    const result = await model.generateContent([
-      prompt,
-      { inlineData: { data: image_base64, mimeType: mime_type } }
-    ]);
-    text = result.response.text().trim().replace(/^```json\s*|```\s*$/g, "");
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("permission")) {
-      res.status(403).json({ error: "Your Gemini API key is not valid or has no quota. Go to aistudio.google.com/apikey to create a new one." });
-    } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
-      res.status(429).json({ error: "Gemini API quota exceeded. Try again later or create a new key." });
-    } else {
-      res.status(502).json({ error: "Gemini AI is not responding right now. Try again in a moment." });
-    }
-    req.log.error({ err: msg }, "Gemini API call failed");
-    return;
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    res.status(422).json({ error: "Could not parse AI response. Try a clearer photo." });
-    return;
-  }
-  if (parsed.error) {
-    res.status(422).json({ error: String(parsed.error) });
-    return;
-  }
-  res.json({
-    food_item: String(parsed.food_item ?? ""),
-    calories_kcal: parsed.calories_kcal != null ? Number(parsed.calories_kcal) : null,
-    protein_g: parsed.protein_g != null ? Number(parsed.protein_g) : null
-  });
-});
-router2.get("/members/:memberId/broadcasts", async (req, res) => {
-  const memberId = Number(req.params.memberId);
-  const limit = Math.min(Number(req.query.limit) || 20, 100);
-  const { rows: centers } = await pool.query(
-    "SELECT center_id FROM member_center_mapping WHERE member_id = $1",
-    [memberId]
-  );
-  if (centers.length === 0) {
-    res.json([]);
-    return;
-  }
-  const centerIds = centers.map((c) => c.center_id);
-  const placeholders = centerIds.map((_, i) => "$" + (i + 2)).join(",");
-  const { rows } = await pool.query(
-    `SELECT b.id, b.center_id, b.message, b.sent_at, b.sent_by,
-            EXISTS(SELECT 1 FROM member_broadcast_reads r WHERE r.broadcast_id = b.id AND r.member_id = $1) AS is_read
-     FROM member_broadcasts b
-     WHERE b.center_id IN (${placeholders})
-       AND b.sent_at >= NOW() - (
-         SELECT COALESCE(NULLIF(cbs.retention_days, 0), 7) * INTERVAL '1 day'
-         FROM center_broadcast_settings cbs WHERE cbs.center_id = b.center_id
-       )
-     ORDER BY b.sent_at DESC
-     LIMIT $${centerIds.length + 2}`,
-    [memberId, ...centerIds, limit]
-  );
-  res.json(rows);
-});
-router2.post("/members/:memberId/broadcasts/:broadcastId/read", async (req, res) => {
-  const memberId = Number(req.params.memberId);
-  const broadcastId = Number(req.params.broadcastId);
-  await pool.query(
-    `INSERT INTO member_broadcast_reads (member_id, broadcast_id, read_at)
-     VALUES ($1, $2, NOW())
-     ON CONFLICT (member_id, broadcast_id) DO NOTHING`,
-    [memberId, broadcastId]
-  );
-  res.json({ success: true });
-});
-var members_default = router2;
-
-// src/routes/bom.ts
-var import_express3 = __toESM(require_express2(), 1);
-var router3 = (0, import_express3.Router)();
-router3.get("/bom", async (req, res) => {
-  const plan = req.query.plan;
-  if (plan) {
-    const { rows } = await pool.query("SELECT * FROM bom_items WHERE plan_name = $1 ORDER BY food_item", [plan]);
-    res.json(rows);
-  } else {
-    const { rows } = await pool.query("SELECT * FROM bom_items ORDER BY plan_name, food_item");
-    res.json(rows);
-  }
-});
-var bom_default = router3;
-
-// src/routes/packs.ts
-var import_express4 = __toESM(require_express2(), 1);
-var router4 = (0, import_express4.Router)();
-router4.get("/pack-sizes", async (req, res) => {
-  const { rows } = await pool.query("SELECT * FROM pack_sizes ORDER BY item_name");
-  res.json(rows);
-});
-var packs_default = router4;
-
-// src/routes/auth.ts
-var import_express5 = __toESM(require_express2(), 1);
-var import_jsonwebtoken = __toESM(require_jsonwebtoken(), 1);
-import nodemailer from "nodemailer";
-import { randomBytes as randomBytes2 } from "crypto";
-var router5 = (0, import_express5.Router)();
-var JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
-var OTP_TTL_MIN = 10;
-function generateOtp() {
-  return String(Math.floor(1e5 + Math.random() * 9e5));
-}
-function generateOtpToken() {
-  return randomBytes2(16).toString("hex");
-}
-function signToken(memberId, email) {
-  return import_jsonwebtoken.default.sign({ memberId, email }, JWT_SECRET, { expiresIn: "30d" });
-}
-async function sendOtpEmail(to, otp) {
-  const host = process.env["SMTP_HOST"];
-  const user = process.env["SMTP_USER"];
-  const pass = process.env["SMTP_PASS"];
-  const port2 = Number(process.env["SMTP_PORT"] ?? "587");
-  if (!host || !user || !pass) {
-    logger.warn({ to }, "SMTP not configured \u2014 OTP email skipped");
-    return false;
-  }
-  const transporter = nodemailer.createTransport({
-    host,
-    port: port2,
-    secure: port2 === 465,
-    auth: { user, pass }
-  });
-  try {
-    await transporter.sendMail({
-      from: `"NutriMyWay" <${user}>`,
-      to,
-      subject: "Your NutriMyWay Login Code",
-      html: `<div style="font-family:sans-serif;max-width:480px;margin:auto">
-        <h2 style="color:#0d9488">Login Code</h2>
-        <p>Use the following 6-digit code to log in to your NutriMyWay account:</p>
-        <div style="font-size:32px;font-weight:700;letter-spacing:0.2em;color:#0d9488;padding:16px 24px;background:#f0fdfa;border-radius:8px;display:inline-block;margin:8px 0">${otp}</div>
-        <p style="color:#6b7280;font-size:13px;margin-top:16px">This code expires in ${OTP_TTL_MIN} minutes.</p>
-        <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this code, please ignore this email.</p>
-      </div>`
-    });
-    return true;
-  } catch (err) {
-    logger.warn({ to, err }, "Failed to send OTP email");
-    return false;
-  }
-}
-router5.post("/auth/request-otp", async (req, res) => {
-  const body = req.body;
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const membershipNo = typeof body.membership_no === "string" ? body.membership_no.trim() : "";
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    res.status(400).json({ error: "A valid email address is required" });
-    return;
-  }
-  if (!membershipNo) {
-    res.status(400).json({ error: "Membership number is required" });
-    return;
-  }
-  const { rows: memberRows } = await pool.query(
-    "SELECT id, name, email, membership_no, is_active, valid_until FROM members WHERE membership_no = $1",
-    [membershipNo]
-  );
-  if (!memberRows[0]) {
-    res.status(404).json({ error: "No member found with this membership number. Please contact your wellness center." });
-    return;
-  }
-  const member = memberRows[0];
-  if (!member.is_active) {
-    res.status(403).json({ error: "Your membership is inactive. Please contact your wellness center." });
-    return;
-  }
-  if (member.valid_until && new Date(member.valid_until) < /* @__PURE__ */ new Date()) {
-    res.status(403).json({ error: "Your membership has expired. Please contact your wellness center to renew." });
-    return;
-  }
-  if (member.email !== email) {
-    res.status(401).json({ error: "Email does not match the membership number. Please contact your wellness center." });
-    return;
-  }
-  const otp = generateOtp();
-  const expiresAt = new Date(Date.now() + OTP_TTL_MIN * 6e4);
-  const otpToken = generateOtpToken();
-  await pool.query("UPDATE otps SET used = TRUE WHERE member_id = $1 AND used = FALSE", [member.id]);
-  await pool.query(
-    "INSERT INTO otps (member_id, email, otp, otp_token, expires_at) VALUES ($1,$2,$3,$4,$5)",
-    [member.id, email, otp, otpToken, expiresAt]
-  );
-  const sent = await sendOtpEmail(email, otp);
-  if (sent) {
-    res.json({ message: "OTP sent", otp_token: otpToken });
-  } else {
-    res.json({ message: "OTP sent", otp_token: otpToken, otp_preview: otp });
-  }
-});
-router5.post("/auth/verify-otp", async (req, res) => {
-  const body = req.body;
-  const otpToken = typeof body.otp_token === "string" ? body.otp_token.trim() : "";
-  const otp = typeof body.otp === "string" ? body.otp.trim() : "";
-  if (!otpToken || !otp) {
-    res.status(400).json({ error: "OTP token and OTP are required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT * FROM otps
-     WHERE otp_token = $1 AND otp = $2 AND used = FALSE AND expires_at > NOW()
-     ORDER BY id DESC LIMIT 1`,
-    [otpToken, otp]
-  );
-  if (!rows[0]) {
-    res.status(401).json({ error: "Invalid or expired OTP" });
-    return;
-  }
-  const otpRow = rows[0];
-  await pool.query("UPDATE otps SET used = TRUE WHERE id = $1", [otpRow.id]);
-  const memberId = otpRow.member_id;
-  const email = otpRow.email;
-  const { rows: memberRows } = await pool.query(
-    "SELECT is_active, valid_until FROM members WHERE id = $1",
-    [memberId]
-  );
-  const member = memberRows[0];
-  if (!member?.is_active) {
-    res.status(403).json({ error: "Your membership is inactive. Please contact your wellness center." });
-    return;
-  }
-  if (member.valid_until && new Date(member.valid_until) < /* @__PURE__ */ new Date()) {
-    res.status(403).json({ error: "Your membership has expired. Please contact your wellness center to renew." });
-    return;
-  }
-  const { rows: authRows } = await pool.query(
-    "SELECT id FROM user_auth WHERE member_id = $1",
-    [memberId]
-  );
-  if (!authRows[0]) {
-    await pool.query(
-      "INSERT INTO user_auth (member_id, email, created_at) VALUES ($1,$2,NOW())",
-      [memberId, email]
-    );
-  }
-  const token = signToken(memberId, email);
-  res.json({ token, member_id: memberId });
-});
-router5.post("/auth/register", async (_req, res) => {
-  res.status(403).json({ error: "Self-registration is disabled. Please contact your wellness center to get registered." });
-});
-router5.post("/auth/register_legacy", async (_req, res) => {
-  res.status(403).json({ error: "Self-registration is disabled. Please contact your wellness center to get registered." });
-});
-router5.get("/auth/me", async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  try {
-    const payload = import_jsonwebtoken.default.verify(auth.slice(7), JWT_SECRET);
-    const { rows } = await pool.query("SELECT * FROM members WHERE id = $1", [payload.memberId]);
-    if (!rows[0]) {
-      res.status(404).json({ error: "Member not found" });
-      return;
-    }
-    res.json(rows[0]);
-  } catch {
-    res.status(401).json({ error: "Invalid token" });
-  }
-});
-var auth_default = router5;
-
-// src/routes/centers.ts
-var import_express6 = __toESM(require_express2(), 1);
-var router6 = (0, import_express6.Router)();
-router6.get("/centers", async (_req, res) => {
-  const { rows } = await pool.query("SELECT * FROM centers ORDER BY name");
-  res.json(rows);
-});
-var centers_default = router6;
-
-// src/routes/admin.ts
-var import_express7 = __toESM(require_express2(), 1);
-var import_jsonwebtoken2 = __toESM(require_jsonwebtoken(), 1);
-init_bcryptjs();
-import nodemailer2 from "nodemailer";
-import { randomBytes as randomBytes3 } from "crypto";
-var SUPER_ADMIN_EMAIL = process.env["SUPER_ADMIN_EMAIL"] ?? "rai.174@gmail.com";
-var APP_URL = process.env["APP_URL"] ?? "http://localhost:8080";
-async function sendSuperAdminResetEmail(resetUrl) {
-  const host = process.env["SMTP_HOST"];
-  const user = process.env["SMTP_USER"];
-  const pass = process.env["SMTP_PASS"];
-  const port2 = Number(process.env["SMTP_PORT"] ?? "587");
-  if (!host || !user || !pass) {
-    logger.warn({ resetUrl }, "SMTP not configured \u2014 reset URL logged (copy it to use)");
-    return;
-  }
-  const transporter = nodemailer2.createTransport({
-    host,
-    port: port2,
-    secure: port2 === 465,
-    auth: { user, pass }
-  });
-  await transporter.sendMail({
-    from: `"NutriMyWay Admin" <${user}>`,
-    to: SUPER_ADMIN_EMAIL,
-    subject: "Super Admin Password Reset",
-    html: `<div style="font-family:sans-serif;max-width:480px;margin:auto">
-      <h2 style="color:#0d9488">Password Reset</h2>
-      <p>Click the button below to reset your Super Admin password. Link expires in <strong>1 hour</strong>.</p>
-      <a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#0d9488;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Reset Password</a>
-      <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this, ignore this email.</p>
-    </div>`
-  });
-}
-var router7 = (0, import_express7.Router)();
-var JWT_SECRET2 = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
-function signAdminToken(centerId) {
-  return import_jsonwebtoken2.default.sign({ centerId, role: "admin" }, JWT_SECRET2, { expiresIn: "12h" });
-}
-function signSuperAdminToken() {
-  return import_jsonwebtoken2.default.sign({ role: "superadmin" }, JWT_SECRET2, { expiresIn: "12h" });
-}
-function requireAdmin(req, res, next) {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  try {
-    const payload = import_jsonwebtoken2.default.verify(auth.slice(7), JWT_SECRET2);
-    if (payload.role !== "admin") throw new Error("not admin");
-    req.adminCenterId = payload.centerId;
-    next();
-  } catch {
-    res.status(401).json({ error: "Invalid or expired admin token" });
-  }
-}
-function requireSuperAdmin(req, res, next) {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  try {
-    const payload = import_jsonwebtoken2.default.verify(auth.slice(7), JWT_SECRET2);
-    if (payload.role !== "superadmin") throw new Error("not superadmin");
-    next();
-  } catch {
-    res.status(401).json({ error: "Invalid or expired super admin token" });
-  }
-}
-function slotForNowIST() {
-  const h = new Date(Date.now() + 5.5 * 60 * 60 * 1e3).getUTCHours();
-  if (h < 12) return "Breakfast";
-  if (h < 15) return "Lunch";
-  if (h < 18) return "Snack";
-  return "Dinner";
-}
-async function bookAndCheckout(checkinId, memberId, centerId) {
-  const { rows: selections } = await pool.query(
-    `SELECT vms.menu_item_id, mi.name
-     FROM visit_menu_selections vms
-     JOIN menu_items mi ON mi.id = vms.menu_item_id
-     WHERE vms.checkin_id = $1`,
-    [checkinId]
-  );
-  for (const sel of selections) {
-    const { rows: avail } = await pool.query(
-      `SELECT NOT EXISTS (
-         SELECT 1 FROM menu_item_bom mb
-         WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL
-           AND NOT EXISTS (
-             SELECT 1 FROM ingredient_batches ib
-             WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $2 AND ib.status = 'open'
-           )
-       ) AS is_available`,
-      [sel.menu_item_id, centerId]
-    );
-    if (!avail[0].is_available) continue;
-    const { rows: kcalRows } = await pool.query(
-      `SELECT COALESCE(SUM(kcal), 0) AS total_kcal FROM menu_item_bom WHERE menu_item_id = $1`,
-      [sel.menu_item_id]
-    );
-    const totalKcal = Number(kcalRows[0].total_kcal) || null;
-    await pool.query(
-      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, calories_kcal, checkin_id, logged_at)
-       VALUES ($1, $5, $2, $3, $4, $6, NOW())`,
-      [memberId, sel.name, sel.menu_item_id, totalKcal, slotForNowIST(), checkinId]
-    );
-    const { rows: bom } = await pool.query(
-      `SELECT mb.ingredient_id, mb.quantity FROM menu_item_bom mb
-       WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL`,
-      [sel.menu_item_id]
-    );
-    for (const b of bom) {
-      const { rows: batches } = await pool.query(
-        `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size) AS pack_size FROM ingredient_batches ib
-         JOIN ingredients i ON i.id = ib.ingredient_id
-         WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
-         ORDER BY ib.opened_at ASC LIMIT 1`,
-        [b.ingredient_id, centerId]
-      );
-      if (batches[0]) {
-        const batchRow = batches[0];
-        await pool.query(
-          `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
-           VALUES ($1, $2, 'auto: member visit', NOW())`,
-          [batchRow.id, b.quantity]
-        );
-        const { rows: bal } = await pool.query(
-          `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
-          [batchRow.id]
-        );
-        if (Number(bal[0].total) >= batchRow.pack_size) {
-          await pool.query(
-            `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
-             WHERE id = $1 AND status = 'open'`,
-            [batchRow.id]
-          );
-        }
-      }
-    }
-  }
-  const { rows: flavourSels } = await pool.query(
-    `SELECT vfs.ingredient_id, vfs.flavour, i.name
-     FROM visit_flavour_selections vfs
-     JOIN ingredients i ON i.id = vfs.ingredient_id
-     WHERE vfs.checkin_id = $1`,
-    [checkinId]
-  );
-  for (const fsel of flavourSels) {
-    const { rows: batches } = await pool.query(
-      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty,
-              COALESCE(
-                (SELECT mb.quantity FROM menu_item_bom mb
-                 JOIN visit_menu_selections vms ON vms.menu_item_id = mb.menu_item_id
-                 WHERE vms.checkin_id = $3 AND mb.ingredient_id = $1 LIMIT 1),
-                i.serving_qty,
-                1
-              ) AS serving_qty
-       FROM ingredient_batches ib
-       JOIN ingredients i ON i.id = ib.ingredient_id
-       WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
-       ORDER BY ib.opened_at ASC LIMIT 1`,
-      [fsel.ingredient_id, centerId, checkinId]
-    );
-    if (!batches[0]) continue;
-    const batchRow = batches[0];
-    const foodLabel = `${fsel.name} \u2013 ${fsel.flavour}`;
-    const { rows: kcalIngRows } = await pool.query(
-      `SELECT kcal_per_serving FROM ingredients WHERE id = $1`,
-      [fsel.ingredient_id]
-    );
-    const kcalPerServing = kcalIngRows[0]?.kcal_per_serving ?? null;
-    await pool.query(
-      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, quantity_g, calories_kcal, checkin_id, logged_at)
-       VALUES ($1, $3, $2, $4, $5, $6, NOW())`,
-      [memberId, foodLabel, slotForNowIST(), batchRow.serving_qty, kcalPerServing, checkinId]
-    );
-    await pool.query(
-      `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
-       VALUES ($1, $2, 'auto: flavour visit', NOW())`,
-      [batchRow.id, batchRow.serving_qty]
-    );
-    const { rows: bal } = await pool.query(
-      `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
-      [batchRow.id]
-    );
-    if (Number(bal[0].total) >= batchRow.total_qty) {
-      await pool.query(
-        `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
-         WHERE id = $1 AND status = 'open'`,
-        [batchRow.id]
-      );
-    }
-  }
-  await pool.query(
-    `UPDATE member_check_ins SET checked_out_at = NOW() WHERE id = $1 AND checked_out_at IS NULL`,
-    [checkinId]
-  );
-}
-async function autoCheckoutExpired(centerId) {
-  const { rows: expired } = await pool.query(
-    `SELECT mci.id, mci.member_id FROM member_check_ins mci
-     JOIN centers c ON c.id = mci.center_id
-     WHERE mci.center_id = $1 AND mci.checked_out_at IS NULL
-       AND NOW() - mci.checked_in_at > (c.auto_checkout_min || ' minutes')::INTERVAL`,
-    [centerId]
-  );
-  for (const ci of expired) {
-    await bookAndCheckout(ci.id, ci.member_id, centerId);
-  }
-}
-router7.post("/admin/login", async (req, res) => {
-  const { center_id, password } = req.body;
-  if (!center_id || !password) {
-    res.status(400).json({ error: "center_id and password are required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT ca.password_hash, ca.valid_until, c.name, c.is_active
-     FROM center_auth ca JOIN centers c ON c.id = ca.center_id WHERE ca.center_id = $1`,
-    [center_id]
-  );
-  if (!rows[0]) {
-    res.status(401).json({ error: "Invalid center or password" });
-    return;
-  }
-  if (!rows[0].is_active) {
-    res.status(403).json({ error: "This center has been deactivated. Contact the super admin." });
-    return;
-  }
-  if (rows[0].valid_until && new Date(rows[0].valid_until) < /* @__PURE__ */ new Date()) {
-    res.status(403).json({ error: "This center's access has expired. Contact the super admin." });
-    return;
-  }
-  const ok = await bcryptjs_default.compare(password, rows[0].password_hash);
-  if (!ok) {
-    res.status(401).json({ error: "Invalid center or password" });
-    return;
-  }
-  const token = signAdminToken(center_id);
-  res.json({ token, center_id, center_name: rows[0].name });
-});
-router7.post("/admin/super/login", async (req, res) => {
-  const { password } = req.body;
-  if (!password) {
-    res.status(400).json({ error: "password is required" });
-    return;
-  }
-  const { rows } = await pool.query("SELECT password_hash FROM super_admin_auth WHERE id = 'superadmin'");
-  if (!rows[0]) {
-    res.status(401).json({ error: "Invalid password" });
-    return;
-  }
-  const ok = await bcryptjs_default.compare(password, rows[0].password_hash);
-  if (!ok) {
-    res.status(401).json({ error: "Invalid password" });
-    return;
-  }
-  res.json({ token: signSuperAdminToken() });
-});
-router7.get("/admin/super/centers", requireSuperAdmin, async (_req, res) => {
-  const { rows } = await pool.query(`
-    SELECT c.id, c.name, c.is_active, ca.valid_until
-    FROM centers c
-    LEFT JOIN center_auth ca ON ca.center_id = c.id
-    ORDER BY c.name
-  `);
-  res.json(rows);
-});
-router7.patch("/admin/super/centers/:centerId/activate", requireSuperAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const { rows } = await pool.query(
-    "UPDATE centers SET is_active = TRUE WHERE id = $1 RETURNING id, name, is_active",
-    [centerId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Center not found" });
-    return;
-  }
-  res.json(rows[0]);
-});
-router7.patch("/admin/super/centers/:centerId/deactivate", requireSuperAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const { rows } = await pool.query(
-    "UPDATE centers SET is_active = FALSE WHERE id = $1 RETURNING id, name, is_active",
-    [centerId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Center not found" });
-    return;
-  }
-  res.json(rows[0]);
-});
-router7.patch("/admin/super/centers/:centerId/password", requireSuperAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const { password } = req.body;
-  if (!password || password.length < 8) {
-    res.status(400).json({ error: "password must be at least 8 characters" });
-    return;
-  }
-  const hash2 = await bcryptjs_default.hash(password, 10);
-  const { rowCount } = await pool.query(
-    "UPDATE center_auth SET password_hash = $1 WHERE center_id = $2",
-    [hash2, centerId]
-  );
-  if (!rowCount) {
-    res.status(404).json({ error: "Center not found" });
-    return;
-  }
-  res.json({ ok: true });
-});
-router7.patch("/admin/super/centers/:centerId", requireSuperAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const { name } = req.body;
-  if (!name?.trim()) {
-    res.status(400).json({ error: "name is required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "UPDATE centers SET name = $1 WHERE id = $2 RETURNING id, name, is_active",
-    [name.trim(), centerId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Center not found" });
-    return;
-  }
-  res.json(rows[0]);
-});
-router7.patch("/admin/super/centers/:centerId/validity", requireSuperAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const { valid_until } = req.body;
-  await pool.query(
-    "UPDATE center_auth SET valid_until = $1 WHERE center_id = $2",
-    [valid_until ?? null, centerId]
-  );
-  const { rows } = await pool.query(
-    `SELECT c.id, c.name, c.is_active, ca.valid_until
-     FROM centers c LEFT JOIN center_auth ca ON ca.center_id = c.id WHERE c.id = $1`,
-    [centerId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Center not found" });
-    return;
-  }
-  res.json(rows[0]);
-});
-router7.post("/admin/super/forgot-password", async (_req, res) => {
-  const token = randomBytes3(32).toString("hex");
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1e3);
-  await pool.query(
-    "INSERT INTO super_admin_reset_tokens (token, expires_at) VALUES ($1, $2)",
-    [token, expiresAt]
-  );
-  const resetUrl = `${APP_URL}/admin/super?token=${token}`;
-  try {
-    await sendSuperAdminResetEmail(resetUrl);
-  } catch (err) {
-    logger.error({ err }, "Failed to send super admin reset email");
-  }
-  res.json({ ok: true });
-});
-router7.post("/admin/super/reset-password", async (req, res) => {
-  const { token, new_password } = req.body;
-  if (!token || !new_password) {
-    res.status(400).json({ error: "token and new_password are required" });
-    return;
-  }
-  if (new_password.length < 8) {
-    res.status(400).json({ error: "new_password must be at least 8 characters" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "SELECT token, expires_at, used_at FROM super_admin_reset_tokens WHERE token = $1",
-    [token]
-  );
-  if (!rows[0]) {
-    res.status(400).json({ error: "Invalid or expired reset link" });
-    return;
-  }
-  if (rows[0].used_at) {
-    res.status(400).json({ error: "This reset link has already been used" });
-    return;
-  }
-  if (new Date(rows[0].expires_at) < /* @__PURE__ */ new Date()) {
-    res.status(400).json({ error: "Reset link has expired \u2014 request a new one" });
-    return;
-  }
-  const hash2 = await bcryptjs_default.hash(new_password, 10);
-  await pool.query("UPDATE super_admin_auth SET password_hash = $1 WHERE id = 'superadmin'", [hash2]);
-  await pool.query("UPDATE super_admin_reset_tokens SET used_at = NOW() WHERE token = $1", [token]);
-  res.json({ ok: true });
-});
-router7.post("/admin/me/password", requireAdmin, async (req, res) => {
-  const { current_password, new_password } = req.body;
-  if (!current_password || !new_password) {
-    res.status(400).json({ error: "current_password and new_password are required" });
-    return;
-  }
-  if (new_password.length < 8) {
-    res.status(400).json({ error: "New password must be at least 8 characters" });
-    return;
-  }
-  const centerId = req.adminCenterId;
-  const { rows } = await pool.query(
-    "SELECT password_hash FROM center_auth WHERE center_id = $1",
-    [centerId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Center not found" });
-    return;
-  }
-  const ok = await bcryptjs_default.compare(current_password, rows[0].password_hash);
-  if (!ok) {
-    res.status(401).json({ error: "Current password is incorrect" });
-    return;
-  }
-  const newHash = await bcryptjs_default.hash(new_password, 10);
-  await pool.query("UPDATE center_auth SET password_hash = $1 WHERE center_id = $2", [newHash, centerId]);
-  res.status(204).end();
-});
-router7.get("/admin/centers", async (_req, res) => {
-  const { rows } = await pool.query("SELECT id, name FROM centers WHERE is_active = TRUE ORDER BY name");
-  res.json(rows);
-});
-router7.get("/admin/centers/:centerId/settings", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query("SELECT auto_checkout_min FROM centers WHERE id = $1", [centerId]);
-  if (!rows[0]) {
-    res.status(404).json({ error: "Center not found" });
-    return;
-  }
-  res.json({ auto_checkout_min: rows[0].auto_checkout_min, photo_retention_days: rows[0].photo_retention_days ?? 2 });
-});
-router7.patch("/admin/centers/:centerId/settings", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { auto_checkout_min, photo_retention_days } = req.body;
-  const updates = [];
-  const values = [];
-  if (auto_checkout_min != null) {
-    const mins = Number(auto_checkout_min);
-    if (!Number.isFinite(mins) || mins < 10 || mins > 480) {
-      res.status(400).json({ error: "auto_checkout_min must be a number between 10 and 480" });
-      return;
-    }
-    updates.push(`auto_checkout_min = $${updates.length + 1}`);
-    values.push(mins);
-  }
-  if (photo_retention_days != null) {
-    const days = Number(photo_retention_days);
-    if (!Number.isFinite(days) || days < 1 || days > 30) {
-      res.status(400).json({ error: "photo_retention_days must be between 1 and 30" });
-      return;
-    }
-    updates.push(`photo_retention_days = $${updates.length + 1}`);
-    values.push(days);
-  }
-  if (updates.length === 0) {
-    res.status(400).json({ error: "No valid fields to update" });
-    return;
-  }
-  values.push(centerId);
-  await pool.query(`UPDATE centers SET ${updates.join(", ")} WHERE id = $${values.length}`, values);
-  const { rows } = await pool.query("SELECT auto_checkout_min, photo_retention_days FROM centers WHERE id = $1", [centerId]);
-  res.json({ auto_checkout_min: rows[0].auto_checkout_min, photo_retention_days: rows[0].photo_retention_days });
-});
-router7.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(/* @__PURE__ */ new Date());
-  const [memberRes, menuRes, kcalRes, activeRes, expiringRes, weeklyRes] = await Promise.all([
-    pool.query("SELECT COUNT(*) as count FROM member_center_mapping WHERE center_id = $1", [centerId]),
-    pool.query("SELECT COUNT(*) as count FROM menu_items WHERE center_id = $1", [centerId]),
-    pool.query(
-      `SELECT COALESCE(SUM(
-         COALESCE(
-           cl.calories_kcal,
-           (SELECT SUM(mb.kcal) FROM menu_item_bom mb WHERE mb.menu_item_id = cl.menu_item_id AND mb.kcal IS NOT NULL)
-         )
-       ), 0) AS total_calories
-       FROM consumption_logs cl
-       JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-       WHERE mcm.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2`,
-      [centerId, today]
-    ),
-    pool.query(
-      `SELECT COUNT(DISTINCT member_id) AS count
-       FROM member_check_ins
-       WHERE center_id = $1 AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') = $2`,
-      [centerId, today]
-    ),
-    pool.query(
-      `SELECT COUNT(*) AS count
-       FROM members m
-       JOIN member_center_mapping mcm ON mcm.member_id = m.id
-       WHERE mcm.center_id = $1
-         AND m.valid_until IS NOT NULL
-         AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '10 days'`,
-      [centerId]
-    ),
-    pool.query(
-      `SELECT DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') AS day,
-              COUNT(DISTINCT member_id) AS count
-       FROM member_check_ins
-       WHERE center_id = $1
-         AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') >= DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Kolkata')
-         AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') <  DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Kolkata') + INTERVAL '1 month'
-       GROUP BY day ORDER BY day`,
-      [centerId]
-    )
-  ]);
-  res.json({
-    member_count: Number(memberRes.rows[0].count),
-    menu_item_count: Number(menuRes.rows[0].count),
-    today_calories: Number(kcalRes.rows[0].total_calories),
-    today_active_members: Number(activeRes.rows[0].count),
-    expiring_soon_count: Number(expiringRes.rows[0].count),
-    monthly_checkins: weeklyRes.rows
-  });
-});
-router7.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows: items } = await pool.query(
-    `SELECT mi.id, mi.center_id, mi.name, mi.description, mi.is_mandatory, mi.flavours, mi.available_days, mi.created_at,
-       NOT EXISTS (
-         SELECT 1 FROM menu_item_bom mb
-         WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
-           AND NOT EXISTS (
-             SELECT 1 FROM ingredient_batches ib
-             WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $1 AND ib.status = 'open'
-           )
-       ) AS is_available
-     FROM menu_items mi
-     WHERE mi.center_id = $1
-     ORDER BY mi.is_mandatory DESC, mi.name`,
-    [centerId]
-  );
-  const result = await Promise.all(items.map(async (item) => {
-    const { rows: bom } = await pool.query(
-      "SELECT id, ingredient, ingredient_id, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
-      [item.id]
-    );
-    return { ...item, bom };
-  }));
-  res.json(result);
-});
-router7.post("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { name, description, flavours, available_days } = req.body;
-  if (!name?.trim()) {
-    res.status(400).json({ error: "name is required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "INSERT INTO menu_items (center_id, name, description, flavours, available_days) VALUES ($1,$2,$3,$4,$5) RETURNING *",
-    [centerId, name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all"]
-  );
-  res.status(201).json({ ...rows[0], bom: [] });
-});
-router7.put("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
-  const { itemId } = req.params;
-  const adminReq = req;
-  const { rows: existing } = await pool.query("SELECT center_id FROM menu_items WHERE id = $1", [itemId]);
-  if (!existing[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  if (existing[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { name, description, flavours, available_days } = req.body;
-  if (!name?.trim()) {
-    res.status(400).json({ error: "name is required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "UPDATE menu_items SET name=$1, description=$2, flavours=$3, available_days=$4 WHERE id=$5 RETURNING *",
-    [name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all", itemId]
-  );
-  res.json(rows[0]);
-});
-router7.get("/admin/centers/:centerId/open-flavours", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT DISTINCT i.flavour, i.name AS ingredient_name, i.id AS ingredient_id
-     FROM ingredients i
-     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
-     WHERE i.flavour IS NOT NULL AND i.flavour != ''
-       AND ib.center_id = $1 AND ib.status = 'open'
-     ORDER BY i.flavour`,
-    [centerId]
-  );
-  res.json(rows);
-});
-router7.delete("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
-  const { itemId } = req.params;
-  const adminReq = req;
-  const { rows: existing } = await pool.query("SELECT center_id FROM menu_items WHERE id = $1", [itemId]);
-  if (!existing[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  if (existing[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  await pool.query("UPDATE consumption_logs SET menu_item_id = NULL WHERE menu_item_id = $1", [itemId]);
-  await pool.query("DELETE FROM menu_items WHERE id = $1", [itemId]);
-  res.status(204).send();
-});
-router7.patch("/admin/menu-items/:itemId/toggle-mandatory", requireAdmin, async (req, res) => {
-  const { itemId } = req.params;
-  const adminReq = req;
-  const { rows: existing } = await pool.query("SELECT center_id, is_mandatory FROM menu_items WHERE id = $1", [itemId]);
-  if (!existing[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  if (existing[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "UPDATE menu_items SET is_mandatory = NOT is_mandatory WHERE id = $1 RETURNING *",
-    [itemId]
-  );
-  res.json(rows[0]);
-});
-router7.get("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
-  const { itemId } = req.params;
-  const adminReq = req;
-  const { rows: item } = await pool.query(
-    "SELECT center_id FROM menu_items WHERE id = $1",
-    [itemId]
-  );
-  if (!item[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  if (item[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "SELECT id, ingredient, ingredient_id, quantity, unit, kcal FROM menu_item_bom WHERE menu_item_id = $1 ORDER BY id",
-    [itemId]
-  );
-  res.json(rows);
-});
-router7.post("/admin/menu-items/:itemId/bom", requireAdmin, async (req, res) => {
-  const { itemId } = req.params;
-  const adminReq = req;
-  const { rows: item } = await pool.query("SELECT center_id FROM menu_items WHERE id = $1", [itemId]);
-  if (!item[0]) {
-    res.status(404).json({ error: "Menu item not found" });
-    return;
-  }
-  if (item[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { ingredient_id, ingredient, quantity, unit, kcal } = req.body;
-  let resolvedName = ingredient?.trim() ?? "";
-  if (ingredient_id) {
-    const { rows: ing } = await pool.query("SELECT name FROM ingredients WHERE id=$1", [ingredient_id]);
-    if (!ing[0]) {
-      res.status(400).json({ error: "Ingredient not found in master" });
-      return;
-    }
-    resolvedName = ing[0].name;
-  }
-  if (!resolvedName) {
-    res.status(400).json({ error: "ingredient or ingredient_id is required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "INSERT INTO menu_item_bom (menu_item_id, ingredient, ingredient_id, quantity, unit, kcal) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
-    [itemId, resolvedName, ingredient_id ?? null, quantity ?? 0, unit?.trim() ?? "g", kcal ?? null]
-  );
-  res.status(201).json(rows[0]);
-});
-router7.put("/admin/menu-items/:itemId/bom/:bomId", requireAdmin, async (req, res) => {
-  const { itemId, bomId } = req.params;
-  const adminReq = req;
-  const { rows: existing } = await pool.query(
-    `SELECT mb.id, mi.center_id FROM menu_item_bom mb
-     JOIN menu_items mi ON mi.id = mb.menu_item_id
-     WHERE mb.id = $1 AND mb.menu_item_id = $2`,
-    [bomId, itemId]
-  );
-  if (!existing[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  if (existing[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { ingredient_id, ingredient, quantity, unit, kcal } = req.body;
-  let resolvedName = ingredient?.trim() ?? "";
-  if (ingredient_id) {
-    const { rows: ing } = await pool.query("SELECT name FROM ingredients WHERE id=$1", [ingredient_id]);
-    if (!ing[0]) {
-      res.status(400).json({ error: "Ingredient not found in master" });
-      return;
-    }
-    resolvedName = ing[0].name;
-  }
-  if (!resolvedName) {
-    res.status(400).json({ error: "ingredient or ingredient_id is required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "UPDATE menu_item_bom SET ingredient=$1, ingredient_id=$2, quantity=$3, unit=$4, kcal=$5 WHERE id=$6 RETURNING *",
-    [resolvedName, ingredient_id ?? null, quantity ?? 0, unit?.trim() ?? "g", kcal ?? null, bomId]
-  );
-  res.json(rows[0]);
-});
-router7.delete("/admin/menu-items/:itemId/bom/:bomId", requireAdmin, async (req, res) => {
-  const { itemId, bomId } = req.params;
-  const adminReq = req;
-  const { rows: existing } = await pool.query(
-    `SELECT mb.id, mi.center_id FROM menu_item_bom mb
-     JOIN menu_items mi ON mi.id = mb.menu_item_id
-     WHERE mb.id = $1 AND mb.menu_item_id = $2`,
-    [bomId, itemId]
-  );
-  if (!existing[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  if (existing[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  await pool.query("DELETE FROM menu_item_bom WHERE id = $1", [bomId]);
-  res.status(204).send();
-});
-router7.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const from = typeof req.query.from === "string" ? req.query.from : today;
-  const to = typeof req.query.to === "string" ? req.query.to : today;
-  const { rows: byComponent } = await pool.query(
-    `WITH resolved AS (
-       SELECT
-         cl.id,
-         cl.member_id,
-         COALESCE(
-           -- FK path: only trust it if the item actually belongs to this center
-           (SELECT mi.id FROM menu_items mi
-            WHERE mi.id = cl.menu_item_id AND mi.center_id = $1
-            LIMIT 1),
-           -- Name-fallback for legacy logs
-           (SELECT mi2.id FROM menu_items mi2
-            WHERE mi2.center_id = $1
-              AND LOWER(mi2.name) = LOWER(cl.food_item)
-            LIMIT 1)
-         ) AS menu_item_id
-       FROM consumption_logs cl
-       JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-       WHERE mcm.center_id = $1
-         AND cl.checkin_id IS NOT NULL
-         AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
-     )
-     SELECT
-       mb.ingredient,
-       mb.unit,
-       SUM(mb.quantity)         AS total_quantity,
-       COUNT(DISTINCT r.member_id) AS member_count,
-       COUNT(DISTINCT r.id)     AS log_count
-     FROM resolved r
-     JOIN menu_item_bom mb ON mb.menu_item_id = r.menu_item_id
-     WHERE r.menu_item_id IS NOT NULL
-     GROUP BY mb.ingredient, mb.unit
-     ORDER BY total_quantity DESC`,
-    [centerId, from, to]
-  );
-  const { rows: logsRaw } = await pool.query(
-    `SELECT cl.id, cl.member_id, m.name AS member_name, cl.logged_at, cl.meal_slot,
-            cl.food_item, cl.checkin_id,
-            COALESCE(
-              cl.quantity_g,
-              (SELECT SUM(mb.quantity) FROM menu_item_bom mb
-               WHERE mb.menu_item_id = cl.menu_item_id)
-            ) AS quantity_g,
-            COALESCE(
-              cl.calories_kcal,
-              (SELECT SUM(mb.kcal) FROM menu_item_bom mb
-               WHERE mb.menu_item_id = cl.menu_item_id AND mb.kcal IS NOT NULL)
-            ) AS calories_kcal,
-            COALESCE(
-              (SELECT mi.id FROM menu_items mi
-               WHERE mi.id = cl.menu_item_id AND mi.center_id = $1 LIMIT 1),
-              (SELECT mi2.id FROM menu_items mi2
-               WHERE mi2.center_id = $1
-                 AND LOWER(mi2.name) = LOWER(cl.food_item)
-               LIMIT 1)
-            ) AS menu_item_id,
-            COALESCE(
-              (SELECT mi.name FROM menu_items mi
-               WHERE mi.id = cl.menu_item_id AND mi.center_id = $1 LIMIT 1),
-              (SELECT mi2.name FROM menu_items mi2
-               WHERE mi2.center_id = $1
-                 AND LOWER(mi2.name) = LOWER(cl.food_item)
-               LIMIT 1)
-            ) AS menu_item_name
-     FROM consumption_logs cl
-     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-     JOIN members m ON m.id = cl.member_id
-     WHERE mcm.center_id = $1
-       AND cl.checkin_id IS NOT NULL
-       AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
-     ORDER BY cl.logged_at DESC`,
-    [centerId, from, to]
-  );
-  res.json({ from, to, by_component: byComponent, logs: logsRaw });
-});
-router7.get("/admin/centers/:centerId/member-self-logs", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const from = typeof req.query.from === "string" ? req.query.from : today;
-  const to = typeof req.query.to === "string" ? req.query.to : today;
-  const { rows } = await pool.query(
-    `SELECT cl.id, cl.member_id, m.name AS member_name,
-            cl.food_item, cl.meal_slot, cl.quantity_g, cl.calories_kcal, cl.logged_at, cl.photo_url
-     FROM consumption_logs cl
-     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-     JOIN members m ON m.id = cl.member_id
-     WHERE mcm.center_id = $1
-       AND cl.checkin_id IS NULL
-       AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
-     ORDER BY cl.logged_at DESC`,
-    [centerId, from, to]
-  );
-  res.json({ from, to, logs: rows });
-});
-router7.get("/admin/members/lookup", requireAdmin, async (req, res) => {
-  const { mobile, email, membership_no } = req.query;
-  if (!mobile && !email && !membership_no) {
-    res.status(400).json({ error: "mobile, email or membership_no is required" });
-    return;
-  }
-  const cols = "id, name, mobile, email, membership_no, height_cm, date_of_joining";
-  let row;
-  if (mobile) {
-    const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE mobile = $1 LIMIT 1`, [mobile.trim()]);
-    row = rows[0];
-  }
-  if (!row && email) {
-    const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email.trim()]);
-    row = rows[0];
-  }
-  if (!row && membership_no) {
-    const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE membership_no = $1 LIMIT 1`, [membership_no.trim()]);
-    row = rows[0];
-  }
-  res.json(row ?? null);
-});
-router7.post("/admin/centers/:centerId/members/link", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { member_id } = req.body;
-  if (!member_id) {
-    res.status(400).json({ error: "member_id is required" });
-    return;
-  }
-  const { rows: member } = await pool.query("SELECT id, name FROM members WHERE id = $1", [member_id]);
-  if (!member[0]) {
-    res.status(404).json({ error: "Member not found" });
-    return;
-  }
-  await pool.query(
-    `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-    [member_id, centerId]
-  );
-  res.status(201).json(member[0]);
-});
-router7.get("/admin/centers/:centerId/checkin-logs", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const from = req.query.from ?? today;
-  const to = req.query.to ?? today;
-  const { rows } = await pool.query(
-    `SELECT ci.id,
-            ci.member_id,
-            m.name         AS member_name,
-            m.mobile       AS member_mobile,
-            ci.checked_in_at,
-            ci.checked_out_at,
-            EXTRACT(EPOCH FROM (COALESCE(ci.checked_out_at, NOW()) - ci.checked_in_at)) / 60 AS duration_min
-     FROM member_check_ins ci
-     JOIN members m ON m.id = ci.member_id
-     WHERE ci.center_id = $1
-       AND DATE(ci.checked_in_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
-     ORDER BY ci.checked_in_at DESC`,
-    [centerId, from, to]
-  );
-  res.json(rows);
-});
-router7.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const expiringSoon = req.query.expiring_soon === "true";
-  await autoCheckoutExpired(centerId);
-  const { rows } = await pool.query(
-    `SELECT
-       m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
-       m.dob, m.age_at_joining, m.valid_until, m.is_active,
-       ci.id          AS checkin_id,
-       ci.checked_in_at,
-       ci.checked_out_at,
-       EXISTS (
-         SELECT 1 FROM member_check_ins mci2
-         WHERE mci2.member_id = m.id
-           AND mci2.center_id = $1
-           AND DATE(mci2.checked_in_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
-           AND mci2.checked_out_at IS NOT NULL
-       ) AS already_consumed_today
-     FROM members m
-     JOIN member_center_mapping mcm ON mcm.member_id = m.id
-     LEFT JOIN member_check_ins ci
-       ON ci.member_id = m.id AND ci.center_id = $1 AND ci.checked_out_at IS NULL
-     WHERE mcm.center_id = $1
-       ${expiringSoon ? "AND m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '10 days'" : ""}
-     ORDER BY m.valid_until ASC NULLS LAST, m.name`,
-    [centerId]
-  );
-  res.json(rows);
-});
-router7.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until } = req.body;
-  if (!name?.trim()) {
-    res.status(400).json({ error: "name is required" });
-    return;
-  }
-  if (!mobile?.trim() && !email?.trim()) {
-    res.status(400).json({ error: "mobile or email is required" });
-    return;
-  }
-  if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
-    res.status(400).json({ error: "age_at_joining must be between 0 and 100" });
-    return;
-  }
-  const { rows: memberRows } = await pool.query(
-    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null]
-  );
-  const member = memberRows[0];
-  await pool.query(
-    `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-    [member.id, centerId]
-  );
-  res.status(201).json(member);
-});
-router7.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows: membership } = await pool.query(
-    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
-    [Number(memberId), centerId]
-  );
-  if (!membership[0]) {
-    res.status(404).json({ error: "Member not found in this center" });
-    return;
-  }
-  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until, daily_kcal } = req.body;
-  if (name !== void 0 && !name?.trim()) {
-    res.status(400).json({ error: "name cannot be blank" });
-    return;
-  }
-  if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
-    res.status(400).json({ error: "age_at_joining must be between 0 and 100" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `UPDATE members SET
-       name           = COALESCE($1, name),
-       mobile         = $2,
-       email          = $3,
-       membership_no  = $4,
-       height_cm      = $5,
-       date_of_joining= $6,
-       dob            = $7,
-       age_at_joining = $8,
-       valid_until    = $9,
-       daily_kcal     = $10
-     WHERE id = $11 RETURNING *`,
-    [
-      name?.trim() ?? null,
-      mobile?.trim() || null,
-      email?.trim() || null,
-      membership_no?.trim() || null,
-      height_cm ?? null,
-      date_of_joining ?? null,
-      dob?.trim() || null,
-      age_at_joining ?? null,
-      valid_until ?? null,
-      daily_kcal ?? null,
-      Number(memberId)
-    ]
-  );
-  res.json(rows[0]);
-});
-router7.patch("/admin/centers/:centerId/members/:memberId/status", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows: membership } = await pool.query(
-    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
-    [Number(memberId), centerId]
-  );
-  if (!membership[0]) {
-    res.status(404).json({ error: "Member not found in this center" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `UPDATE members SET is_active = NOT is_active WHERE id = $1 RETURNING id, is_active`,
-    [Number(memberId)]
-  );
-  res.json(rows[0]);
-});
-router7.delete("/admin/centers/:centerId/members/:memberId/hard-delete", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const mid = Number(memberId);
-  const { rows: membership } = await pool.query(
-    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
-    [mid, centerId]
-  );
-  if (!membership[0]) {
-    res.status(404).json({ error: "Member not found in this center" });
-    return;
-  }
-  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id IN (SELECT id FROM member_check_ins WHERE member_id = $1)`, [mid]);
-  await pool.query(`DELETE FROM member_check_ins WHERE member_id = $1`, [mid]);
-  await pool.query(`DELETE FROM consumption_logs WHERE member_id = $1`, [mid]);
-  await pool.query(`DELETE FROM issuances WHERE member_id = $1`, [mid]);
-  await pool.query(`DELETE FROM health_records WHERE member_id = $1`, [mid]);
-  await pool.query(`DELETE FROM member_center_mapping WHERE member_id = $1`, [mid]);
-  await pool.query(`DELETE FROM user_auth WHERE member_id = $1`, [mid]);
-  await pool.query(`DELETE FROM members WHERE id = $1`, [mid]);
-  res.status(204).send();
-});
-router7.patch("/admin/centers/:centerId/members/:memberId/renew", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows: membership } = await pool.query(
-    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
-    [Number(memberId), centerId]
-  );
-  if (!membership[0]) {
-    res.status(404).json({ error: "Member not found in this center" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `UPDATE members SET valid_until = CURRENT_DATE + INTERVAL '32 days' WHERE id = $1 RETURNING valid_until`,
-    [Number(memberId)]
-  );
-  res.json({ valid_until: rows[0].valid_until });
-});
-router7.delete("/admin/centers/:centerId/members/:memberId", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  await pool.query(
-    `DELETE FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
-    [Number(memberId), centerId]
-  );
-  res.status(204).send();
-});
-router7.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows: membership } = await pool.query(
-    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
-    [Number(memberId), centerId]
-  );
-  if (!membership[0]) {
-    res.status(404).json({ error: "Member not found in this center" });
-    return;
-  }
-  const { rows: existing } = await pool.query(
-    `SELECT id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL`,
-    [Number(memberId)]
-  );
-  if (existing[0]) {
-    res.status(409).json({ error: "Member is already checked in" });
-    return;
-  }
-  const { weight_kg } = req.body;
-  const { rows } = await pool.query(
-    `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
-    [Number(memberId), centerId]
-  );
-  const checkin = rows[0];
-  if (weight_kg !== void 0 && weight_kg > 0) {
-    await pool.query(
-      `INSERT INTO health_records (member_id, center_id, weight_kg, recorded_at) VALUES ($1,$2,$3,NOW())`,
-      [Number(memberId), centerId, weight_kg]
-    );
-  }
-  const { rows: todayLogs } = await pool.query(
-    `SELECT 1 FROM member_check_ins
-     WHERE member_id = $1
-       AND center_id = $2
-       AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
-       AND checked_out_at IS NOT NULL
-     LIMIT 1`,
-    [Number(memberId), centerId]
-  );
-  const alreadyConsumedToday = !!todayLogs[0];
-  if (!alreadyConsumedToday) {
-    const { rows: mandatory } = await pool.query(
-      `SELECT mi.id FROM menu_items mi
-       WHERE mi.center_id = $1 AND mi.is_mandatory = TRUE
-         AND NOT EXISTS (
-           SELECT 1 FROM menu_item_bom mb
-           WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
-             AND NOT EXISTS (
-               SELECT 1 FROM ingredient_batches ib
-               WHERE ib.ingredient_id = mb.ingredient_id
-                 AND ib.center_id = $1 AND ib.status = 'open'
-             )
-         )`,
-      [centerId]
-    );
-    for (const mi of mandatory) {
-      await pool.query(
-        `INSERT INTO visit_menu_selections (checkin_id, menu_item_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-        [checkin.id, mi.id]
-      );
-    }
-  }
-  res.status(201).json({ ...checkin, already_consumed_today: alreadyConsumedToday });
-});
-router7.post("/admin/centers/:centerId/members/:memberId/checkout", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT id FROM member_check_ins
-     WHERE member_id = $1 AND center_id = $2 AND checked_out_at IS NULL`,
-    [Number(memberId), centerId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "No active check-in found" });
-    return;
-  }
-  const checkinId = rows[0].id;
-  await bookAndCheckout(checkinId, Number(memberId), centerId);
-  res.json({ checked_out: true, checkin_id: checkinId });
-});
-router7.post("/admin/centers/:centerId/members/:memberId/cancel-checkin", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT id FROM member_check_ins
-     WHERE member_id = $1 AND center_id = $2 AND checked_out_at IS NULL`,
-    [Number(memberId), centerId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "No active check-in found" });
-    return;
-  }
-  const checkinId = rows[0].id;
-  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id = $1`, [checkinId]);
-  await pool.query(
-    `UPDATE member_check_ins SET checked_out_at = NOW(), cancelled = TRUE WHERE id = $1`,
-    [checkinId]
-  );
-  res.json({ cancelled: true, checkin_id: checkinId });
-});
-router7.get("/admin/centers/:centerId/members/:memberId/health-records", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT id, member_id, center_id, recorded_at,
-            weight_kg, bmi, body_fat_pct, visceral_fat,
-            bmr, metabolic_age, muscle_mass_kg, resting_hr, notes
-     FROM health_records
-     WHERE member_id = $1 AND center_id = $2
-     ORDER BY recorded_at DESC`,
-    [Number(memberId), centerId]
-  );
-  res.json(rows);
-});
-router7.post("/admin/centers/:centerId/members/:memberId/health-records", requireAdmin, async (req, res) => {
-  const { centerId, memberId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const {
-    recorded_at,
-    weight_kg,
-    bmi,
-    body_fat_pct,
-    visceral_fat,
-    bmr,
-    metabolic_age,
-    muscle_mass_kg,
-    resting_hr,
-    notes
-  } = req.body;
-  const { rows } = await pool.query(
-    `INSERT INTO health_records
-       (member_id, center_id, recorded_at, weight_kg, bmi, body_fat_pct, visceral_fat,
-        bmr, metabolic_age, muscle_mass_kg, resting_hr, notes)
-     VALUES ($1,$2,$3::timestamptz,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-     RETURNING *`,
-    [
-      Number(memberId),
-      centerId,
-      recorded_at ? new Date(recorded_at).toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
-      weight_kg ?? null,
-      bmi ?? null,
-      body_fat_pct ?? null,
-      visceral_fat ?? null,
-      bmr ?? null,
-      metabolic_age ?? null,
-      muscle_mass_kg ?? null,
-      resting_hr ?? null,
-      notes ?? null
-    ]
-  );
-  res.status(201).json(rows[0]);
-});
-router7.get("/admin/centers/:centerId/health-records", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { from, to, member_ids } = req.query;
-  const toDate = to ? new Date(to) : /* @__PURE__ */ new Date();
-  toDate.setHours(23, 59, 59, 999);
-  const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3);
-  fromDate.setHours(0, 0, 0, 0);
-  const memberIdList = member_ids ? member_ids.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n)) : [];
-  let query;
-  let params;
-  if (memberIdList.length > 0) {
-    const placeholders = memberIdList.map((_, i) => `$${i + 4}`).join(",");
-    query = `
-      SELECT hr.id, hr.member_id, m.name AS member_name,
-             hr.center_id, hr.recorded_at,
-             hr.weight_kg, hr.bmi, hr.body_fat_pct, hr.visceral_fat,
-             hr.bmr, hr.metabolic_age, hr.muscle_mass_kg, hr.resting_hr, hr.notes
-      FROM health_records hr
-      JOIN members m ON m.id = hr.member_id
-      JOIN member_center_mapping mcm ON mcm.member_id = hr.member_id
-      WHERE hr.center_id = $1
-        AND hr.recorded_at >= $2 AND hr.recorded_at <= $3
-        AND hr.member_id IN (${placeholders})
-        AND mcm.center_id = $1
-      ORDER BY hr.recorded_at DESC`;
-    params = [centerId, fromDate, toDate, ...memberIdList];
-  } else {
-    query = `
-      SELECT hr.id, hr.member_id, m.name AS member_name,
-             hr.center_id, hr.recorded_at,
-             hr.weight_kg, hr.bmi, hr.body_fat_pct, hr.visceral_fat,
-             hr.bmr, hr.metabolic_age, hr.muscle_mass_kg, hr.resting_hr, hr.notes
-      FROM health_records hr
-      JOIN members m ON m.id = hr.member_id
-      JOIN member_center_mapping mcm ON mcm.member_id = hr.member_id
-      WHERE hr.center_id = $1
-        AND hr.recorded_at >= $2 AND hr.recorded_at <= $3
-        AND mcm.center_id = $1
-      ORDER BY hr.recorded_at DESC`;
-    params = [centerId, fromDate, toDate];
-  }
-  const { rows } = await pool.query(query, params);
-  res.json(rows);
-});
-router7.get("/admin/centers/:centerId/flavours", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "SELECT id, center_id, name, serving_qty, available_days, created_at FROM center_flavours WHERE center_id = $1 ORDER BY name",
-    [centerId]
-  );
-  res.json(rows);
-});
-router7.post("/admin/centers/:centerId/flavours", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { name, available_days } = req.body;
-  if (!name?.trim()) {
-    res.status(400).json({ error: "name is required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "INSERT INTO center_flavours (center_id, name, available_days) VALUES ($1, $2, $3) ON CONFLICT (center_id, name) DO NOTHING RETURNING *",
-    [centerId, name.trim(), available_days ?? "all"]
-  );
-  if (!rows[0]) {
-    res.status(409).json({ error: "Flavour already exists" });
-    return;
-  }
-  res.status(201).json(rows[0]);
-});
-router7.patch("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, async (req, res) => {
-  const { centerId, flavourId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { available_days } = req.body;
-  const { rows } = await pool.query(
-    `UPDATE center_flavours
-     SET available_days = COALESCE($1, available_days)
-     WHERE id = $2 AND center_id = $3
-     RETURNING *`,
-    [available_days ?? null, Number(flavourId), centerId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  res.json(rows[0]);
-});
-router7.delete("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, async (req, res) => {
-  const { centerId, flavourId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  await pool.query("DELETE FROM center_flavours WHERE id = $1 AND center_id = $2", [Number(flavourId), centerId]);
-  res.status(204).end();
-});
-router7.get("/admin/ingredients", requireAdmin, async (_req, res) => {
-  const { rows } = await pool.query(
-    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, created_at FROM ingredients ORDER BY name"
-  );
-  res.json(rows);
-});
-router7.post("/admin/ingredients", requireAdmin, async (req, res) => {
-  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving } = req.body;
-  if (!name?.trim()) {
-    res.status(400).json({ error: "name is required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null]
-  );
-  res.status(201).json(rows[0]);
-});
-router7.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
-  const { ingredientId } = req.params;
-  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving } = req.body;
-  if (!name?.trim()) {
-    res.status(400).json({ error: "name is required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6, serving_qty=$7, kcal_per_serving=$8 WHERE id=$9 RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code?.trim() || null, description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, Number(ingredientId)]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  res.json(rows[0]);
-});
-router7.delete("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
-  const { ingredientId } = req.params;
-  await pool.query("DELETE FROM ingredients WHERE id=$1", [Number(ingredientId)]);
-  res.status(204).end();
-});
-router7.get("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT ib.id, ib.ingredient_id, i.name AS ingredient_name, i.pack_size, i.pack_unit,
-            ib.received_qty, ib.received_unit,
-            ib.center_id, ib.batch_number, ib.status, ib.opened_at, ib.consumed_at, ib.created_at,
-            ib.assigned_member_id, ib.assigned_member_name,
-            COALESCE((
-              SELECT SUM(bcl.quantity)
-              FROM batch_consumption_logs bcl
-              WHERE bcl.batch_id = ib.id
-            ), 0) + COALESCE((
-              SELECT SUM(ba.qty_change)
-              FROM batch_adjustments ba
-              WHERE ba.batch_id = ib.id
-            ), 0) AS consumed_qty
-     FROM ingredient_batches ib
-     JOIN ingredients i ON i.id = ib.ingredient_id
-     WHERE ib.center_id = $1
-     ORDER BY i.name, ib.status DESC, ib.created_at DESC`,
-    [centerId]
-  );
-  res.json(rows);
-});
-router7.get("/admin/centers/:centerId/ingredient-requirements", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT mb.ingredient_id, i.name AS ingredient_name, i.pack_unit,
-            COALESCE(SUM(mb.quantity), 0) AS min_serving_qty
-     FROM menu_item_bom mb
-     JOIN ingredients i ON i.id = mb.ingredient_id
-     JOIN menu_items mi ON mi.id = mb.menu_item_id
-     WHERE mi.center_id = $1 AND mb.ingredient_id IS NOT NULL
-     GROUP BY mb.ingredient_id, i.name, i.pack_unit
-     ORDER BY i.name`,
-    [centerId]
-  );
-  res.json(rows);
-});
-router7.post("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { ingredient_id, batch_number, assigned_member_id, assigned_member_name, received_qty, received_unit } = req.body;
-  if (!ingredient_id) {
-    res.status(400).json({ error: "ingredient_id is required" });
-    return;
-  }
-  if (!batch_number?.trim()) {
-    res.status(400).json({ error: "batch_number is required" });
-    return;
-  }
-  const isMemberPack = assigned_member_id != null;
-  const { rows } = await pool.query(
-    `INSERT INTO ingredient_batches (ingredient_id, center_id, batch_number, status, opened_at, assigned_member_id, assigned_member_name, received_qty, received_unit)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [
-      ingredient_id,
-      centerId,
-      batch_number.trim(),
-      isMemberPack ? "open" : "new",
-      isMemberPack ? /* @__PURE__ */ new Date() : null,
-      assigned_member_id ?? null,
-      assigned_member_name?.trim() ?? null,
-      received_qty ?? null,
-      received_unit?.trim() ?? null
-    ]
-  );
-  res.status(201).json(rows[0]);
-});
-router7.patch("/admin/ingredient-batches/:batchId/open", requireAdmin, async (req, res) => {
-  const { batchId } = req.params;
-  const adminReq = req;
-  const { rows: existing } = await pool.query(
-    "SELECT * FROM ingredient_batches WHERE id=$1",
-    [Number(batchId)]
-  );
-  if (!existing[0]) {
-    res.status(404).json({ error: "Batch not found" });
-    return;
-  }
-  if (existing[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  if (existing[0].status !== "new") {
-    res.status(409).json({ error: "Only a 'new' batch can be opened" });
-    return;
-  }
-  if (!existing[0].assigned_member_id) {
-    const { rows: openCheck } = await pool.query(
-      "SELECT id FROM ingredient_batches WHERE ingredient_id=$1 AND center_id=$2 AND status='open' AND assigned_member_id IS NULL",
-      [existing[0].ingredient_id, existing[0].center_id]
-    );
-    if (openCheck.length > 0) {
-      res.status(409).json({ error: "There is already an open batch for this ingredient. Mark it as consumed first." });
-      return;
-    }
-  }
-  const { rows } = await pool.query(
-    "UPDATE ingredient_batches SET status='open', opened_at=NOW() WHERE id=$1 RETURNING *",
-    [Number(batchId)]
-  );
-  res.json(rows[0]);
-});
-router7.patch("/admin/ingredient-batches/:batchId/consume", requireAdmin, async (req, res) => {
-  const { batchId } = req.params;
-  const adminReq = req;
-  const { rows: existing } = await pool.query(
-    "SELECT * FROM ingredient_batches WHERE id=$1",
-    [Number(batchId)]
-  );
-  if (!existing[0]) {
-    res.status(404).json({ error: "Batch not found" });
-    return;
-  }
-  if (existing[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  if (existing[0].status !== "open") {
-    res.status(409).json({ error: "Only an 'open' batch can be marked as consumed" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "UPDATE ingredient_batches SET status='consumed', consumed_at=NOW() WHERE id=$1 RETURNING *",
-    [Number(batchId)]
-  );
-  res.json(rows[0]);
-});
-router7.delete("/admin/ingredient-batches/:batchId", requireAdmin, async (req, res) => {
-  const { batchId } = req.params;
-  const adminReq = req;
-  const { rows: existing } = await pool.query(
-    "SELECT * FROM ingredient_batches WHERE id=$1",
-    [Number(batchId)]
-  );
-  if (!existing[0]) {
-    res.status(404).json({ error: "Batch not found" });
-    return;
-  }
-  if (existing[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  if (existing[0].status !== "new") {
-    res.status(409).json({ error: "Only 'new' batches can be deleted" });
-    return;
-  }
-  await pool.query("DELETE FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
-  res.status(204).end();
-});
-router7.get("/admin/ingredient-batches/:batchId/consumption-logs", requireAdmin, async (req, res) => {
-  const { batchId } = req.params;
-  const adminReq = req;
-  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
-  if (!batch[0]) {
-    res.status(404).json({ error: "Batch not found" });
-    return;
-  }
-  if (batch[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "SELECT id, batch_id, quantity, notes, recorded_at FROM batch_consumption_logs WHERE batch_id=$1 ORDER BY recorded_at DESC",
-    [Number(batchId)]
-  );
-  res.json(rows);
-});
-router7.post("/admin/ingredient-batches/:batchId/consumption-logs", requireAdmin, async (req, res) => {
-  const { batchId } = req.params;
-  const adminReq = req;
-  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
-  if (!batch[0]) {
-    res.status(404).json({ error: "Batch not found" });
-    return;
-  }
-  if (batch[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  if (batch[0].status !== "open") {
-    res.status(409).json({ error: "Consumption can only be recorded for an open batch" });
-    return;
-  }
-  const { quantity, notes } = req.body;
-  if (!quantity || quantity <= 0) {
-    res.status(400).json({ error: "quantity must be a positive number" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "INSERT INTO batch_consumption_logs (batch_id, quantity, notes) VALUES ($1,$2,$3) RETURNING *",
-    [Number(batchId), quantity, notes?.trim() ?? null]
-  );
-  res.status(201).json(rows[0]);
-});
-router7.post("/admin/ingredient-batches/:batchId/adjust", requireAdmin, async (req, res) => {
-  const { batchId } = req.params;
-  const adminReq = req;
-  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
-  if (!batch[0]) {
-    res.status(404).json({ error: "Batch not found" });
-    return;
-  }
-  if (batch[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  if (batch[0].status !== "open") {
-    res.status(409).json({ error: "Adjustments can only be made to open batches" });
-    return;
-  }
-  const { qty_change, note } = req.body;
-  if (qty_change === void 0 || qty_change === null) {
-    res.status(400).json({ error: "qty_change is required" });
-    return;
-  }
-  if (qty_change === 0) {
-    res.status(400).json({ error: "qty_change must be non-zero" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "INSERT INTO batch_adjustments (batch_id, qty_change, note) VALUES ($1,$2,$3) RETURNING *",
-    [Number(batchId), qty_change, note?.trim() ?? null]
-  );
-  res.status(201).json(rows[0]);
-});
-router7.get("/admin/ingredient-batches/:batchId/adjustments", requireAdmin, async (req, res) => {
-  const { batchId } = req.params;
-  const adminReq = req;
-  const { rows: batch } = await pool.query("SELECT * FROM ingredient_batches WHERE id=$1", [Number(batchId)]);
-  if (!batch[0]) {
-    res.status(404).json({ error: "Batch not found" });
-    return;
-  }
-  if (batch[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "SELECT id, batch_id, qty_change, note, adjusted_at FROM batch_adjustments WHERE batch_id=$1 ORDER BY adjusted_at DESC",
-    [Number(batchId)]
-  );
-  res.json(rows);
-});
-router7.delete("/admin/consumption-logs/:logId", requireAdmin, async (req, res) => {
-  const { logId } = req.params;
-  const adminReq = req;
-  const { rows } = await pool.query(
-    `SELECT bcl.*, ib.center_id FROM batch_consumption_logs bcl
-     JOIN ingredient_batches ib ON ib.id = bcl.batch_id
-     WHERE bcl.id=$1`,
-    [Number(logId)]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  if (rows[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  await pool.query("DELETE FROM batch_consumption_logs WHERE id=$1", [Number(logId)]);
-  res.status(204).end();
-});
-router7.get("/admin/checkins/:checkinId/menu-selections", requireAdmin, async (req, res) => {
-  const { checkinId } = req.params;
-  const adminReq = req;
-  const { rows: ci } = await pool.query(
-    `SELECT ci.center_id FROM member_check_ins ci WHERE ci.id = $1`,
-    [Number(checkinId)]
-  );
-  if (!ci[0]) {
-    res.status(404).json({ error: "Check-in not found" });
-    return;
-  }
-  if (ci[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT vms.id, vms.checkin_id, vms.menu_item_id, mi.name AS menu_item_name,
-            mi.is_mandatory, vms.created_at
-     FROM visit_menu_selections vms
-     JOIN menu_items mi ON mi.id = vms.menu_item_id
-     WHERE vms.checkin_id = $1
-     ORDER BY mi.is_mandatory DESC, mi.name`,
-    [Number(checkinId)]
-  );
-  res.json(rows);
-});
-router7.post("/admin/checkins/:checkinId/menu-selections", requireAdmin, async (req, res) => {
-  const { checkinId } = req.params;
-  const adminReq = req;
-  const { menu_item_id } = req.body;
-  if (!menu_item_id) {
-    res.status(400).json({ error: "menu_item_id is required" });
-    return;
-  }
-  const { rows: ci } = await pool.query(
-    `SELECT ci.center_id, ci.checked_out_at FROM member_check_ins ci WHERE ci.id = $1`,
-    [Number(checkinId)]
-  );
-  if (!ci[0]) {
-    res.status(404).json({ error: "Check-in not found" });
-    return;
-  }
-  const ciRow = ci[0];
-  if (ciRow.center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  if (ciRow.checked_out_at) {
-    res.status(409).json({ error: "Session already checked out" });
-    return;
-  }
-  const { rows: mi } = await pool.query(
-    `SELECT id, name, is_mandatory FROM menu_items WHERE id = $1 AND center_id = $2`,
-    [menu_item_id, adminReq.adminCenterId]
-  );
-  if (!mi[0]) {
-    res.status(404).json({ error: "Menu item not found in this center" });
-    return;
-  }
-  const { rows: avail } = await pool.query(
-    `SELECT NOT EXISTS (
-       SELECT 1 FROM menu_item_bom mb
-       WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM ingredient_batches ib
-           WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $2 AND ib.status = 'open'
-         )
-     ) AS is_available`,
-    [menu_item_id, adminReq.adminCenterId]
-  );
-  if (!avail[0].is_available) {
-    res.status(409).json({ error: "Cannot add this item: one or more ingredients have no open batch. Open a batch in Inventory first." });
-    return;
-  }
-  const { rows } = await pool.query(
-    `INSERT INTO visit_menu_selections (checkin_id, menu_item_id)
-     VALUES ($1, $2)
-     ON CONFLICT (checkin_id, menu_item_id) DO NOTHING
-     RETURNING id, checkin_id, menu_item_id, created_at`,
-    [Number(checkinId), menu_item_id]
-  );
-  const miRow = mi[0];
-  const result = rows[0] ? { ...rows[0], menu_item_name: miRow.name, is_mandatory: miRow.is_mandatory } : null;
-  res.status(201).json(result);
-});
-router7.get("/admin/checkins/:checkinId/flavour-options", requireAdmin, async (req, res) => {
-  const { checkinId } = req.params;
-  const adminReq = req;
-  const { rows: ciRows } = await pool.query(
-    `SELECT center_id FROM member_check_ins WHERE id = $1`,
-    [Number(checkinId)]
-  );
-  if (!ciRows[0]) {
-    res.status(404).json({ error: "Check-in not found" });
-    return;
-  }
-  const centerId = ciRows[0].center_id;
-  if (centerId !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1e3;
-  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const todayDay = dayNames[nowIst.getUTCDay()];
-  const { rows } = await pool.query(
-    `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.pack_unit AS unit
-     FROM ingredients i
-     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
-     LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
-     WHERE i.flavour IS NOT NULL AND i.flavour != ''
-       AND ib.center_id = $1 AND ib.status = 'open'
-       AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
-     ORDER BY i.id, i.name`,
-    [centerId, `%${todayDay}%`]
-  );
-  res.json(rows);
-});
-router7.get("/admin/checkins/:checkinId/flavour-selections", requireAdmin, async (req, res) => {
-  const { checkinId } = req.params;
-  const adminReq = req;
-  const { rows: ciRows } = await pool.query(
-    `SELECT center_id FROM member_check_ins WHERE id = $1`,
-    [Number(checkinId)]
-  );
-  if (!ciRows[0]) {
-    res.status(404).json({ error: "Check-in not found" });
-    return;
-  }
-  if (ciRows[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `SELECT id, checkin_id, ingredient_id, flavour, created_at FROM visit_flavour_selections WHERE checkin_id = $1`,
-    [Number(checkinId)]
-  );
-  res.json(rows);
-});
-router7.post("/admin/checkins/:checkinId/flavour-selections", requireAdmin, async (req, res) => {
-  const { checkinId } = req.params;
-  const adminReq = req;
-  const { rows: ciRows } = await pool.query(
-    `SELECT center_id FROM member_check_ins WHERE id = $1`,
-    [Number(checkinId)]
-  );
-  if (!ciRows[0]) {
-    res.status(404).json({ error: "Check-in not found" });
-    return;
-  }
-  if (ciRows[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { ingredient_id, flavour } = req.body;
-  if (!ingredient_id || !flavour) {
-    res.status(400).json({ error: "ingredient_id and flavour are required" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `INSERT INTO visit_flavour_selections (checkin_id, ingredient_id, flavour)
-     VALUES ($1, $2, $3) RETURNING *`,
-    [Number(checkinId), ingredient_id, flavour]
-  );
-  res.status(201).json(rows[0]);
-});
-router7.delete("/admin/flavour-selections/:selId", requireAdmin, async (req, res) => {
-  const { selId } = req.params;
-  const adminReq = req;
-  const { rows } = await pool.query(
-    `SELECT vfs.id, mci.center_id
-     FROM visit_flavour_selections vfs
-     JOIN member_check_ins mci ON mci.id = vfs.checkin_id
-     WHERE vfs.id = $1`,
-    [Number(selId)]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  if (rows[0].center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  await pool.query("DELETE FROM visit_flavour_selections WHERE id = $1", [Number(selId)]);
-  res.status(204).end();
-});
-router7.delete("/admin/checkin-selections/:selectionId", requireAdmin, async (req, res) => {
-  const { selectionId } = req.params;
-  const adminReq = req;
-  const { rows } = await pool.query(
-    `SELECT vms.id, mi.is_mandatory, ci.center_id
-     FROM visit_menu_selections vms
-     JOIN menu_items mi ON mi.id = vms.menu_item_id
-     JOIN member_check_ins ci ON ci.id = vms.checkin_id
-     WHERE vms.id = $1`,
-    [Number(selectionId)]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  const row = rows[0];
-  if (row.center_id !== adminReq.adminCenterId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  if (row.is_mandatory) {
-    res.status(400).json({ error: "Cannot remove a mandatory item" });
-    return;
-  }
-  await pool.query("DELETE FROM visit_menu_selections WHERE id = $1", [Number(selectionId)]);
-  res.status(204).end();
-});
-router7.get("/admin/centers/:centerId/broadcast-settings", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "SELECT center_id, retention_days, created_at, updated_at FROM center_broadcast_settings WHERE center_id = $1",
-    [centerId]
-  );
-  res.json(rows[0] ?? { center_id: centerId, retention_days: 7 });
-});
-router7.put("/admin/centers/:centerId/broadcast-settings", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { retention_days } = req.body;
-  const retention = Number.isFinite(retention_days) ? Math.max(1, Math.min(90, Math.round(retention_days ?? 7))) : 7;
-  await pool.query(
-    `INSERT INTO center_broadcast_settings (center_id, retention_days, created_at, updated_at)
-     VALUES ($1, $2, NOW(), NOW())
-     ON CONFLICT (center_id) DO UPDATE SET
-       retention_days = EXCLUDED.retention_days,
-       updated_at = NOW()`,
-    [centerId, retention]
-  );
-  res.json({ center_id: centerId, retention_days: retention });
-});
-router7.get("/admin/centers/:centerId/broadcast-schedules", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "SELECT id, center_id, message, schedule_time, is_active, last_sent_at, created_at, updated_at FROM center_broadcast_schedules WHERE center_id = $1 ORDER BY schedule_time",
-    [centerId]
-  );
-  res.json(rows);
-});
-router7.post("/admin/centers/:centerId/broadcast-schedules", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { message, schedule_time } = req.body;
-  if (!message || typeof message !== "string" || message.trim().length === 0) {
-    res.status(400).json({ error: "Message is required" });
-    return;
-  }
-  const timeStr = typeof schedule_time === "string" ? schedule_time.trim() : "09:00";
-  if (!/^([0-1]\d|2[0-3]):([0-5]\d)$/.test(timeStr)) {
-    res.status(400).json({ error: "schedule_time must be HH:MM (24-hour format)" });
-    return;
-  }
-  const { rows } = await pool.query(
-    `INSERT INTO center_broadcast_schedules (center_id, message, schedule_time, is_active, created_at, updated_at)
-     VALUES ($1, $2, $3, TRUE, NOW(), NOW()) RETURNING *`,
-    [centerId, message.trim(), timeStr]
-  );
-  res.status(201).json(rows[0]);
-});
-router7.put("/admin/centers/:centerId/broadcast-schedules/:scheduleId", requireAdmin, async (req, res) => {
-  const { centerId, scheduleId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { message, schedule_time, is_active } = req.body;
-  const updates = [];
-  const values = [];
-  let idx = 1;
-  if (message !== void 0) {
-    if (typeof message !== "string" || message.trim().length === 0) {
-      res.status(400).json({ error: "Message is required" });
-      return;
-    }
-    updates.push(`message = $${idx++}`);
-    values.push(message.trim());
-  }
-  if (schedule_time !== void 0) {
-    const timeStr = typeof schedule_time === "string" ? schedule_time.trim() : "09:00";
-    if (!/^([0-1]\d|2[0-3]):([0-5]\d)$/.test(timeStr)) {
-      res.status(400).json({ error: "schedule_time must be HH:MM (24-hour format)" });
-      return;
-    }
-    updates.push(`schedule_time = $${idx++}`);
-    values.push(timeStr);
-  }
-  if (is_active !== void 0) {
-    updates.push(`is_active = $${idx++}`);
-    values.push(Boolean(is_active));
-  }
-  if (updates.length === 0) {
-    res.status(400).json({ error: "No fields to update" });
-    return;
-  }
-  updates.push(`updated_at = NOW()`);
-  values.push(Number(scheduleId));
-  const { rows } = await pool.query(
-    `UPDATE center_broadcast_schedules SET ${updates.join(", ")} WHERE id = $${idx} AND center_id = $${idx + 1} RETURNING *`,
-    [...values, centerId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Schedule not found" });
-    return;
-  }
-  res.json(rows[0]);
-});
-router7.delete("/admin/centers/:centerId/broadcast-schedules/:scheduleId", requireAdmin, async (req, res) => {
-  const { centerId, scheduleId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rowCount } = await pool.query(
-    "DELETE FROM center_broadcast_schedules WHERE id = $1 AND center_id = $2",
-    [Number(scheduleId), centerId]
-  );
-  if (!rowCount) {
-    res.status(404).json({ error: "Schedule not found" });
-    return;
-  }
-  res.status(204).end();
-});
-router7.post("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { message } = req.body;
-  if (!message || typeof message !== "string" || message.trim().length === 0) {
-    res.status(400).json({ error: "Message is required" });
-    return;
-  }
-  const trimmed = message.trim();
-  const { rows } = await pool.query(
-    `INSERT INTO member_broadcasts (center_id, message, sent_at, sent_by)
-     VALUES ($1, $2, NOW(), 'manual') RETURNING id`,
-    [centerId, trimmed]
-  );
-  const broadcastId = rows[0].id;
-  res.json({ id: broadcastId, message: trimmed, sent_at: (/* @__PURE__ */ new Date()).toISOString(), sent_by: "manual" });
-});
-router7.get("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const limit = Math.min(Number(req.query.limit) || 20, 100);
-  const { rows } = await pool.query(
-    `SELECT id, center_id, message, sent_at, sent_by
-     FROM member_broadcasts WHERE center_id = $1
-     ORDER BY sent_at DESC LIMIT $2`,
-    [centerId, limit]
-  );
-  res.json(rows);
-});
-router7.delete("/admin/centers/:centerId/broadcasts/:broadcastId", requireAdmin, async (req, res) => {
-  const { centerId, broadcastId } = req.params;
-  const adminReq = req;
-  if (adminReq.adminCenterId !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  const { rows } = await pool.query(
-    "SELECT center_id FROM member_broadcasts WHERE id = $1",
-    [Number(broadcastId)]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Broadcast not found" });
-    return;
-  }
-  if (rows[0].center_id !== centerId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  await pool.query("DELETE FROM member_broadcasts WHERE id = $1", [Number(broadcastId)]);
-  res.status(204).end();
-});
-router7.post("/admin/super/centers/:centerId/upload/members", requireSuperAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const { rows, format } = req.body;
-  if (!Array.isArray(rows) || rows.length === 0) {
-    res.status(400).json({ error: "rows array is required" });
-    return;
-  }
-  const results = { created: 0, skipped: 0, errors: [] };
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    for (const row of rows) {
-      const name = String(row.name ?? "").trim();
-      const membershipNo = String(row.membership_no ?? "").trim();
-      if (!name || !membershipNo) {
-        results.errors.push(`Row missing name or membership_no`);
-        continue;
-      }
-      const { rows: dup } = await client.query("SELECT id FROM members WHERE membership_no = $1", [membershipNo]);
-      if (dup[0]) {
-        results.skipped++;
-        continue;
-      }
-      const email = String(row.email ?? "").trim() || null;
-      const mobile = String(row.mobile ?? "").trim() || null;
-      const heightCm = row.height_cm != null ? Number(row.height_cm) : null;
-      const doj = String(row.date_of_joining ?? "").trim() || null;
-      const dob = String(row.dob ?? "").trim() || null;
-      const age = row.age_at_joining != null ? Number(row.age_at_joining) : null;
-      const validUntil = String(row.valid_until ?? "").trim() || null;
-      const { rows: m } = await client.query(
-        `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-        [name, heightCm, doj, mobile, email, membershipNo, dob, age, validUntil]
-      );
-      await client.query(
-        `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-        [m[0].id, centerId]
-      );
-      results.created++;
-    }
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    client.release();
-    res.status(500).json({ error: "Bulk insert failed", detail: err instanceof Error ? err.message : String(err) });
-    return;
-  }
-  client.release();
-  res.json(results);
-});
-router7.post("/admin/super/centers/:centerId/upload/inventory", requireSuperAdmin, async (req, res) => {
-  const { centerId } = req.params;
-  const { rows } = req.body;
-  if (!Array.isArray(rows) || rows.length === 0) {
-    res.status(400).json({ error: "rows array is required" });
-    return;
-  }
-  const results = { ingredients: 0, menuItems: 0, bom: 0, errors: [] };
-  const ingredientMap = /* @__PURE__ */ new Map();
-  const menuMap = /* @__PURE__ */ new Map();
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const { rows: existingIng } = await client.query("SELECT id, name FROM ingredients");
-    for (const r of existingIng) ingredientMap.set(r.name, r.id);
-    const { rows: existingMi } = await client.query("SELECT id, name FROM menu_items WHERE center_id = $1", [centerId]);
-    for (const r of existingMi) menuMap.set(r.name, r.id);
-    for (const row of rows) {
-      const type = String(row.item_type ?? "").trim().toLowerCase();
-      if (!type) {
-        results.errors.push("Missing item_type (ingredient | menu_item | bom)");
-        continue;
-      }
-      if (type === "ingredient") {
-        const name = String(row.name ?? "").trim();
-        if (!name) {
-          results.errors.push("ingredient missing name");
-          continue;
-        }
-        if (ingredientMap.has(name)) continue;
-        const { rows: r } = await client.query(
-          `INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-          [
-            name,
-            Number(row.pack_size ?? 1) || 1,
-            String(row.pack_unit ?? "g").trim() || "g",
-            String(row.material_code ?? "").trim() || null,
-            String(row.description ?? "").trim() || null,
-            String(row.flavour ?? "").trim() || null,
-            Number(row.serving_qty ?? 1) || 1,
-            row.kcal_per_serving != null ? Number(row.kcal_per_serving) : null
-          ]
-        );
-        ingredientMap.set(name, r[0].id);
-        results.ingredients++;
-      } else if (type === "menu_item") {
-        const name = String(row.name ?? "").trim();
-        if (!name) {
-          results.errors.push("menu_item missing name");
-          continue;
-        }
-        if (menuMap.has(name)) continue;
-        const isMandatory = String(row.is_mandatory ?? "").trim().toLowerCase() === "yes";
-        const flavours = String(row.flavours ?? "").trim() || null;
-        const availableDays = String(row.available_days ?? "").trim() || "all";
-        const { rows: r } = await client.query(
-          `INSERT INTO menu_items (center_id, name, description, is_mandatory, flavours, available_days)
-           VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-          [centerId, name, String(row.description ?? "").trim() || null, isMandatory, flavours, availableDays]
-        );
-        menuMap.set(name, r[0].id);
-        results.menuItems++;
-      } else if (type === "bom") {
-        const miName = String(row.menu_item_name ?? "").trim();
-        const ingName = String(row.ingredient_name ?? "").trim();
-        if (!miName || !ingName) {
-          results.errors.push("bom missing menu_item_name or ingredient_name");
-          continue;
-        }
-        const menuId = menuMap.get(miName);
-        const ingId = ingredientMap.get(ingName);
-        if (!menuId) {
-          results.errors.push(`BOM references unknown menu_item: ${miName}`);
-          continue;
-        }
-        if (!ingId) {
-          results.errors.push(`BOM references unknown ingredient: ${ingName}`);
-          continue;
-        }
-        await client.query(
-          `INSERT INTO menu_item_bom (menu_item_id, ingredient, ingredient_id, quantity, unit, kcal)
-           VALUES ($1,$2,$3,$4,$5,$6)`,
-          [
-            menuId,
-            ingName,
-            ingId,
-            Number(row.quantity ?? 0) || 0,
-            String(row.unit ?? "g").trim() || "g",
-            row.kcal != null ? Number(row.kcal) : null
-          ]
-        );
-        results.bom++;
-      } else {
-        results.errors.push(`Unknown item_type: ${type}`);
-      }
-    }
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    client.release();
-    res.status(500).json({ error: "Bulk inventory insert failed", detail: err instanceof Error ? err.message : String(err) });
-    return;
-  }
-  client.release();
-  res.json(results);
-});
-var admin_default = router7;
-
-// src/routes/storage.ts
-var import_express8 = __toESM(require_express2(), 1);
-import { Readable as Readable2 } from "stream";
-
 // src/lib/objectStorage.ts
 import { Storage } from "@google-cloud/storage";
 import { Readable } from "stream";
@@ -81087,19 +81099,16 @@ var port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+var server = app_default.listen(port, () => {
+  logger.info({ port }, "Server listening");
+});
 initDb().then(() => {
+  setDbReady(true);
   startBroadcastScheduler();
   startPhotoCleanupScheduler();
-  app_default.listen(port, (err) => {
-    if (err) {
-      logger.error({ err }, "Error listening on port");
-      process.exit(1);
-    }
-    logger.info({ port }, "Server listening");
-  });
+  logger.info("Database initialized, schedulers started");
 }).catch((err) => {
   logger.error({ err }, "Failed to initialize database");
-  process.exit(1);
 });
 /*! Bundled license information:
 
