@@ -101,7 +101,8 @@ export function Center() {
   const { data: checkinLogs } = useQuery<CheckinLog[]>({
     queryKey: ["checkin-logs", MEMBER_ID],
     queryFn: async () => {
-      const res = await fetch(`/api/members/${MEMBER_ID}/checkin-logs`);
+      const base = import.meta.env.VITE_API_BASE || "/api";
+      const res = await fetch(`${base}/members/${MEMBER_ID}/checkin-logs`);
       if (!res.ok) throw new Error("Failed to load visit history");
       return res.json() as Promise<CheckinLog[]>;
     },

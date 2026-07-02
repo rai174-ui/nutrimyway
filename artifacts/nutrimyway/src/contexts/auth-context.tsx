@@ -42,7 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setState(next);
     // Register push token after login
-    setTimeout(() => initPushNotifications(memberId, "/api"), 1000);
+    const base = import.meta.env.VITE_API_BASE || "/api";
+    setTimeout(() => initPushNotifications(memberId, base), 1000);
   }, []);
 
   const logout = useCallback(() => {

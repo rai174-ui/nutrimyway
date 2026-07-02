@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 
-const BASE = "/api";
+const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 export function Profile() {
   const { memberId: MEMBER_ID, logout } = useAuth();

@@ -112,7 +112,8 @@ function ForgotPasswordPanel({ onBack }: { onBack?: () => void }) {
   async function send() {
     setLoading(true); setError(null);
     try {
-      await fetch("/api/admin/super/forgot-password", { method: "POST" });
+      const base = import.meta.env.VITE_API_BASE || "/api";
+      await fetch(`${base}/admin/super/forgot-password`, { method: "POST" });
       setSent(true);
     } catch {
       setError("Failed to send. Check server SMTP configuration.");

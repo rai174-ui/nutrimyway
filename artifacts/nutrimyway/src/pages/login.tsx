@@ -6,7 +6,8 @@ import { useAuth } from "@/contexts/auth-context";
 type Step = "contact" | "otp";
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch("/api" + path, {
+  const base = import.meta.env.VITE_API_BASE || "/api";
+  const res = await fetch(base + path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

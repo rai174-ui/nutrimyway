@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { native, snapPhoto } from "@/lib/capacitor";
 
 function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
-const BASE = "/api";
+const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 function autoSlot(): string {
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;

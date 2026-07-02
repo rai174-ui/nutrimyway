@@ -10,7 +10,7 @@ import { Html5Qrcode } from "html5-qrcode";
 
 function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
 const TODAY = todayLocal();
-const BASE = "/api";
+const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 interface CheckIn {
   id: number;

@@ -1,4 +1,4 @@
-const BASE = "/api";
+const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 function getToken(): string | null {
   return localStorage.getItem("nmw_admin_token");
@@ -100,7 +100,7 @@ export function superAuthHeaders(): Record<string, string> {
 }
 
 export async function superFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
