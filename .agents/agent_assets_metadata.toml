@@ -89,7 +89,7 @@ title = "Fresh Deploy Package (Frontend + API + .htaccess files)"
 id = "cqQzhCgH1MrR8J_w3Q21x"
 uri = "file://nutrimyway-admin-deploy.zip"
 type = "unspecified"
-title = "NutriMyWay – Final Hostinger Deploy Package"
+title = "NutriMyWay – Complete Deploy Package (API + both frontends)"
 
 [[outputs]]
 id = "oR0qUn0LJ3dHalrUpyg7c"

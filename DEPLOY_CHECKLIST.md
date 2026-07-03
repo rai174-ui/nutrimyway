@@ -1,11 +1,29 @@
 # NutriMyWay — Hostinger Deploy Checklist
 
-Tested end-to-end locally: fresh `npm install` (0 vulnerabilities), server boot, `/api/healthz` returns 200, and graceful handling even if `ADMIN_STATIC` points to a missing folder.
+Tested end-to-end locally: fresh `npm install` (0 vulnerabilities), server boot, and all
+routes verified — main frontend (`/`), admin frontend (`/admin/`), API (`/api/healthz`),
+and SPA client-side routing fallbacks for both apps.
 
-## 1. API (Node.js app in Hostinger)
+## Architecture
+
+Hostinger's Node.js app hosting binds the **entire domain** to the Node process — there is
+no separate Apache/static-file layer sitting in front of it. So this package is fully
+self-contained: the Express server serves the API **and** both frontends (main + admin)
+directly from a bundled `public/` folder next to the server code.
+
+```
+api/
+  server.js          ← entry point (CommonJS wrapper)
+  index.mjs           ← bundled Express app (zero npm deps needed at runtime)
+  public/
+    index.html, assets/...        ← main frontend, served at "/"
+    admin/index.html, assets/...  ← admin frontend, served at "/admin"
+```
+
+## Hostinger Node.js app settings
 
 - **Root directory:** `nutrimyway-admin-deploy/api`
-- **Framework preset:** `Express` (not "Other")
+- **Framework preset:** `Express`
 - **Node version:** 20.x
 - **Package manager:** npm
 - **Build command:** None
@@ -25,20 +43,27 @@ Tested end-to-end locally: fresh `npm install` (0 vulnerabilities), server boot,
 | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_PORT` | outgoing email |
 | `SUPER_ADMIN_EMAIL` | overrides default admin email |
 | `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR` | only if using object storage |
+| `ADMIN_STATIC` | only for local/ngrok dev — overrides where the admin frontend is served from. Leave unset on Hostinger (it uses the bundled `public/admin` folder automatically). |
 
-### Do NOT set
-- `ADMIN_STATIC` — leave unset. The admin frontend is served by Apache from `public_html/admin/`, not by this Node app. (If it is set and points to a missing folder, the app now logs a warning and continues instead of crashing — but it's not needed here.)
+## Deploy steps
 
-## 2. Frontend (static hosting / public_html)
+1. Upload `nutrimyway-admin-deploy.zip` in the Hostinger Node.js app deploy UI.
+2. Set the environment variables above.
+3. Deploy / Redeploy.
 
-Unzip `nutrimyway-admin-deploy/frontend/` contents into your domain's `public_html/`:
-- `public_html/` ← everything in `frontend/` except the `admin/` subfolder
-- `public_html/admin/` ← everything in `frontend/admin/`
+## Verify after deploy
 
-Both include `.htaccess` files with SPA rewrite rules already configured.
+1. `https://nutrimyway.in/api/healthz` → `{"status":"ok","db":"connected","ready":true}`
+   (right after a fresh restart it may briefly show `"status":"starting","ready":false` —
+   that's normal, it flips to `ok` within a couple seconds once the DB connects)
+2. `https://nutrimyway.in/` → main app loads
+3. `https://nutrimyway.in/admin/` → admin app loads
+4. Client-side routes (e.g. `https://nutrimyway.in/some/app/route`) should load the app, not 404
 
-## 3. Verify after deploy
+## Notes
 
-1. Visit `https://nutrimyway.in/api/healthz` → expect `{"status":"ok","db":"connected","ready":true}`
-2. Visit `https://nutrimyway.in/` → main app loads
-3. Visit `https://nutrimyway.in/admin/` → admin app loads
+- Occasional restarts in the Runtime Logs with no error (just the boot lines repeating) are
+  normal — Hostinger recycles idle Node processes. As long as `/api/healthz` responds, the
+  app is healthy.
+- If you ever need to update the frontend or admin build, rebuild them and re-copy into
+  `nutrimyway-admin-deploy/api/public/` (and `public/admin/`) before re-zipping.

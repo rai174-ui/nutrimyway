@@ -36,20 +36,45 @@ app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 app.use("/api", router);
 
-// Serve the built admin frontend when ADMIN_STATIC is set (local / ngrok mode)
-const adminStatic = process.env.ADMIN_STATIC;
-if (adminStatic) {
-  const adminDir = path.resolve(adminStatic);
-  if (existsSync(adminDir)) {
-    app.use("/admin", express.static(adminDir));
-    // SPA fallback — all /admin/* routes serve index.html
-    app.get("/admin/*splat", (_req, res) => {
-      res.sendFile(path.join(adminDir, "index.html"));
-    });
-    logger.info({ adminDir }, "Serving admin static files");
-  } else {
-    logger.warn({ adminDir }, "ADMIN_STATIC set but directory does not exist; skipping static serving");
-  }
+// ── Static frontend serving ──────────────────────────────────────────────
+// On single-domain hosts (e.g. Hostinger's Node.js app hosting), there is no
+// separate web server for static files — the whole domain is proxied to this
+// Express process. So this app must serve the built frontend(s) itself.
+//
+// Bundled layout (populated at deploy time, see `public/` next to index.mjs):
+//   public/index.html, public/assets/*        → main frontend (served at "/")
+//   public/admin/index.html, public/admin/*   → admin frontend (served at "/admin")
+//
+// ADMIN_STATIC can override the admin frontend location for local/ngrok dev.
+const bundledPublicDir = path.resolve(__dirname, "public");
+const adminStaticOverride = process.env.ADMIN_STATIC;
+const adminDir = adminStaticOverride
+  ? path.resolve(adminStaticOverride)
+  : path.join(bundledPublicDir, "admin");
+
+if (existsSync(adminDir)) {
+  app.use("/admin", express.static(adminDir));
+  // SPA fallback — all /admin/* routes serve index.html
+  app.get("/admin/*splat", (_req, res) => {
+    res.sendFile(path.join(adminDir, "index.html"));
+  });
+  logger.info({ adminDir }, "Serving admin static files");
+} else if (adminStaticOverride) {
+  logger.warn({ adminDir }, "ADMIN_STATIC set but directory does not exist; skipping admin static serving");
+}
+
+if (existsSync(bundledPublicDir)) {
+  app.use(express.static(bundledPublicDir));
+  // SPA fallback for the main frontend — must come last so it doesn't
+  // shadow /api or /admin routes registered above.
+  app.get("*splat", (req, res, next) => {
+    if (req.path.startsWith("/api") || req.path.startsWith("/admin")) {
+      next();
+      return;
+    }
+    res.sendFile(path.join(bundledPublicDir, "index.html"));
+  });
+  logger.info({ bundledPublicDir }, "Serving main frontend static files");
 }
 
 // ── Scheduled broadcast runner ────────────────────────────────────────────
