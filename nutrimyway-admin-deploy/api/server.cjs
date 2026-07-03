@@ -1,62 +1,88 @@
-// Hostinger Node.js startup wrapper
-// Loads .env, validates env vars, then starts ESM app
-
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
-// 1. Load .env file if it exists
-const envPath = path.join(__dirname, '.env');
-if (fs.existsSync(envPath)) {
-  const content = fs.readFileSync(envPath, 'utf8');
-  content.split('\n').forEach(line => {
+const logFile = path.join(__dirname, 'startup.log');
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try { fs.appendFileSync(logFile, line); } catch(e) {}
+  try { console.error(line.trim()); } catch(e) {}
+}
+
+let apiReady = false;
+let loadError = null;
+
+log('=== STARTUP ===');
+log('Node: ' + process.version);
+log('PORT: ' + process.env.PORT);
+log('CWD: ' + process.cwd());
+log('__dirname: ' + __dirname);
+
+// Load .env file
+const envFile = path.join(__dirname, '.env');
+if (fs.existsSync(envFile)) {
+  fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
     const t = line.trim();
     if (!t || t.startsWith('#')) return;
     const i = t.indexOf('=');
     if (i > 0) {
       const key = t.slice(0, i).trim();
-      const value = t.slice(i + 1).trim();
-      if (key && !process.env[key]) process.env[key] = value;
+      const val = t.slice(i + 1).trim();
+      if (key && !process.env[key]) process.env[key] = val;
     }
   });
+  log('.env loaded');
+} else {
+  log('.env NOT found');
 }
 
-// 2. Validate required env vars
+// Check required vars
 const required = ['PORT', 'DATABASE_URL', 'SESSION_SECRET'];
 const missing = required.filter(k => !process.env[k]);
 if (missing.length > 0) {
-  console.error('FATAL: Missing environment variables:', missing.join(', '));
-  console.error('Please add them in Hostinger Dashboard > Environment variables');
-  process.exit(1);
+  loadError = 'Missing env vars: ' + missing.join(', ');
+  log('FATAL: ' + loadError);
 }
 
-// 3. Start a dummy HTTP server immediately for Hostinger's health check
+// Start HTTP server
 const port = Number(process.env.PORT) || 3000;
-const dummyServer = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Starting...\n');
-});
-dummyServer.listen(port, () => {
-  console.log('Hostinger health-check server on port', port);
-});
-
-// 4. Dynamically import and start the real ESM app
-(async () => {
-  try {
-    console.log('Loading NutriMyWay API...');
-    console.log('PORT:', process.env.PORT);
-    console.log('NODE_ENV:', process.env.NODE_ENV);
-    console.log('DATABASE_URL present:', !!process.env.DATABASE_URL);
-
-    await import('./index.mjs');
-
-    console.log('API loaded successfully');
-
-    dummyServer.close(() => {
-      console.log('Health-check server closed, real API running');
-    });
-  } catch (err) {
-    console.error('FATAL: Failed to start API:', err.message);
-    console.error(err.stack);
+const server = http.createServer((req, res) => {
+  if (req.url === '/api/healthz') {
+    res.writeHead(apiReady ? 200 : 503, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({status: apiReady ? 'ok' : 'loading', error: loadError}));
+    return;
   }
-})();
+  if (req.url === '/api/startup-debug') {
+    let content = '';
+    try { content = fs.readFileSync(logFile, 'utf8'); } catch(e) {}
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end(content || 'No logs yet');
+    return;
+  }
+  if (!apiReady) {
+    res.writeHead(503, {'Content-Type': 'text/plain'});
+    res.end('API still loading... Error: ' + (loadError || 'none yet'));
+    return;
+  }
+  res.writeHead(404);
+  res.end('Not found');
+});
+
+server.listen(port, () => {
+  log('HTTP server on port ' + port);
+});
+
+// Load real app
+if (!loadError) {
+  setTimeout(() => {
+    log('Loading index.mjs...');
+    import('./index.mjs').then(() => {
+      apiReady = true;
+      log('index.mjs loaded OK');
+    }).catch(err => {
+      loadError = err.message;
+      log('index.mjs FAILED: ' + err.message);
+      log(err.stack || 'no stack');
+    });
+  }, 100);
+}

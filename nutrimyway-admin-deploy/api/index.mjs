@@ -80756,22 +80756,33 @@ async function canAccessObject({
 
 // src/lib/objectStorage.ts
 var REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
-var objectStorageClient = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: {
-        type: "json",
-        subject_token_field_name: "access_token"
-      }
+var _client = null;
+function getObjectStorageClient() {
+  if (_client) return _client;
+  _client = new Storage({
+    credentials: {
+      audience: "replit",
+      subject_token_type: "access_token",
+      token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
+      type: "external_account",
+      credential_source: {
+        url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
+        format: {
+          type: "json",
+          subject_token_field_name: "access_token"
+        }
+      },
+      universe_domain: "googleapis.com"
     },
-    universe_domain: "googleapis.com"
-  },
-  projectId: ""
+    projectId: ""
+  });
+  return _client;
+}
+var objectStorageClient = new Proxy({}, {
+  get(_target, prop) {
+    const client = getObjectStorageClient();
+    return client[prop];
+  }
 });
 var ObjectNotFoundError = class _ObjectNotFoundError extends Error {
   constructor() {

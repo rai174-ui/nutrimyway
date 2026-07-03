@@ -11,22 +11,36 @@ import {
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
-export const objectStorageClient = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: {
-        type: "json",
-        subject_token_field_name: "access_token",
+let _client: Storage | null = null;
+
+export function getObjectStorageClient(): Storage {
+  if (_client) return _client;
+  _client = new Storage({
+    credentials: {
+      audience: "replit",
+      subject_token_type: "access_token",
+      token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
+      type: "external_account",
+      credential_source: {
+        url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
+        format: {
+          type: "json",
+          subject_token_field_name: "access_token",
+        },
       },
+      universe_domain: "googleapis.com",
     },
-    universe_domain: "googleapis.com",
+    projectId: "",
+  });
+  return _client;
+}
+
+/** @deprecated Use getObjectStorageClient() instead */
+export const objectStorageClient = new Proxy({} as Storage, {
+  get(_target, prop) {
+    const client = getObjectStorageClient();
+    return (client as any)[prop];
   },
-  projectId: "",
 });
 
 export class ObjectNotFoundError extends Error {
