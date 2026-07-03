@@ -69,6 +69,6 @@ jobs:
             target="${file#deploy/}"
             dir=$(dirname "$target")
             echo "Uploading: $file -> $target"
-            curl -v --ftp-create-dirs -T "$file" "ftp://${{ secrets.HOSTINGER_USERNAME }}:${{ secrets.HOSTINGER_PASSWORD }}@145.79.213.21:21/domains/nutrimyway.in/public_html/$target" || true
+            curl -v --ftp-create-dirs -T "$file" "ftp://${{ secrets.HOSTINGER_USERNAME }}:${{ secrets.HOSTINGER_PASSWORD }}@145.79.213.151:21/domains/nutrimyway.in/public_html/$target" || true
           done
           echo "=== Upload complete ==="
