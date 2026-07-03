@@ -61,13 +61,23 @@ jobs:
 
       - name: Deploy to Hostinger via FTP (lftp)
         run: |
-          lftp -u ${{ secrets.HOSTINGER_USERNAME }},${{ secrets.HOSTINGER_PASSWORD }} 145.79.213.151 <<EOF
+          set -e
+          echo "=== Verifying local files ==="
+          ls -la deploy/
+          echo "=== Starting lftp deploy ==="
+          lftp -u ${{ secrets.HOSTINGER_USERNAME }},${{ secrets.HOSTINGER_PASSWORD }} 145.79.213.151 -e "
           set ftp:ssl-allow no
           set ftp:passive-mode yes
-          set net:timeout 30
-          set net:max-retries 3
+          set cmd:fail-exit yes
+          set net:timeout 60
+          set net:max-retries 5
+          set net:reconnect-interval-base 10
+          set net:reconnect-interval-multiplier 1
+          set net:persist-retries 5
           lcd deploy
           cd public_html
-          mirror -R --parallel=2 --verbose
+          mirror -R --parallel=2 --delete --verbose
           bye
-          EOF
+          "
+          echo "=== Deploy completed ==="
+          echo "=== Files uploaded successfully ==="
