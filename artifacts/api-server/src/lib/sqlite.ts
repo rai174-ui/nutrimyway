@@ -11,7 +11,9 @@ if (!process.env.DATABASE_URL) {
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes("supabase.co")
+  ssl: (process.env.DATABASE_URL?.includes("supabase.co") ||
+         process.env.DATABASE_URL?.includes("rlwy.net") ||
+         process.env.DATABASE_URL?.includes("railway.app"))
     ? { rejectUnauthorized: false }
     : undefined,
   max: 10,

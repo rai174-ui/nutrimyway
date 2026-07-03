@@ -72591,7 +72591,7 @@ if (!process.env.DATABASE_URL) {
 }
 var pool = new Pool2({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes("supabase.co") ? { rejectUnauthorized: false } : void 0,
+  ssl: process.env.DATABASE_URL?.includes("supabase.co") || process.env.DATABASE_URL?.includes("rlwy.net") || process.env.DATABASE_URL?.includes("railway.app") ? { rejectUnauthorized: false } : void 0,
   max: 10,
   idleTimeoutMillis: 3e4,
   connectionTimeoutMillis: 5e3
