@@ -2,9 +2,8 @@
   "name": "nutrimyway-api",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "start": "node --enable-source-maps index.mjs"
+    "start": "node server.cjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
