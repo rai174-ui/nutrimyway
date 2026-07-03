@@ -46,7 +46,7 @@ if (missing.length > 0) {
 
 var port = Number(process.env.PORT) || 3000;
 
-// Start HTTP server
+// Start HTTP server immediately
 var server = http.createServer(function(req, res) {
   if (req.url === '/api/healthz') {
     res.writeHead(apiReady ? 200 : 503, {'Content-Type': 'application/json'});
@@ -72,7 +72,7 @@ server.listen(port, function() {
   log('HTTP listening on ' + port);
 });
 
-// Load real app
+// Load real app (bundled, zero dependencies)
 if (!missing.length) {
   setTimeout(function() {
     log('Loading index.mjs...');

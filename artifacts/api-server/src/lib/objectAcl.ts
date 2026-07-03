@@ -1,6 +1,7 @@
-import { File } from "@google-cloud/storage";
-
 const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
+
+// Type-only reference to GCS File (resolved dynamically in objectStorage.ts)
+type GcsFile = any;
 
 // Can be flexibly defined according to the use case.
 //
