@@ -38,7 +38,9 @@ jobs:
         run: |
           mkdir -p deploy/admin
           cp -r artifacts/nutrimyway/dist/public/* deploy/
+          cp artifacts/nutrimyway/public/.htaccess deploy/.htaccess
           cp -r artifacts/nutrimyway-admin/dist/public/* deploy/admin/
+          cp artifacts/nutrimyway-admin/public/.htaccess deploy/admin/.htaccess
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
