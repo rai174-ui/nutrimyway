@@ -78,3 +78,9 @@ id = "nqNl_Sp1bRurTko1IvSGp"
 uri = "file://nutrimyway-full-deploy.tar.gz"
 type = "unspecified"
 title = "Full Deploy Package (Frontend + API + Instructions)"
+
+[[outputs]]
+id = "GIR3KcOhnSIOLLVwnfkt9"
+uri = "file://nutrimyway-admin-deploy.tar.gz"
+type = "unspecified"
+title = "Fresh Deploy Package (Frontend + API + .htaccess files)"
