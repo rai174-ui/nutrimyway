@@ -366,13 +366,32 @@ async function seedFromXlsx(): Promise<void> {
     return;
   }
 
-  const XLSX = await import("xlsx");
-  const workbook = XLSX.readFile(XLSX_PATH);
+  const ExcelJS = await import("exceljs");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(XLSX_PATH);
+
+  function sheetToJson(worksheet: any): Record<string, unknown>[] {
+    const headers: string[] = [];
+    const rows: Record<string, unknown>[] = [];
+    let firstRow = true;
+    worksheet.eachRow({ includeEmpty: true }, (row: any) => {
+      const values = (row.values as unknown[]).slice(1).map((v: unknown) => v ?? null);
+      if (firstRow) {
+        values.forEach((v, i) => { headers[i] = String(v ?? `col${i}`); });
+        firstRow = false;
+      } else {
+        const obj: Record<string, unknown> = {};
+        values.forEach((v, i) => { if (headers[i]) obj[headers[i]] = v; });
+        rows.push(obj);
+      }
+    });
+    return rows;
+  }
 
   // Member-Center Mapping sheet
-  const mappingSheet = workbook.Sheets["Member-Center Mapping"] ?? workbook.Sheets[workbook.SheetNames[0]];
+  const mappingSheet = workbook.getWorksheet("Member-Center Mapping") ?? workbook.getWorksheet(1);
   if (mappingSheet) {
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(mappingSheet, { defval: null });
+    const rows = sheetToJson(mappingSheet);
     for (const row of rows) {
       const memberId = toNum(row["Member ID"] ?? row["member_id"] ?? row["id"]);
       const memberName = String(row["Member Name"] ?? row["name"] ?? row["Member"] ?? "Unknown");
@@ -388,9 +407,9 @@ async function seedFromXlsx(): Promise<void> {
   }
 
   // Health Records
-  const healthSheet = workbook.Sheets["HealthRecord"] ?? workbook.Sheets["Health Records"];
+  const healthSheet = workbook.getWorksheet("HealthRecord") ?? workbook.getWorksheet("Health Records");
   if (healthSheet) {
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(healthSheet, { defval: null });
+    const rows = sheetToJson(healthSheet);
     for (const row of rows) {
       const memberId = toNum(row["Member ID"] ?? row["member_id"]);
       if (!memberId) continue;
@@ -406,9 +425,9 @@ async function seedFromXlsx(): Promise<void> {
   }
 
   // Consumption logs
-  const consumptionSheet = workbook.Sheets["Consumtion"] ?? workbook.Sheets["Consumption"] ?? workbook.Sheets["consumption_logs"];
+  const consumptionSheet = workbook.getWorksheet("Consumtion") ?? workbook.getWorksheet("Consumption") ?? workbook.getWorksheet("consumption_logs");
   if (consumptionSheet) {
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(consumptionSheet, { defval: null });
+    const rows = sheetToJson(consumptionSheet);
     for (const row of rows) {
       const memberId = toNum(row["Member ID"] ?? row["member_id"]);
       if (!memberId) continue;
@@ -427,9 +446,9 @@ async function seedFromXlsx(): Promise<void> {
   }
 
   // BOM
-  const bomSheet = workbook.Sheets["BOM"] ?? workbook.Sheets["bom"];
+  const bomSheet = workbook.getWorksheet("BOM") ?? workbook.getWorksheet("bom");
   if (bomSheet) {
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(bomSheet, { defval: null });
+    const rows = sheetToJson(bomSheet);
     for (const row of rows) {
       const foodItem = String(row["Food Item"] ?? row["food_item"] ?? row["Item"] ?? "");
       if (!foodItem) continue;
@@ -446,9 +465,9 @@ async function seedFromXlsx(): Promise<void> {
   }
 
   // Pack Sizes
-  const packSheet = workbook.Sheets["PackSize"] ?? workbook.Sheets["Pack Sizes"];
+  const packSheet = workbook.getWorksheet("PackSize") ?? workbook.getWorksheet("Pack Sizes");
   if (packSheet) {
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(packSheet, { defval: null });
+    const rows = sheetToJson(packSheet);
     for (const row of rows) {
       const itemName = String(row["Item Name"] ?? row["item_name"] ?? row["Item"] ?? "");
       if (!itemName) continue;
@@ -462,9 +481,9 @@ async function seedFromXlsx(): Promise<void> {
   }
 
   // Issuances
-  const issuanceSheet = workbook.Sheets["Issuing "] ?? workbook.Sheets["Issuing"] ?? workbook.Sheets["Issuances"];
+  const issuanceSheet = workbook.getWorksheet("Issuing ") ?? workbook.getWorksheet("Issuing") ?? workbook.getWorksheet("Issuances");
   if (issuanceSheet) {
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(issuanceSheet, { defval: null });
+    const rows = sheetToJson(issuanceSheet);
     for (const row of rows) {
       const memberId = toNum(row["Member ID"] ?? row["member_id"]);
       if (!memberId) continue;

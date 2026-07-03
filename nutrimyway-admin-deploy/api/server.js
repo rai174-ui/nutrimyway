@@ -1,4 +1,3 @@
-/* eslint-disable */
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -10,15 +9,14 @@ function log(msg) {
   try { console.error(line.trim()); } catch(e) {}
 }
 
+let apiReady = false;
+let loadError = null;
+
 log('=== STARTUP ===');
 log('Node: ' + process.version);
-log('PORT env: ' + process.env.PORT);
+log('PORT: ' + process.env.PORT);
 log('CWD: ' + process.cwd());
-log('Script: ' + __filename);
-log('Dir contents:');
-try {
-  fs.readdirSync(__dirname).forEach(function(f) { log('  ' + f); });
-} catch(e) { log('  err: ' + e.message); }
+log('__dirname: ' + __dirname);
 
 // Load .env
 var envFile = path.join(__dirname, '.env');
@@ -34,20 +32,21 @@ if (fs.existsSync(envFile)) {
     }
   });
   log('.env loaded');
+} else {
+  log('.env NOT found');
 }
 
-// Check env
+// Check required vars
 var required = ['PORT', 'DATABASE_URL', 'SESSION_SECRET'];
 var missing = required.filter(function(k) { return !process.env[k]; });
 if (missing.length > 0) {
-  log('FATAL missing: ' + missing.join(', '));
+  loadError = 'Missing env vars: ' + missing.join(', ');
+  log('FATAL: ' + loadError);
 }
 
 var port = Number(process.env.PORT) || 3000;
-var apiReady = false;
-var loadError = null;
 
-// Start HTTP server immediately
+// Start HTTP server
 var server = http.createServer(function(req, res) {
   if (req.url === '/api/healthz') {
     res.writeHead(apiReady ? 200 : 503, {'Content-Type': 'application/json'});
@@ -73,7 +72,7 @@ server.listen(port, function() {
   log('HTTP listening on ' + port);
 });
 
-// Try to load real app
+// Load real app
 if (!missing.length) {
   setTimeout(function() {
     log('Loading index.mjs...');
