@@ -60,3 +60,15 @@ id = "fpq6_mzV1nRR6NDd6Cvgs"
 uri = "file://hostinger-nutrimyway.tar.gz"
 type = "unspecified"
 title = "NutriMyWay Hostinger Deployment Package"
+
+[[outputs]]
+id = "VefjMRflSO6gvlOkr9ILM"
+uri = "file://nutrimyway-deploy.tar.gz"
+type = "unspecified"
+title = "NutriMyWay Deploy Package - Extract & upload to public_html/"
+
+[[outputs]]
+id = "dHjD6n80k_3Nws8oXzGXX"
+uri = "file://MANUAL_DEPLOY.md"
+type = "text"
+title = "Step-by-step deployment instructions"
