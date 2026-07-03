@@ -39,12 +39,16 @@ app.use("/api", router);
 const adminStatic = process.env.ADMIN_STATIC;
 if (adminStatic) {
   const adminDir = path.resolve(adminStatic);
-  app.use("/admin", express.static(adminDir));
-  // SPA fallback — all /admin/* routes serve index.html
-  app.get("/admin/*splat", (_req, res) => {
-    res.sendFile(path.join(adminDir, "index.html"));
-  });
-  logger.info({ adminDir }, "Serving admin static files");
+  if (existsSync(adminDir)) {
+    app.use("/admin", express.static(adminDir));
+    // SPA fallback — all /admin/* routes serve index.html
+    app.get("/admin/*splat", (_req, res) => {
+      res.sendFile(path.join(adminDir, "index.html"));
+    });
+    logger.info({ adminDir }, "Serving admin static files");
+  } else {
+    logger.warn({ adminDir }, "ADMIN_STATIC set but directory does not exist; skipping static serving");
+  }
 }
 
 // ── Scheduled broadcast runner ────────────────────────────────────────────

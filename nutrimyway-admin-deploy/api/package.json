@@ -1,8 +1,0 @@
-{
-  "name": "nutrimyway-api",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "start": "sh start.sh"
-  }
-}
