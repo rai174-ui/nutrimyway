@@ -658,6 +658,27 @@ router.get("/admin/centers/:centerId/open-flavours", requireAdmin, async (req, r
   res.json(rows);
 });
 
+// GET /api/admin/centers/:centerId/flavours-today — center flavours applicable for today's day-of-week
+router.get("/admin/centers/:centerId/flavours-today", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayDay = dayNames[nowIst.getUTCDay()];
+
+  const { rows } = await pool.query(
+    `SELECT id, center_id, name, available_days, created_at
+     FROM center_flavours
+     WHERE center_id = $1 AND (available_days = 'all' OR available_days LIKE $2)
+     ORDER BY name`,
+    [centerId, `%${todayDay}%`]
+  );
+  res.json({ day: todayDay, flavours: rows });
+});
+
 // DELETE /api/admin/menu-items/:itemId
 router.delete("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
   const { itemId } = req.params;
@@ -1595,6 +1616,41 @@ router.get("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (r
     [centerId]
   );
   res.json(rows);
+});
+
+// GET /api/admin/centers/:centerId/depleting-batches — open batches with balance below 80% of capacity
+router.get("/admin/centers/:centerId/depleting-batches", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    `SELECT ib.id, ib.ingredient_id, i.name AS ingredient_name, i.pack_size, i.pack_unit,
+            ib.received_qty, ib.received_unit, ib.batch_number, ib.opened_at,
+            COALESCE((
+              SELECT SUM(bcl.quantity) FROM batch_consumption_logs bcl WHERE bcl.batch_id = ib.id
+            ), 0) + COALESCE((
+              SELECT SUM(ba.qty_change) FROM batch_adjustments ba WHERE ba.batch_id = ib.id
+            ), 0) AS consumed_qty
+     FROM ingredient_batches ib
+     JOIN ingredients i ON i.id = ib.ingredient_id
+     WHERE ib.center_id = $1 AND ib.status = 'open'
+     ORDER BY ib.opened_at ASC`,
+    [centerId]
+  );
+
+  const depleting = rows
+    .map((r) => {
+      const capacity = Number(r.received_qty ?? r.pack_size);
+      const consumed = Number(r.consumed_qty);
+      const balance = Math.max(0, capacity - consumed);
+      const balancePct = capacity > 0 ? (balance / capacity) * 100 : 0;
+      return { ...r, capacity, consumed_qty: consumed, balance, balance_pct: balancePct };
+    })
+    .filter((r) => r.balance_pct < 80)
+    .sort((a, b) => a.balance_pct - b.balance_pct);
+
+  res.json(depleting);
 });
 
 // GET /api/admin/centers/:centerId/ingredient-requirements — BOM qty per ingredient at this center

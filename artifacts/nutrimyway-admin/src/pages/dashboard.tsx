@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Users, UtensilsCrossed, Flame, Activity, CalendarClock, ChevronRight, Megaphone, Send, X, Loader2, CheckCircle2, AlertTriangle, Trash2 } from "lucide-react";
+import { Users, Flame, Activity, CalendarClock, ChevronRight, Megaphone, Send, X, Loader2, CheckCircle2, AlertTriangle, Trash2, Sparkles } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList,
 } from "recharts";
 import { Nav } from "@/components/nav";
-import { apiGet, apiPost, apiDelete, getAdminCenter, type Dashboard, type Broadcast } from "@/lib/api";
+import {
+  apiGet, apiPost, apiDelete, getAdminCenter,
+  type Dashboard, type Broadcast, type FlavoursToday, type DepletingBatch,
+} from "@/lib/api";
 
 function StatCard({
   icon: Icon, label, value, color, onClick, badge,
@@ -168,6 +171,82 @@ function AdHocBroadcastModal({ centerId, onClose }: { centerId: string; onClose:
   );
 }
 
+function FlavoursTodayModal({ day, flavours, onClose }: { day: string; flavours: FlavoursToday["flavours"]; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm max-h-[70vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-teal-base" />
+            <h2 className="font-semibold text-foreground">Flavours for {day}</h2>
+          </div>
+          <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {flavours.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No flavours are configured for today.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {flavours.map(f => (
+                <span key={f.id} className="px-3 py-1.5 rounded-full bg-teal-pale text-teal-dark text-sm font-medium">
+                  {f.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DepletingBatchesCard({ batches, onNavigate }: { batches: DepletingBatch[]; onNavigate: () => void }) {
+  if (batches.length === 0) return null;
+  return (
+    <div className="bg-card rounded-xl border border-amber-200 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-amber-100 bg-amber-50">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-600" />
+          <p className="text-sm font-semibold text-foreground">Depleting Inventory</p>
+          <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-0.5">
+            {batches.length}
+          </span>
+        </div>
+        <button onClick={onNavigate} className="text-xs font-medium text-amber-700 hover:underline">
+          View all →
+        </button>
+      </div>
+      <div className="divide-y divide-border">
+        {batches.slice(0, 5).map(b => (
+          <div
+            key={b.id}
+            onClick={onNavigate}
+            className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">
+                {b.ingredient_name} <span className="text-muted-foreground font-normal">· #{b.batch_number}</span>
+              </p>
+              <div className="w-full h-1.5 bg-muted rounded-full mt-1.5 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${b.balance_pct < 30 ? "bg-red-500" : "bg-amber-500"}`}
+                  style={{ width: `${Math.max(2, b.balance_pct)}%` }}
+                />
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-sm font-bold text-foreground tabular-nums">{Math.round(b.balance_pct)}%</p>
+              <p className="text-[10px] text-muted-foreground">{b.balance.toFixed(0)} {b.received_unit ?? b.pack_unit} left</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MonthlyCheckinChart({ data }: { data: { day: string; count: number }[] }) {
   const now = new Date();
   const year = now.getFullYear();
@@ -263,6 +342,9 @@ export default function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [showBroadcast, setShowBroadcast] = useState(false);
+  const [flavoursToday, setFlavoursToday] = useState<FlavoursToday | null>(null);
+  const [showFlavours, setShowFlavours] = useState(false);
+  const [depletingBatches, setDepletingBatches] = useState<DepletingBatch[]>([]);
 
   useEffect(() => {
     if (!center) return;
@@ -270,6 +352,12 @@ export default function DashboardPage() {
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
+    apiGet<FlavoursToday>(`/admin/centers/${center.id}/flavours-today`)
+      .then(setFlavoursToday)
+      .catch(console.error);
+    apiGet<DepletingBatch[]>(`/admin/centers/${center.id}/depleting-batches`)
+      .then(setDepletingBatches)
+      .catch(console.error);
   }, [center?.id]);
 
   return (
@@ -298,7 +386,13 @@ export default function DashboardPage() {
               <StatCard icon={Users} label="Total Members" value={data.member_count} color="bg-teal-base" onClick={() => navigate("/members")} />
               <StatCard icon={Activity} label="Active Today" value={data.today_active_members} color="bg-teal-dark" onClick={() => navigate("/members")} />
               <StatCard icon={Flame} label="kcal Today" value={Math.round(data.today_calories).toLocaleString()} color="bg-amber-500" onClick={() => navigate("/consumption")} />
-              <StatCard icon={UtensilsCrossed} label="Menu Items" value={data.menu_item_count} color="bg-teal-mid" onClick={() => navigate("/set-menu")} />
+              <StatCard
+                icon={Sparkles}
+                label={`Flavours for ${flavoursToday?.day ?? "Today"}`}
+                value={flavoursToday?.flavours.length ?? 0}
+                color="bg-teal-mid"
+                onClick={() => setShowFlavours(true)}
+              />
               <StatCard
                 icon={CalendarClock}
                 label="Expiring Membership or Servings"
@@ -311,22 +405,11 @@ export default function DashboardPage() {
               />
             </div>
 
-            {/* ── Quick-nav cards ── */}
-            <div className="grid grid-cols-3 gap-3">
-              <div
-                onClick={() => navigate("/set-menu")}
-                className="bg-card rounded-xl border border-border px-4 py-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex items-center gap-3"
-              >
-                <div className="w-8 h-8 rounded-lg bg-teal-pale flex items-center justify-center flex-shrink-0">
-                  <UtensilsCrossed className="w-4 h-4 text-teal-base" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Set Menu</p>
-                  <p className="text-[11px] text-muted-foreground leading-tight">Food items & BOM components</p>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
-              </div>
+            {/* ── Depleting inventory ── */}
+            <DepletingBatchesCard batches={depletingBatches} onNavigate={() => navigate("/inventory")} />
 
+            {/* ── Quick-nav cards ── */}
+            <div className="grid grid-cols-2 gap-3">
               <div
                 onClick={() => navigate("/consumption")}
                 className="bg-card rounded-xl border border-border px-4 py-3 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all group flex items-center gap-3"
@@ -382,6 +465,9 @@ export default function DashboardPage() {
 
         {showBroadcast && center && (
           <AdHocBroadcastModal centerId={center.id} onClose={() => setShowBroadcast(false)} />
+        )}
+        {showFlavours && flavoursToday && (
+          <FlavoursTodayModal day={flavoursToday.day} flavours={flavoursToday.flavours} onClose={() => setShowFlavours(false)} />
         )}
       </main>
     </div>

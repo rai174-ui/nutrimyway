@@ -365,3 +365,24 @@ export interface IngredientRequirement {
   pack_unit: string;
   min_serving_qty: number;
 }
+
+export interface FlavoursToday {
+  day: string;
+  flavours: CenterFlavour[];
+}
+
+export interface DepletingBatch {
+  id: number;
+  ingredient_id: number;
+  ingredient_name: string;
+  pack_size: number;
+  pack_unit: string;
+  received_qty: number | null;
+  received_unit: string | null;
+  batch_number: string;
+  opened_at: string | null;
+  capacity: number;
+  consumed_qty: number;
+  balance: number;
+  balance_pct: number;
+}

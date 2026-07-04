@@ -54,7 +54,7 @@ function BroadcastSettingsCard() {
   const [savingRetention, setSavingRetention] = useState(false);
   const [retentionSaved, setRetentionSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   // Add-schedule form
   const [newMessage, setNewMessage] = useState("");
@@ -319,7 +319,7 @@ function FlavourMaster() {
 
   const [editId, setEditId] = useState<number | null>(null);
   const [editDays, setEditDays] = useState<Day[]>([...ALL_DAYS]);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   async function load() {
     if (!center) return;
@@ -448,13 +448,13 @@ function FlavourMaster() {
           No flavours yet. Add some above — they'll appear as a dropdown in Item Master.
         </p>
       ) : (
-        <div className="divide-y divide-border">
+        <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {flavours.map(f => (
-            <div key={f.id} className="group px-5 py-3">
+            <div key={f.id} className="group rounded-xl border border-border px-3 py-2.5 hover:border-violet-300 hover:bg-violet-50/30 transition-colors">
               {editId === f.id ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground flex-1">{f.name}</span>
+                    <span className="text-sm font-medium text-foreground flex-1 truncate">{f.name}</span>
                     <button
                       onClick={() => void saveEdit(f.id)}
                       disabled={saving}
@@ -466,30 +466,27 @@ function FlavourMaster() {
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground whitespace-nowrap">Available</label>
-                    <DayPicker value={editDays} onChange={setEditDays} />
-                  </div>
+                  <DayPicker value={editDays} onChange={setEditDays} />
                 </div>
               ) : (
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-violet-700">{f.name}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-violet-700 truncate">{f.name}</p>
+                    <div className="flex items-center gap-1 flex-wrap mt-1">
                       {f.available_days && f.available_days !== "all" ? (
                         f.available_days.split(",").map(d => (
-                          <span key={d} className="text-[10px] bg-violet-50 text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded-full">{d.trim()}</span>
+                          <span key={d} className="text-[9px] bg-violet-50 text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded-full">{d.trim()}</span>
                         ))
                       ) : (
-                        <span className="text-[10px] text-muted-foreground">All days</span>
+                        <span className="text-[9px] text-muted-foreground">All days</span>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                    <button onClick={() => startEdit(f)} className="text-muted-foreground hover:text-violet-600">
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                    <button onClick={() => startEdit(f)} className="text-muted-foreground hover:text-violet-600 p-0.5">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => void deleteFlavour(f.id)} className="text-muted-foreground hover:text-destructive">
+                    <button onClick={() => void deleteFlavour(f.id)} className="text-muted-foreground hover:text-destructive p-0.5">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -521,7 +518,7 @@ function ItemMaster() {
   const [newUnit, setNewUnit] = useState("g");
   const [newMaterialCode, setNewMaterialCode] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [newFlavour, setNewFlavour] = useState("");
   const [newServingQty, setNewServingQty] = useState("1");
   const [newKcalPerServing, setNewKcalPerServing] = useState("");
@@ -731,16 +728,16 @@ function ItemMaster() {
           <Loader2 className="w-5 h-5 animate-spin text-primary" />
         </div>
       ) : (
-        <div className="divide-y divide-border">
+        <div className={ingredients.length === 0 ? "" : "p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"}>
           {ingredients.length === 0 && (
             <p className="px-5 py-8 text-center text-sm text-muted-foreground">
               No items yet. Add one above — BOM and inventory can only use items from this list.
             </p>
           )}
           {ingredients.map(ing => (
-            <div key={ing.id} className="group">
+            <div key={ing.id} className={`group ${editId === ing.id ? "" : "rounded-xl border border-border hover:border-primary/30 hover:bg-muted/20 transition-colors"}`}>
               {editId === ing.id ? (
-                <div className="px-5 py-3 space-y-2 bg-muted/20">
+                <div className="px-5 py-3 space-y-2 bg-muted/20 rounded-xl border border-border">
                   <div className="flex flex-wrap items-center gap-2">
                     <input
                       value={editName}
@@ -813,33 +810,37 @@ function ItemMaster() {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-start gap-3 px-5 py-3">
+                <div className="flex items-start gap-2 px-3 py-2.5">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-foreground">{ing.name}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-medium text-foreground truncate">{ing.name}</span>
                       {ing.material_code && (
-                        <span className="text-[10px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{ing.material_code}</span>
+                        <span className="text-[9px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{ing.material_code}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap mt-1">
+                      {ing.flavour && (
+                        <span className="text-[9px] bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full">{ing.flavour}</span>
                       )}
                       {ing.flavour && (
-                        <span className="text-[10px] bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full">{ing.flavour}</span>
-                      )}
-                      {ing.flavour && (
-                        <span className="text-[10px] bg-orange-50 text-orange-600 border border-orange-200 px-1.5 py-0.5 rounded-full">{ing.serving_qty} {ing.pack_unit}/serve</span>
+                        <span className="text-[9px] bg-orange-50 text-orange-600 border border-orange-200 px-1.5 py-0.5 rounded-full">{ing.serving_qty} {ing.pack_unit}/serve</span>
                       )}
                       {ing.flavour && ing.kcal_per_serving != null && (
-                        <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full">{ing.kcal_per_serving} kcal/serve</span>
+                        <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full">{ing.kcal_per_serving} kcal/serve</span>
+                      )}
+                      {!ing.flavour && (
+                        <span className="text-[9px] text-muted-foreground">Unit: {ing.pack_unit}</span>
                       )}
                     </div>
                     {ing.description && (
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">{ing.description}</p>
                     )}
-                    <p className="text-xs text-muted-foreground mt-0.5">Unit: {ing.pack_unit}</p>
                   </div>
-                  <div className="flex items-center gap-1 pt-1 opacity-0 group-hover:opacity-100 transition-all">
-                    <button onClick={() => startEdit(ing)} className="text-muted-foreground hover:text-primary">
+                  <div className="flex items-center gap-0.5 pt-0.5 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                    <button onClick={() => startEdit(ing)} className="text-muted-foreground hover:text-primary p-0.5">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => void deleteIngredient(ing.id)} className="text-muted-foreground hover:text-destructive">
+                    <button onClick={() => void deleteIngredient(ing.id)} className="text-muted-foreground hover:text-destructive p-0.5">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -865,7 +866,7 @@ function CenterSettingsCard() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!center) return;
@@ -1015,7 +1016,7 @@ function CenterSettingsCard() {
 function CenterQRCode() {
   const center = getAdminCenter();
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   if (!center) return null;
 
@@ -1087,7 +1088,7 @@ function MemberManager() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   async function load() {
     if (!center) return;
@@ -1193,7 +1194,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [pwExpanded, setPwExpanded] = useState(true);
+  const [pwExpanded, setPwExpanded] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
