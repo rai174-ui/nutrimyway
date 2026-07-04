@@ -1707,10 +1707,17 @@ router.post("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (
   if (!ingredient_id) { res.status(400).json({ error: "ingredient_id is required" }); return; }
   if (!batch_number?.trim()) { res.status(400).json({ error: "batch_number is required" }); return; }
 
-  // Member-assigned inventory issuance is only allowed for virtual members
+  // Member-assigned inventory issuance is only allowed for virtual members mapped to this center
   if (assigned_member_id != null) {
-    const { rows: memberTypeRows } = await pool.query(`SELECT member_type FROM members WHERE id = $1`, [assigned_member_id]);
+    const { rows: memberTypeRows } = await pool.query(
+      `SELECT m.member_type, EXISTS (
+         SELECT 1 FROM member_center_mapping mcm WHERE mcm.member_id = m.id AND mcm.center_id = $2
+       ) AS in_center
+       FROM members m WHERE m.id = $1`,
+      [assigned_member_id, centerId]
+    );
     if (!memberTypeRows[0]) { res.status(404).json({ error: "Member not found" }); return; }
+    if (!memberTypeRows[0].in_center) { res.status(404).json({ error: "Member not found in this center" }); return; }
     if (memberTypeRows[0].member_type !== "virtual") {
       res.status(400).json({ error: "Inventory can only be issued directly to virtual members" });
       return;

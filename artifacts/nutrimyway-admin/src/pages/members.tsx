@@ -1015,8 +1015,9 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
   const renewDaysLeft = member.valid_until
     ? Math.ceil((new Date(member.valid_until).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null;
-  const showRenew = renewDaysLeft !== null && renewDaysLeft <= 10;
   const checkinsUsed = member.checkins_used ?? 0;
+  const checkinCapReached = checkinsUsed >= CHECKIN_CAP;
+  const showRenew = (renewDaysLeft !== null && renewDaysLeft <= 10) || checkinCapReached;
 
   function openRenewDialog() {
     setRenewPaymentMethod("cash");
