@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { useGetMember, getGetMemberQueryKey, useGetMemberIssuances, getGetMemberIssuancesQueryKey } from "@workspace/api-client-react";
+import { useGetMember, getGetMemberQueryKey, useGetMemberIssuances, getGetMemberIssuancesQueryKey, useGetMemberStatus, getGetMemberStatusQueryKey } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
-import { Package, Calendar, LogOut, Camera, Loader2, X, CheckCircle2, Info } from "lucide-react";
+import { Package, Calendar, LogOut, Camera, Loader2, X, CheckCircle2, Info, AlertTriangle, Ticket } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -19,6 +19,10 @@ export function Profile() {
 
   const { data: issuances } = useGetMemberIssuances(MEMBER_ID!, {
     query: { enabled: !!MEMBER_ID, queryKey: getGetMemberIssuancesQueryKey(MEMBER_ID!) }
+  });
+
+  const { data: status } = useGetMemberStatus(MEMBER_ID!, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberStatusQueryKey(MEMBER_ID!) }
   });
 
   // AI Food Scan key management
@@ -140,6 +144,50 @@ export function Profile() {
           </div>
         </div>
       </section>
+
+      {/* Membership status: check-ins remaining + validity */}
+      {status && (
+        <section className={`rounded-[12px] p-5 border ${status.is_expiring_soon ? "bg-amber-50 border-amber-200" : "bg-card border-border"}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-sm font-semibold uppercase tracking-wider flex items-center gap-1.5 ${status.is_expiring_soon ? "text-amber-700" : "text-muted-foreground"}`}>
+              <Ticket className="w-3.5 h-3.5" />
+              Membership Status
+            </h2>
+            {status.is_expiring_soon && (
+              <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
+                <AlertTriangle className="w-3 h-3" />
+                Renew soon
+              </span>
+            )}
+          </div>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="font-medium">Check-ins Used</span>
+                <span className="font-bold">{status.checkins_used} / {status.checkin_cap}</span>
+              </div>
+              <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${status.checkins_remaining <= 7 ? "bg-amber-500" : "bg-primary"}`}
+                  style={{ width: `${Math.min((status.checkins_used / status.checkin_cap) * 100, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">{status.checkins_remaining} check-in{status.checkins_remaining === 1 ? "" : "s"} remaining this cycle</p>
+            </div>
+            {status.valid_until && (
+              <div className="flex justify-between items-center text-sm pt-1 border-t border-border/60">
+                <span className="font-medium">Valid Until</span>
+                <span className={`font-bold ${status.is_expiring_soon ? "text-amber-700" : ""}`}>
+                  {format(new Date(status.valid_until), "MMM d, yyyy")}
+                  {status.days_until_expiry != null && status.days_until_expiry >= 0 && (
+                    <span className="font-normal text-muted-foreground"> ({status.days_until_expiry}d left)</span>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* AI Food Scan */}
       <section className="bg-card rounded-[12px] border border-border overflow-hidden">

@@ -248,6 +248,23 @@ export const GetDailySummaryResponse = zod.object({
 
 
 /**
+ * @summary Get member's check-in and validity status, including expiry warnings
+ */
+export const GetMemberStatusParams = zod.object({
+  "memberId": zod.coerce.number()
+})
+
+export const GetMemberStatusResponse = zod.object({
+  "checkin_cap": zod.number(),
+  "checkins_used": zod.number(),
+  "checkins_remaining": zod.number(),
+  "valid_until": zod.string().nullable(),
+  "days_until_expiry": zod.number().nullable(),
+  "is_expiring_soon": zod.boolean().describe('True when validity expires within 7 days or 7 or fewer check-ins remain')
+})
+
+
+/**
  * @summary Get pack issuance history for member
  */
 export const GetMemberIssuancesParams = zod.object({

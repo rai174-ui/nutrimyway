@@ -17,6 +17,47 @@ router.get("/members/:id", async (req, res) => {
   res.json(rows[0]);
 });
 
+// GET /api/members/:id/status — check-in usage and validity expiry warnings
+router.get("/members/:id/status", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { rows } = await pool.query(
+    `SELECT m.valid_until,
+            (COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)) AS cycle_started_at,
+            (SELECT COUNT(*) FROM member_check_ins mci
+             WHERE mci.member_id = m.id
+               AND mci.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
+            ) AS checkins_used,
+            (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days') AS expiring_by_date,
+            CASE WHEN m.valid_until IS NOT NULL
+              THEN (DATE(m.valid_until) - CURRENT_DATE)
+              ELSE NULL
+            END AS days_until_expiry
+     FROM members m
+     WHERE m.id = $1`,
+    [memberId]
+  );
+  if (!rows[0]) { res.status(404).json({ error: "Member not found" }); return; }
+
+  const row = rows[0] as {
+    valid_until: string | null;
+    checkins_used: string;
+    expiring_by_date: boolean;
+    days_until_expiry: number | null;
+  };
+  const checkinsUsed = Number(row.checkins_used);
+  const checkinsRemaining = Math.max(CHECKIN_CAP - checkinsUsed, 0);
+  const isExpiringSoon = row.expiring_by_date || checkinsRemaining <= 7;
+
+  res.json({
+    checkin_cap: CHECKIN_CAP,
+    checkins_used: checkinsUsed,
+    checkins_remaining: checkinsRemaining,
+    valid_until: row.valid_until,
+    days_until_expiry: row.days_until_expiry,
+    is_expiring_soon: isExpiringSoon,
+  });
+});
+
 // GET /api/members/:id/centers
 router.get("/members/:id/centers", async (req, res) => {
   const { rows } = await pool.query(

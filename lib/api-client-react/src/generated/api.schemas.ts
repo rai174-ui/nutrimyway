@@ -20,6 +20,18 @@ export interface Member {
   daily_kcal?: number | null;
 }
 
+export interface MemberStatus {
+  checkin_cap: number;
+  checkins_used: number;
+  checkins_remaining: number;
+  /** @nullable */
+  valid_until: string | null;
+  /** @nullable */
+  days_until_expiry: number | null;
+  /** True when validity expires within 7 days or 7 or fewer check-ins remain */
+  is_expiring_soon: boolean;
+}
+
 export interface Center {
   id: string;
   name: string;

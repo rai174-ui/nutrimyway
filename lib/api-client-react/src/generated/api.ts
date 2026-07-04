@@ -34,6 +34,7 @@ import type {
   HealthStatus,
   Issuance,
   Member,
+  MemberStatus,
   PackSize,
   RequestUploadUrl400,
   UploadUrlRequest,
@@ -831,6 +832,83 @@ export function useGetDailySummary<TData = Awaited<ReturnType<typeof getDailySum
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetDailySummaryQueryOptions(memberId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMemberStatusUrl = (memberId: number,) => {
+
+
+
+
+  return `/api/members/${memberId}/status`
+}
+
+/**
+ * @summary Get member's check-in and validity status, including expiry warnings
+ */
+export const getMemberStatus = async (memberId: number, options?: RequestInit): Promise<MemberStatus> => {
+
+  return customFetch<MemberStatus>(getGetMemberStatusUrl(memberId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMemberStatusQueryKey = (memberId: number,) => {
+    return [
+    `/api/members/${memberId}/status`
+    ] as const;
+    }
+
+
+export const getGetMemberStatusQueryOptions = <TData = Awaited<ReturnType<typeof getMemberStatus>>, TError = ErrorType<unknown>>(memberId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMemberStatusQueryKey(memberId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMemberStatus>>> = ({ signal }) => getMemberStatus(memberId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: memberId !== null && memberId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMemberStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMemberStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getMemberStatus>>>
+export type GetMemberStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get member's check-in and validity status, including expiry warnings
+ */
+
+export function useGetMemberStatus<TData = Awaited<ReturnType<typeof getMemberStatus>>, TError = ErrorType<unknown>>(
+ memberId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMemberStatusQueryOptions(memberId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

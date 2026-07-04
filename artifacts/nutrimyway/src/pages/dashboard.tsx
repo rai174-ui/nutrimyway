@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, Fragment, type ReactNode } from "react";
-import { useGetMember, getGetMemberQueryKey, useGetDailySummary, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
+import { useGetMember, getGetMemberQueryKey, useGetDailySummary, getGetDailySummaryQueryKey, useGetMemberStatus, getGetMemberStatusQueryKey } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { Plus, LogOut, MapPin, Camera, X, Megaphone, ChevronRight } from "lucide-react";
+import { Plus, LogOut, MapPin, Camera, X, Megaphone, ChevronRight, AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -285,6 +285,10 @@ export function Dashboard() {
     query: { enabled: !!MEMBER_ID, queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) }
   });
 
+  const { data: status } = useGetMemberStatus(MEMBER_ID!, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetMemberStatusQueryKey(MEMBER_ID!) }
+  });
+
   const { checkin, reload: reloadCheckin } = useActiveCheckin(MEMBER_ID);
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
 
@@ -317,6 +321,27 @@ export function Dashboard() {
         <h1 className="text-2xl font-bold text-foreground">Hi, {member?.name?.split(' ')[0] || 'Member'}</h1>
         <p className="text-muted-foreground">{format(new Date(), "EEEE, MMM do")}</p>
       </header>
+
+      {/* Expiry / check-in cap warning */}
+      {status?.is_expiring_soon && (
+        <Link
+          href="/profile"
+          className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-[12px] p-3.5"
+        >
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-900">Membership renewal needed soon</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              {status.checkins_remaining} of {status.checkin_cap} check-ins left
+              {status.days_until_expiry != null && (
+                <> &middot; expires in {status.days_until_expiry} day{status.days_until_expiry === 1 ? "" : "s"}</>
+              )}
+              . Renew at your center to keep going.
+            </p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+        </Link>
+      )}
 
       {/* Broadcasts */}
       {broadcasts.filter(b => !b.is_read).length > 0 && (
