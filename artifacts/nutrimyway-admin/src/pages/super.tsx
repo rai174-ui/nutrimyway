@@ -8,7 +8,9 @@ import * as XLSX from "xlsx";
 import {
   isSuperAuthenticated, saveSuperAuth, clearSuperAuth, superFetch, type CenterWithStatus,
 } from "@/lib/api";
-import { UploadMembersDialog, UploadBatchesDialog } from "@/components/bulk-upload-dialogs";
+import {
+  UploadMembersDialog, UploadBatchesDialog, UploadFlavoursDialog, UploadItemsDialog,
+} from "@/components/bulk-upload-dialogs";
 
 // ─── Reset password form (accessed via email link with ?token=xxx) ───────────
 
@@ -556,7 +558,9 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
   const [validityCenter, setValidityCenter] = useState<CenterWithStatus | null>(null);
   const [editCenter, setEditCenter] = useState<CenterWithStatus | null>(null);
   const [uploadMembersCenter, setUploadMembersCenter] = useState<CenterWithStatus | null>(null);
+  const [uploadFlavoursCenter, setUploadFlavoursCenter] = useState<CenterWithStatus | null>(null);
   const [showUploadBatches, setShowUploadBatches] = useState(false);
+  const [showUploadItems, setShowUploadItems] = useState(false);
   const [showAddCenter, setShowAddCenter] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -656,6 +660,27 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
         />
       )}
 
+      {uploadFlavoursCenter && (
+        <UploadFlavoursDialog
+          center={uploadFlavoursCenter}
+          onClose={() => setUploadFlavoursCenter(null)}
+          onSuccess={count => {
+            setUploadFlavoursCenter(null);
+            showToast(`${count} flavour${count !== 1 ? "s" : ""} uploaded`);
+          }}
+        />
+      )}
+
+      {showUploadItems && (
+        <UploadItemsDialog
+          onClose={() => setShowUploadItems(false)}
+          onSuccess={count => {
+            setShowUploadItems(false);
+            showToast(`${count} item${count !== 1 ? "s" : ""} uploaded`);
+          }}
+        />
+      )}
+
       {showAddCenter && (
         <AddCenterDialog
           onClose={() => setShowAddCenter(false)}
@@ -702,6 +727,13 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
             >
               <Upload className="w-4 h-4" />
               Upload Batches
+            </button>
+            <button
+              onClick={() => setShowUploadItems(true)}
+              className="flex items-center gap-1.5 text-sm bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors font-medium"
+            >
+              <Upload className="w-4 h-4" />
+              Upload Items
             </button>
             <button
               onClick={() => void load()}
@@ -785,6 +817,13 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
                           className="p-1.5 rounded-lg text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
                         >
                           <Users className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setUploadFlavoursCenter(center)}
+                          title="Bulk upload flavours"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => setResetPwdCenter(center)}

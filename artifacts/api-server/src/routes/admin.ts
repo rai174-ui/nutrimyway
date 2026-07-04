@@ -2528,4 +2528,119 @@ router.post("/admin/super/upload/batches", requireSuperAdmin, async (req, res) =
   res.json(results);
 });
 
+// POST /api/admin/super/centers/:centerId/upload/flavours
+// Accepts XLSX/CSV with columns: name, available_days
+router.post("/admin/super/centers/:centerId/upload/flavours", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+
+  const { rows } = req.body as { rows: Record<string, unknown>[] };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "rows array is required" }); return;
+  }
+
+  const results = { created: 0, skipped: 0, errors: [] as string[] };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: centerRows } = await client.query("SELECT id FROM centers WHERE id = $1", [centerId]);
+    if (!centerRows[0]) {
+      await client.query("ROLLBACK");
+      client.release();
+      res.status(404).json({ error: "Unknown center" });
+      return;
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2; // 1-indexed, row 1 is header
+      const name = String(row.name ?? "").trim();
+      if (!name) { results.errors.push(`Row ${rowNum}: name is required`); continue; }
+      const availableDays = String(row.available_days ?? "").trim() || "all";
+
+      const { rows: r } = await client.query(
+        `INSERT INTO center_flavours (center_id, name, available_days)
+         VALUES ($1, $2, $3) ON CONFLICT (center_id, name) DO NOTHING RETURNING id`,
+        [centerId, name, availableDays]
+      );
+      if (!r[0]) { results.skipped++; continue; }
+      results.created++;
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    client.release();
+    res.status(500).json({ error: "Bulk flavour upload failed", detail: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  client.release();
+  res.json(results);
+});
+
+// POST /api/admin/super/upload/items
+// Accepts XLSX/CSV with columns: name, material_code, pack_size, pack_unit, description, flavour, serving_qty, kcal_per_serving, trial_eligible
+// Items (ingredients) are global (not center-scoped). material_code must be unique.
+router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => {
+  const { rows } = req.body as { rows: Record<string, unknown>[] };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "rows array is required" }); return;
+  }
+
+  const results = { created: 0, skipped: 0, errors: [] as string[] };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: existing } = await client.query("SELECT name, material_code FROM ingredients");
+    const existingNames = new Set<string>(existing.map((r: { name: string }) => r.name.toLowerCase()));
+    const existingCodes = new Set<string>(
+      existing
+        .filter((r: { material_code: string | null }) => r.material_code)
+        .map((r: { material_code: string }) => r.material_code.toLowerCase())
+    );
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2; // 1-indexed, row 1 is header
+      const name = String(row.name ?? "").trim();
+      const materialCode = String(row.material_code ?? "").trim();
+      if (!name) { results.errors.push(`Row ${rowNum}: name is required`); continue; }
+      if (!materialCode) { results.errors.push(`Row ${rowNum}: material_code is required`); continue; }
+
+      if (existingNames.has(name.toLowerCase()) || existingCodes.has(materialCode.toLowerCase())) {
+        results.skipped++;
+        continue;
+      }
+
+      const packSize = Number(row.pack_size ?? 1) || 1;
+      const packUnit = String(row.pack_unit ?? "g").trim() || "g";
+      const description = String(row.description ?? "").trim() || null;
+      const flavour = String(row.flavour ?? "").trim() || null;
+      const servingQty = Number(row.serving_qty ?? 1) || 1;
+      const kcalPerServing = row.kcal_per_serving != null && row.kcal_per_serving !== "" ? Number(row.kcal_per_serving) : null;
+      const trialEligibleRaw = String(row.trial_eligible ?? "").trim().toLowerCase();
+      const trialEligible = trialEligibleRaw === "yes" || trialEligibleRaw === "true";
+
+      await client.query(
+        `INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [name, packSize, packUnit, materialCode, description, flavour, servingQty, kcalPerServing, trialEligible]
+      );
+      existingNames.add(name.toLowerCase());
+      existingCodes.add(materialCode.toLowerCase());
+      results.created++;
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    client.release();
+    res.status(500).json({ error: "Bulk item upload failed", detail: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  client.release();
+  res.json(results);
+});
+
 export default router;
