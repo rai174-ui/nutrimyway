@@ -2,12 +2,31 @@ import { Router } from "express";
 import { pool } from "../lib/sqlite";
 
 const router = Router();
-const CHECKIN_CAP = 32;
+const DEFAULT_CHECKIN_CAP = 32;
 
 async function isTrialMemberType(memberId: number): Promise<boolean> {
   const { rows } = await pool.query("SELECT member_type FROM members WHERE id = $1", [memberId]);
   const type = rows[0]?.member_type as string | undefined;
   return type === "trial_1day" || type === "trial_3day";
+}
+
+// A member can be mapped to more than one center; use the strictest (lowest)
+// check-in cap among their centers so no single center's limit is exceeded.
+async function getMemberCheckinCap(memberId: number): Promise<number> {
+  const { rows } = await pool.query(
+    `SELECT MIN(c.checkin_cap) AS cap
+     FROM member_center_mapping mcm
+     JOIN centers c ON c.id = mcm.center_id
+     WHERE mcm.member_id = $1`,
+    [memberId]
+  );
+  const cap = rows[0]?.cap as number | null;
+  return cap ?? DEFAULT_CHECKIN_CAP;
+}
+
+async function getCenterCheckinCap(centerId: string): Promise<number> {
+  const { rows } = await pool.query("SELECT checkin_cap FROM centers WHERE id = $1", [centerId]);
+  return Number(rows[0]?.checkin_cap ?? DEFAULT_CHECKIN_CAP);
 }
 
 // GET /api/members/:id
@@ -44,12 +63,13 @@ router.get("/members/:id/status", async (req, res) => {
     expiring_by_date: boolean;
     days_until_expiry: number | null;
   };
+  const checkinCap = await getMemberCheckinCap(memberId);
   const checkinsUsed = Number(row.checkins_used);
-  const checkinsRemaining = Math.max(CHECKIN_CAP - checkinsUsed, 0);
+  const checkinsRemaining = Math.max(checkinCap - checkinsUsed, 0);
   const isExpiringSoon = row.expiring_by_date || checkinsRemaining <= 7;
 
   res.json({
-    checkin_cap: CHECKIN_CAP,
+    checkin_cap: checkinCap,
     checkins_used: checkinsUsed,
     checkins_remaining: checkinsRemaining,
     valid_until: row.valid_until,
@@ -281,12 +301,13 @@ router.post("/members/:id/checkin", async (req, res) => {
   const { rows: cycleRows } = await pool.query(`SELECT cycle_started_at FROM members WHERE id = $1`, [memberId]);
   const cycleStartedAt = cycleRows[0]?.cycle_started_at as string | null;
   if (cycleStartedAt) {
+    const checkinCap = await getCenterCheckinCap(center_id);
     const { rows: usedRows } = await pool.query(
       `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND checked_in_at >= $2`,
       [memberId, cycleStartedAt]
     );
-    if (Number(usedRows[0].count) >= CHECKIN_CAP) {
-      res.status(403).json({ error: `You've reached the ${CHECKIN_CAP} check-in limit for this membership cycle. Please renew your membership at your center to continue.` });
+    if (Number(usedRows[0].count) >= checkinCap) {
+      res.status(403).json({ error: `You've reached the ${checkinCap} check-in limit for this membership cycle. Please renew your membership at your center to continue.` });
       return;
     }
   }

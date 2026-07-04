@@ -1,4 +1,5 @@
 - [Visit consumption booking](visit-consumption.md) — bookAndCheckout helper + auto-checkout at 180 min; mandatory items auto-selected on check-in.
 - [Postgres mixed-type COALESCE](postgres-mixed-type-coalesce.md) — never COALESCE a TIMESTAMPTZ column with a legacy TEXT date column without casting.
 - [Trial member menu/flavour filtering](trial-member-filtering.md) — trial_1day/trial_3day members only see trial_eligible (or mandatory) items; filter must be applied at every entry point, not just member-facing routes.
+- [Per-center check-in cap / renewal days](per-center-limits.md) — checkin_cap/renewal_days live on `centers`, not global constants; always read via the getCenterLimits/getMemberCheckinCap helpers.
 - [Admin routes bypass OpenAPI codegen](admin-routes-no-openapi.md) — /admin/* routes use plain Express + superFetch, not Orval-generated hooks; don't touch openapi.yaml for them.

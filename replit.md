@@ -37,6 +37,7 @@ A mobile-first health and nutrition tracking web app for wellness center members
 - Active member is hardcoded to ID=1 (no auth in this version)
 - Calorie target is hardcoded to 2000 kcal (can be personalized later)
 - `lib/api-zod/src/index.ts` only re-exports from `./generated/api` — the `./generated/types` barrel is stripped post-codegen to avoid TS2308 collisions caused by Orval generating duplicate Params types
+- Check-in cap and renewal-day extension are per-center settings (`centers.checkin_cap`, `centers.renewal_days`, defaults 32/40), editable by Center Admins on the Settings page — not global constants
 
 ## Product
 

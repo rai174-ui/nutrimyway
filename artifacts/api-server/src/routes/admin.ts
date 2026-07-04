@@ -42,8 +42,17 @@ async function sendSuperAdminResetEmail(resetUrl: string): Promise<void> {
 
 const router = Router();
 const JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
-const CHECKIN_CAP = 32;
-const RENEWAL_DAYS = 40;
+const DEFAULT_CHECKIN_CAP = 32;
+const DEFAULT_RENEWAL_DAYS = 40;
+
+async function getCenterLimits(centerId: string): Promise<{ checkinCap: number; renewalDays: number }> {
+  const { rows } = await pool.query("SELECT checkin_cap, renewal_days FROM centers WHERE id = $1", [centerId]);
+  return {
+    checkinCap: Number(rows[0]?.checkin_cap ?? DEFAULT_CHECKIN_CAP),
+    renewalDays: Number(rows[0]?.renewal_days ?? DEFAULT_RENEWAL_DAYS),
+  };
+}
+
 const VALID_MEMBER_TYPES = new Set(["trial_1day", "trial_3day", "regular", "virtual"]);
 
 interface AdminJwt {
@@ -477,9 +486,14 @@ router.get("/admin/centers/:centerId/settings", requireAdmin, async (req, res) =
   const { centerId } = req.params;
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
-  const { rows } = await pool.query("SELECT auto_checkout_min FROM centers WHERE id = $1", [centerId]);
+  const { rows } = await pool.query("SELECT auto_checkout_min, photo_retention_days, checkin_cap, renewal_days FROM centers WHERE id = $1", [centerId]);
   if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
-  res.json({ auto_checkout_min: rows[0].auto_checkout_min as number, photo_retention_days: rows[0].photo_retention_days as number ?? 2 });
+  res.json({
+    auto_checkout_min: rows[0].auto_checkout_min as number,
+    photo_retention_days: rows[0].photo_retention_days as number ?? 2,
+    checkin_cap: rows[0].checkin_cap as number ?? DEFAULT_CHECKIN_CAP,
+    renewal_days: rows[0].renewal_days as number ?? DEFAULT_RENEWAL_DAYS,
+  });
 });
 
 // PATCH /api/admin/centers/:centerId/settings
@@ -487,7 +501,9 @@ router.patch("/admin/centers/:centerId/settings", requireAdmin, async (req, res)
   const { centerId } = req.params;
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
-  const { auto_checkout_min, photo_retention_days } = req.body as { auto_checkout_min?: unknown; photo_retention_days?: unknown };
+  const { auto_checkout_min, photo_retention_days, checkin_cap, renewal_days } = req.body as {
+    auto_checkout_min?: unknown; photo_retention_days?: unknown; checkin_cap?: unknown; renewal_days?: unknown;
+  };
   const updates: string[] = [];
   const values: unknown[] = [];
   if (auto_checkout_min != null) {
@@ -506,11 +522,32 @@ router.patch("/admin/centers/:centerId/settings", requireAdmin, async (req, res)
     updates.push(`photo_retention_days = $${updates.length + 1}`);
     values.push(days);
   }
+  if (checkin_cap != null) {
+    const cap = Number(checkin_cap);
+    if (!Number.isInteger(cap) || cap < 1 || cap > 500) {
+      res.status(400).json({ error: "checkin_cap must be a whole number between 1 and 500" }); return;
+    }
+    updates.push(`checkin_cap = $${updates.length + 1}`);
+    values.push(cap);
+  }
+  if (renewal_days != null) {
+    const days = Number(renewal_days);
+    if (!Number.isInteger(days) || days < 1 || days > 365) {
+      res.status(400).json({ error: "renewal_days must be a whole number between 1 and 365" }); return;
+    }
+    updates.push(`renewal_days = $${updates.length + 1}`);
+    values.push(days);
+  }
   if (updates.length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
   values.push(centerId);
   await pool.query(`UPDATE centers SET ${updates.join(", ")} WHERE id = $${values.length}`, values);
-  const { rows } = await pool.query("SELECT auto_checkout_min, photo_retention_days FROM centers WHERE id = $1", [centerId]);
-  res.json({ auto_checkout_min: rows[0].auto_checkout_min as number, photo_retention_days: rows[0].photo_retention_days as number });
+  const { rows } = await pool.query("SELECT auto_checkout_min, photo_retention_days, checkin_cap, renewal_days FROM centers WHERE id = $1", [centerId]);
+  res.json({
+    auto_checkout_min: rows[0].auto_checkout_min as number,
+    photo_retention_days: rows[0].photo_retention_days as number,
+    checkin_cap: rows[0].checkin_cap as number,
+    renewal_days: rows[0].renewal_days as number,
+  });
 });
 
 // GET /api/admin/centers/:centerId/dashboard
@@ -520,6 +557,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+  const { checkinCap } = await getCenterLimits(centerId);
 
   const [memberRes, menuRes, kcalRes, activeRes, expiringRes, weeklyRes] = await Promise.all([
     pool.query("SELECT COUNT(*) as count FROM member_center_mapping WHERE center_id = $1", [centerId]),
@@ -555,7 +593,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
            (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days')
            OR ($2 - COALESCE(ci.used, 0)) <= 7
          )`,
-      [centerId, CHECKIN_CAP]
+      [centerId, checkinCap]
     ),
     pool.query(
       `SELECT DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') AS day,
@@ -1025,6 +1063,8 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
   // Auto-checkout any sessions that have exceeded the time limit
   await autoCheckoutExpired(centerId);
 
+  const { checkinCap } = await getCenterLimits(centerId);
+
   const { rows } = await pool.query(
     `SELECT
        m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
@@ -1051,11 +1091,11 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        ${expiringSoon ? `AND (
          (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days')
          OR (
-           (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.checked_in_at >= m.cycle_started_at) >= ${CHECKIN_CAP - 7}
+           (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.checked_in_at >= m.cycle_started_at) >= $2
          )
        )` : ""}
      ORDER BY m.valid_until ASC NULLS LAST, m.name`,
-    [centerId]
+    expiringSoon ? [centerId, checkinCap - 7] : [centerId]
   );
   res.json(rows);
 });
@@ -1220,12 +1260,14 @@ router.patch("/admin/centers/:centerId/members/:memberId/renew", requireAdmin, a
   const { rows: currentRows } = await pool.query(`SELECT valid_until FROM members WHERE id = $1`, [Number(memberId)]);
   const previousValidUntil = currentRows[0]?.valid_until as string | null;
 
+  const { renewalDays } = await getCenterLimits(centerId);
+
   const { rows } = await pool.query(
     `UPDATE members
-     SET valid_until = GREATEST(CURRENT_DATE, COALESCE(valid_until, CURRENT_DATE)) + INTERVAL '${RENEWAL_DAYS} days',
+     SET valid_until = GREATEST(CURRENT_DATE, COALESCE(valid_until, CURRENT_DATE)) + MAKE_INTERVAL(days => $2),
          cycle_started_at = NOW()
      WHERE id = $1 RETURNING valid_until, cycle_started_at`,
-    [Number(memberId)]
+    [Number(memberId), renewalDays]
   );
   const updated = rows[0] as { valid_until: string; cycle_started_at: string };
 
@@ -1291,12 +1333,13 @@ router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, 
   const { rows: cycleRows } = await pool.query(`SELECT cycle_started_at FROM members WHERE id = $1`, [Number(memberId)]);
   const cycleStartedAt = cycleRows[0]?.cycle_started_at as string | null;
   if (cycleStartedAt) {
+    const { checkinCap } = await getCenterLimits(centerId);
     const { rows: usedRows } = await pool.query(
       `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND checked_in_at >= $2`,
       [Number(memberId), cycleStartedAt]
     );
-    if (Number(usedRows[0].count) >= CHECKIN_CAP) {
-      res.status(403).json({ error: `Member has reached the ${CHECKIN_CAP} check-in limit for this membership cycle. Renew membership to reset.` });
+    if (Number(usedRows[0].count) >= checkinCap) {
+      res.status(403).json({ error: `Member has reached the ${checkinCap} check-in limit for this membership cycle. Renew membership to reset.` });
       return;
     }
   }

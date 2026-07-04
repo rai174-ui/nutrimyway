@@ -690,6 +690,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables34();
   await migrateAdminTables35();
   await migrateAdminTables36();
+  await migrateAdminTables37();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -985,4 +986,11 @@ async function migrateAdminTables36(): Promise<void> {
   // First-login consent capture
   await pool.query(`ALTER TABLE user_auth ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE center_auth ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ`);
+}
+
+async function migrateAdminTables37(): Promise<void> {
+  // Per-center configurable check-in cap (was a global 32 constant) and renewal
+  // day extension (was a global 40-day constant).
+  await pool.query(`ALTER TABLE centers ADD COLUMN IF NOT EXISTS checkin_cap INTEGER NOT NULL DEFAULT 32`);
+  await pool.query(`ALTER TABLE centers ADD COLUMN IF NOT EXISTS renewal_days INTEGER NOT NULL DEFAULT 40`);
 }
