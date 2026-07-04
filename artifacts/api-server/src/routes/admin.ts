@@ -1071,7 +1071,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        m.dob, m.age_at_joining, m.valid_until, m.is_active, m.member_type, m.cycle_started_at,
        (
          SELECT COUNT(*) FROM member_check_ins mci3
-         WHERE mci3.member_id = m.id AND mci3.checked_in_at >= m.cycle_started_at
+         WHERE mci3.member_id = m.id AND mci3.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
        ) AS checkins_used,
        ci.id          AS checkin_id,
        ci.checked_in_at,
@@ -1091,7 +1091,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        ${expiringSoon ? `AND (
          (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days')
          OR (
-           (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.checked_in_at >= m.cycle_started_at) >= $2
+           (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)) >= $2
          )
        )` : ""}
      ORDER BY m.valid_until ASC NULLS LAST, m.name`,
@@ -2348,8 +2348,8 @@ router.post("/admin/super/centers/:centerId/upload/members", requireSuperAdmin, 
       const validUntil = String(row.valid_until ?? "").trim() || null;
 
       const { rows: m } = await client.query(
-        `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, cycle_started_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW()) RETURNING id`,
         [name, heightCm, doj, mobile, email, membershipNo, dob, age, validUntil]
       );
       await client.query(
