@@ -522,6 +522,7 @@ function ItemMaster() {
   const [newFlavour, setNewFlavour] = useState("");
   const [newServingQty, setNewServingQty] = useState("1");
   const [newKcalPerServing, setNewKcalPerServing] = useState("");
+  const [newTrialEligible, setNewTrialEligible] = useState(false);
 
   const [editName, setEditName] = useState("");
   const [editUnit, setEditUnit] = useState("");
@@ -530,6 +531,7 @@ function ItemMaster() {
   const [editFlavour, setEditFlavour] = useState("");
   const [editServingQty, setEditServingQty] = useState("1");
   const [editKcalPerServing, setEditKcalPerServing] = useState("");
+  const [editTrialEligible, setEditTrialEligible] = useState(false);
 
   async function load() {
     try {
@@ -558,9 +560,10 @@ function ItemMaster() {
         flavour: newFlavour.trim() || null,
         serving_qty: Number(newServingQty) || 1,
         kcal_per_serving: newKcalPerServing.trim() ? Number(newKcalPerServing) : null,
+        trial_eligible: newTrialEligible,
       });
       setNewName(""); setNewUnit("g");
-      setNewMaterialCode(""); setNewDescription(""); setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing("");
+      setNewMaterialCode(""); setNewDescription(""); setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing(""); setNewTrialEligible(false);
       setAdding(false);
       void load();
     } catch (e) { setError((e as Error).message); }
@@ -582,6 +585,7 @@ function ItemMaster() {
         flavour: editFlavour.trim() || null,
         serving_qty: Number(editServingQty) || 1,
         kcal_per_serving: editKcalPerServing.trim() ? Number(editKcalPerServing) : null,
+        trial_eligible: editTrialEligible,
       });
       setEditId(null);
       void load();
@@ -606,6 +610,7 @@ function ItemMaster() {
     setEditFlavour(ing.flavour ?? "");
     setEditServingQty(String(ing.serving_qty ?? 1));
     setEditKcalPerServing(ing.kcal_per_serving != null ? String(ing.kcal_per_serving) : "");
+    setEditTrialEligible(ing.trial_eligible ?? false);
   }
 
   return (
@@ -709,6 +714,15 @@ function ItemMaster() {
                 className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newTrialEligible}
+                onChange={e => setNewTrialEligible(e.target.checked)}
+                className="w-3.5 h-3.5 accent-primary"
+              />
+              Trial-eligible
+            </label>
             <button
               onClick={() => void addIngredient()}
               disabled={!newName.trim() || saving}
@@ -797,6 +811,15 @@ function ItemMaster() {
                         className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                     </div>
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editTrialEligible}
+                        onChange={e => setEditTrialEligible(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-primary"
+                      />
+                      Trial-eligible
+                    </label>
                     <button
                       onClick={() => void saveEdit(ing.id)}
                       disabled={saving}
@@ -830,6 +853,9 @@ function ItemMaster() {
                       )}
                       {!ing.flavour && (
                         <span className="text-[9px] text-muted-foreground">Unit: {ing.pack_unit}</span>
+                      )}
+                      {ing.trial_eligible && (
+                        <span className="text-[9px] bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded-full">Trial-eligible</span>
                       )}
                     </div>
                     {ing.description && (

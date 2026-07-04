@@ -395,7 +395,7 @@ function VisitPanel({
   const loadData = useCallback(async () => {
     try {
       const [items, sels, fOpts, fSels] = await Promise.all([
-        apiGet<MenuItem[]>(`/admin/centers/${centerId}/menu-items`),
+        apiGet<MenuItem[]>(`/admin/centers/${centerId}/menu-items?memberId=${member.id}`),
         apiGet<VisitMenuSelection[]>(`/admin/checkins/${checkinId}/menu-selections`),
         apiGet<FlavourOption[]>(`/admin/checkins/${checkinId}/flavour-options`),
         apiGet<FlavourSelection[]>(`/admin/checkins/${checkinId}/flavour-selections`),
@@ -406,7 +406,7 @@ function VisitPanel({
       setFlavourSelections(fSels);
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
-  }, [centerId, checkinId]);
+  }, [centerId, checkinId, member.id]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 

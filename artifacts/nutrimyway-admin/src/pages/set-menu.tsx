@@ -263,6 +263,7 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete, centerId }: {
   const [openFlavours, setOpenFlavours] = useState<OpenFlavour[]>([]);
   const [loadingFlavours, setLoadingFlavours] = useState(false);
   const [selectedDays, setSelectedDays] = useState<string[]>(parseDays(item.available_days ?? "all"));
+  const [trialEligible, setTrialEligible] = useState(item.trial_eligible ?? false);
   const [saving, setSaving] = useState(false);
   const [togglingMandatory, setTogglingMandatory] = useState(false);
   const [bom, setBom] = useState<BomComponent[]>(item.bom);
@@ -295,6 +296,7 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete, centerId }: {
         name, description,
         flavours: selectedFlavours.join(","),
         available_days: formatDays(selectedDays),
+        trial_eligible: trialEligible,
       });
       onUpdate({ ...updated, bom });
       setEditing(false);
@@ -384,6 +386,15 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete, centerId }: {
                   );
                 })}
               </div>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={trialEligible}
+                  onChange={e => setTrialEligible(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-primary"
+                />
+                Trial-eligible (shown to trial members regardless of day)
+              </label>
             </div>
             <button onClick={saveItem} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
@@ -415,6 +426,9 @@ function MenuItemCard({ item, ingredients, onUpdate, onDelete, centerId }: {
                 {item.flavours && item.flavours.trim() && item.flavours.split(",").filter(f => f.trim()).map(f => (
                   <span key={f} className="text-[10px] bg-violet-100 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5 font-medium">{f.trim()}</span>
                 ))}
+                {item.trial_eligible && (
+                  <span className="text-[10px] bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2 py-0.5 font-semibold">Trial-eligible</span>
+                )}
               </div>
             </div>
             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">

@@ -9,6 +9,12 @@ import { logger } from "../lib/logger";
 const SUPER_ADMIN_EMAIL = process.env["SUPER_ADMIN_EMAIL"] ?? "rai.174@gmail.com";
 const APP_URL = process.env["APP_URL"] ?? "http://localhost:8080";
 
+async function isTrialMemberType(memberId: number): Promise<boolean> {
+  const { rows } = await pool.query("SELECT member_type FROM members WHERE id = $1", [memberId]);
+  const type = rows[0]?.member_type as string | undefined;
+  return type === "trial_1day" || type === "trial_3day";
+}
+
 async function sendSuperAdminResetEmail(resetUrl: string): Promise<void> {
   const host = process.env["SMTP_HOST"];
   const user = process.env["SMTP_USER"];
@@ -579,8 +585,14 @@ router.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res)
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
+  // memberId is optionally provided by the admin visit/check-in panel (members.tsx) to
+  // restrict options to trial-eligible items for trial members. When omitted (e.g. the
+  // Set Menu master-data page), all items for the center are returned unfiltered.
+  const { memberId } = req.query as { memberId?: string };
+  const isTrialMember = memberId ? await isTrialMemberType(Number(memberId)) : false;
+
   const { rows: items } = await pool.query(
-    `SELECT mi.id, mi.center_id, mi.name, mi.description, mi.is_mandatory, mi.flavours, mi.available_days, mi.created_at,
+    `SELECT mi.id, mi.center_id, mi.name, mi.description, mi.is_mandatory, mi.flavours, mi.available_days, mi.created_at, mi.trial_eligible,
        NOT EXISTS (
          SELECT 1 FROM menu_item_bom mb
          WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
@@ -591,8 +603,13 @@ router.get("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res)
        ) AS is_available
      FROM menu_items mi
      WHERE mi.center_id = $1
+       AND (
+         $2 = FALSE
+         OR mi.is_mandatory = TRUE
+         OR mi.trial_eligible = TRUE
+       )
      ORDER BY mi.is_mandatory DESC, mi.name`,
-    [centerId]
+    [centerId, isTrialMember]
   );
   // Attach BOM for each item
   const result = await Promise.all(items.map(async (item) => {
@@ -611,12 +628,12 @@ router.post("/admin/centers/:centerId/menu-items", requireAdmin, async (req, res
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, description, flavours, available_days } = req.body as { name?: string; description?: string; flavours?: string; available_days?: string };
+  const { name, description, flavours, available_days, trial_eligible } = req.body as { name?: string; description?: string; flavours?: string; available_days?: string; trial_eligible?: boolean };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
 
   const { rows } = await pool.query(
-    "INSERT INTO menu_items (center_id, name, description, flavours, available_days) VALUES ($1,$2,$3,$4,$5) RETURNING *",
-    [centerId, name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all"]
+    "INSERT INTO menu_items (center_id, name, description, flavours, available_days, trial_eligible) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
+    [centerId, name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all", trial_eligible ?? false]
   );
   res.status(201).json({ ...rows[0], bom: [] });
 });
@@ -630,12 +647,12 @@ router.put("/admin/menu-items/:itemId", requireAdmin, async (req, res) => {
   if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
   if (existing[0].center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, description, flavours, available_days } = req.body as { name?: string; description?: string; flavours?: string; available_days?: string };
+  const { name, description, flavours, available_days, trial_eligible } = req.body as { name?: string; description?: string; flavours?: string; available_days?: string; trial_eligible?: boolean };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
 
   const { rows } = await pool.query(
-    "UPDATE menu_items SET name=$1, description=$2, flavours=$3, available_days=$4 WHERE id=$5 RETURNING *",
-    [name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all", itemId]
+    "UPDATE menu_items SET name=$1, description=$2, flavours=$3, available_days=$4, trial_eligible=$5 WHERE id=$6 RETURNING *",
+    [name.trim(), description?.trim() ?? null, flavours?.trim() ?? "", available_days?.trim() || "all", trial_eligible ?? false, itemId]
   );
   res.json(rows[0]);
 });
@@ -1227,9 +1244,15 @@ router.get("/admin/centers/:centerId/members/:memberId/renewals", requireAdmin, 
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
+  const { rows: membership } = await pool.query(
+    `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
+
   const { rows } = await pool.query(
-    `SELECT * FROM member_renewals WHERE member_id = $1 ORDER BY created_at DESC`,
-    [Number(memberId)]
+    `SELECT * FROM member_renewals WHERE member_id = $1 AND center_id = $2 ORDER BY created_at DESC`,
+    [Number(memberId), centerId]
   );
   res.json(rows);
 });
@@ -1543,22 +1566,22 @@ router.delete("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, asyn
 // GET /api/admin/ingredients
 router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
   const { rows } = await pool.query(
-    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, created_at FROM ingredients ORDER BY name"
+    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible, created_at FROM ingredients ORDER BY name"
   );
   res.json(rows);
 });
 
 // POST /api/admin/ingredients
 router.post("/admin/ingredients", requireAdmin, async (req, res) => {
-  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving } = req.body as {
+  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible } = req.body as {
     name?: string; pack_size?: number; pack_unit?: string;
-    material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
+    material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   if (!material_code?.trim()) { res.status(400).json({ error: "material_code is required" }); return; }
   const { rows } = await pool.query(
-    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code.trim(), description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null]
+    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code.trim(), description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false]
   );
   res.status(201).json(rows[0]);
 });
@@ -1566,15 +1589,15 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
 // PUT /api/admin/ingredients/:ingredientId
 router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
   const { ingredientId } = req.params;
-  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving } = req.body as {
+  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible } = req.body as {
     name?: string; pack_size?: number; pack_unit?: string;
-    material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
+    material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   if (!material_code?.trim()) { res.status(400).json({ error: "material_code is required" }); return; }
   const { rows } = await pool.query(
-    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6, serving_qty=$7, kcal_per_serving=$8 WHERE id=$9 RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code.trim(), description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, Number(ingredientId)]
+    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6, serving_qty=$7, kcal_per_serving=$8, trial_eligible=$9 WHERE id=$10 RETURNING *",
+    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code.trim(), description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false, Number(ingredientId)]
   );
   if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
   res.json(rows[0]);
@@ -1960,12 +1983,14 @@ router.get("/admin/checkins/:checkinId/flavour-options", requireAdmin, async (re
   const { checkinId } = req.params;
   const adminReq = req as AdminRequest;
   const { rows: ciRows } = await pool.query(
-    `SELECT center_id FROM member_check_ins WHERE id = $1`,
+    `SELECT center_id, member_id FROM member_check_ins WHERE id = $1`,
     [Number(checkinId)]
   );
   if (!ciRows[0]) { res.status(404).json({ error: "Check-in not found" }); return; }
-  const centerId = (ciRows[0] as { center_id: string }).center_id;
+  const { center_id: centerId, member_id: memberId } = ciRows[0] as { center_id: string; member_id: number };
   if (centerId !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const isTrialMember = await isTrialMemberType(memberId);
 
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
   const nowIst = new Date(Date.now() + IST_OFFSET_MS);
@@ -1979,9 +2004,12 @@ router.get("/admin/checkins/:checkinId/flavour-options", requireAdmin, async (re
      LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
      WHERE i.flavour IS NOT NULL AND i.flavour != ''
        AND ib.center_id = $1 AND ib.status = 'open'
-       AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
+       AND (
+         $3 = TRUE AND i.trial_eligible = TRUE
+         OR $3 = FALSE AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
+       )
      ORDER BY i.id, i.name`,
-    [centerId, `%${todayDay}%`]
+    [centerId, `%${todayDay}%`, isTrialMember]
   );
   res.json(rows);
 });
