@@ -290,6 +290,29 @@ router.get("/admin/super/centers", requireSuperAdmin, async (_req, res) => {
   res.json(rows);
 });
 
+// POST /api/admin/super/centers — create a new center
+router.post("/admin/super/centers", requireSuperAdmin, async (req, res) => {
+  const { id, name, password } = req.body as { id?: string; name?: string; password?: string };
+  const centerId = id?.trim();
+  const centerName = name?.trim();
+  if (!centerId || !/^[a-z0-9-]+$/.test(centerId)) {
+    res.status(400).json({ error: "id is required and must be lowercase letters, numbers and hyphens only" });
+    return;
+  }
+  if (!centerName) { res.status(400).json({ error: "name is required" }); return; }
+  if (!password || password.length < 8) {
+    res.status(400).json({ error: "password must be at least 8 characters" }); return;
+  }
+  const existing = await pool.query("SELECT id FROM centers WHERE id = $1", [centerId]);
+  if (existing.rows[0]) { res.status(409).json({ error: "A center with this ID already exists" }); return; }
+
+  const hash = await bcrypt.hash(password, 10);
+  await pool.query("INSERT INTO centers (id, name) VALUES ($1, $2)", [centerId, centerName]);
+  await pool.query("INSERT INTO center_auth (center_id, password_hash) VALUES ($1, $2)", [centerId, hash]);
+
+  res.status(201).json({ id: centerId, name: centerName, is_active: true, valid_until: null });
+});
+
 // PATCH /api/admin/super/centers/:centerId/activate
 router.patch("/admin/super/centers/:centerId/activate", requireSuperAdmin, async (req, res) => {
   const { centerId } = req.params;

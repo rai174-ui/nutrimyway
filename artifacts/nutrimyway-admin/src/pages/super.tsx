@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearch } from "wouter";
 import {
   ShieldCheck, CheckCircle2, XCircle, Loader2, LogOut, RefreshCw,
-  Key, Calendar, Mail, Eye, EyeOff, Pencil, Upload, Users,
+  Key, Calendar, Mail, Eye, EyeOff, Pencil, Upload, Users, Plus,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -368,6 +368,100 @@ function EditCenterDialog({
   );
 }
 
+// ─── Add Center Dialog ────────────────────────────────────────────────────────
+
+function AddCenterDialog({
+  onClose, onSuccess,
+}: { onClose: () => void; onSuccess: (created: CenterWithStatus) => void }) {
+  const [id, setId] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [show, setShow] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmedId = id.trim().toLowerCase();
+    if (!trimmedId || !/^[a-z0-9-]+$/.test(trimmedId)) {
+      setError("Center ID must be lowercase letters, numbers and hyphens only (e.g. mumbai-2)");
+      return;
+    }
+    if (!name.trim()) { setError("Name is required"); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    setLoading(true); setError(null);
+    try {
+      const created = await superFetch<CenterWithStatus>("/admin/super/centers", {
+        method: "POST",
+        body: JSON.stringify({ id: trimmedId, name: name.trim(), password }),
+      });
+      onSuccess(created);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create center");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm p-6">
+        <h3 className="text-base font-bold text-foreground mb-1">Add New Center</h3>
+        <p className="text-xs text-muted-foreground mb-4">Creates a center with its own login for the center admin.</p>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div>
+            <input
+              type="text"
+              value={id}
+              onChange={e => setId(e.target.value)}
+              placeholder="Center ID (e.g. mumbai-2)"
+              autoFocus
+              className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Used to log in. Lowercase letters, numbers, hyphens only. Cannot be changed later.</p>
+          </div>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Center name (e.g. Mumbai - Andheri)"
+            className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          <div className="relative">
+            <input
+              type={show ? "text" : "password"}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Password (min. 8 chars)"
+              className="w-full h-10 px-3 pr-10 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <button type="button" onClick={() => setShow(s => !s)} className="absolute right-3 top-2.5 text-muted-foreground">
+              {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex gap-2 mt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 h-9 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!id.trim() || !name.trim() || password.length < 8 || loading}
+              className="flex-1 h-9 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-40 flex items-center justify-center"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Center"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Set Validity Date Dialog ─────────────────────────────────────────────────
 
 function ValidityDialog({
@@ -463,6 +557,7 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
   const [editCenter, setEditCenter] = useState<CenterWithStatus | null>(null);
   const [uploadMembersCenter, setUploadMembersCenter] = useState<CenterWithStatus | null>(null);
   const [showUploadBatches, setShowUploadBatches] = useState(false);
+  const [showAddCenter, setShowAddCenter] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   function showToast(msg: string) {
@@ -561,6 +656,17 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
         />
       )}
 
+      {showAddCenter && (
+        <AddCenterDialog
+          onClose={() => setShowAddCenter(false)}
+          onSuccess={created => {
+            setCenters(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+            setShowAddCenter(false);
+            showToast(`Center "${created.name}" created`);
+          }}
+        />
+      )}
+
       <header className="bg-teal-dark text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-3">
           <ShieldCheck className="w-5 h-5 flex-shrink-0" />
@@ -583,6 +689,13 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
             <p className="text-muted-foreground text-sm mt-0.5">Manage access, passwords and validity for all centers</p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAddCenter(true)}
+              className="flex items-center gap-1.5 text-sm bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Add Center
+            </button>
             <button
               onClick={() => setShowUploadBatches(true)}
               className="flex items-center gap-1.5 text-sm bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors font-medium"
