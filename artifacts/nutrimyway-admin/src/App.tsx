@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import LoginPage from "@/pages/login";
@@ -10,16 +10,21 @@ import SuperPage from "@/pages/super";
 import MembersPage from "@/pages/members";
 import LogsPage from "@/pages/logs";
 import InventoryPage from "@/pages/inventory";
-import { isAuthenticated } from "@/lib/api";
+import { isAuthenticated, needsTermsAcceptance } from "@/lib/api";
+import { ConsentModal } from "@/components/consent-modal";
 
 const queryClient = new QueryClient();
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const [, navigate] = useLocation();
+  const [pendingTerms, setPendingTerms] = useState(needsTermsAcceptance());
   useEffect(() => {
     if (!isAuthenticated()) navigate("/login");
   }, [navigate]);
   if (!isAuthenticated()) return null;
+  if (pendingTerms) {
+    return <ConsentModal onAccepted={() => setPendingTerms(false)} />;
+  }
   return <>{children}</>;
 }
 

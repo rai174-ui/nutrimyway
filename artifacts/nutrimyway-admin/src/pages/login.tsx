@@ -21,10 +21,10 @@ export default function LoginPage() {
     if (!centerId || !password) return;
     setLoading(true); setError(null);
     try {
-      const res = await apiPost<{ token: string; center_id: string; center_name: string }>(
+      const res = await apiPost<{ token: string; center_id: string; center_name: string; needs_terms_acceptance?: boolean }>(
         "/admin/login", { center_id: centerId, password }
       );
-      saveAuth(res.token, res.center_id, res.center_name);
+      saveAuth(res.token, res.center_id, res.center_name, res.needs_terms_acceptance ?? false);
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

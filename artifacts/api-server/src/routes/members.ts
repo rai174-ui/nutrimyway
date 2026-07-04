@@ -2,6 +2,13 @@ import { Router } from "express";
 import { pool } from "../lib/sqlite";
 
 const router = Router();
+const CHECKIN_CAP = 32;
+
+async function isTrialMemberType(memberId: number): Promise<boolean> {
+  const { rows } = await pool.query("SELECT member_type FROM members WHERE id = $1", [memberId]);
+  const type = rows[0]?.member_type as string | undefined;
+  return type === "trial_1day" || type === "trial_3day";
+}
 
 // GET /api/members/:id
 router.get("/members/:id", async (req, res) => {
@@ -181,6 +188,7 @@ router.get("/members/:id/center-menu", async (req, res) => {
   if (!checkin[0]) { res.json([]); return; }
 
   const centerId = checkin[0].center_id as string;
+  const isTrialMember = await isTrialMemberType(memberId);
 
   // Determine today's day abbreviation in IST (Asia/Kolkata = UTC+5:30)
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -200,10 +208,13 @@ router.get("/members/:id/center-menu", async (req, res) => {
      FROM menu_items mi
      LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
      WHERE mi.center_id = $1
-       AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
+       AND (
+         $3 = TRUE AND mi.trial_eligible = TRUE
+         OR $3 = FALSE AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
+       )
      GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.available_days, mi.created_at
      ORDER BY mi.created_at`,
-    [centerId, `%${todayDay}%`]
+    [centerId, `%${todayDay}%`, isTrialMember]
   );
   res.json(rows);
 });
@@ -225,6 +236,19 @@ router.post("/members/:id/checkin", async (req, res) => {
     [memberId]
   );
   if (existing[0]) { res.status(409).json({ error: "Already checked in" }); return; }
+
+  const { rows: cycleRows } = await pool.query(`SELECT cycle_started_at FROM members WHERE id = $1`, [memberId]);
+  const cycleStartedAt = cycleRows[0]?.cycle_started_at as string | null;
+  if (cycleStartedAt) {
+    const { rows: usedRows } = await pool.query(
+      `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND checked_in_at >= $2`,
+      [memberId, cycleStartedAt]
+    );
+    if (Number(usedRows[0].count) >= CHECKIN_CAP) {
+      res.status(403).json({ error: `You've reached the ${CHECKIN_CAP} check-in limit for this membership cycle. Please renew your membership at your center to continue.` });
+      return;
+    }
+  }
 
   const { rows } = await pool.query(
     `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
@@ -316,6 +340,7 @@ router.get("/members/:id/checkin-options", async (req, res) => {
   }
   const checkin = checkinRows[0] as { id: number; center_id: string; center_name: string; checked_in_at: string };
   const centerId = checkin.center_id;
+  const isTrialMember = await isTrialMemberType(memberId);
 
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
   const nowIst = new Date(Date.now() + IST_OFFSET_MS);
@@ -334,10 +359,13 @@ router.get("/members/:id/checkin-options", async (req, res) => {
      FROM menu_items mi
      LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
      WHERE mi.center_id = $1
-       AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
+       AND (
+         $3 = TRUE AND mi.trial_eligible = TRUE
+         OR $3 = FALSE AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
+       )
      GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.available_days, mi.created_at
      ORDER BY mi.created_at`,
-    [centerId, `%${todayDay}%`]
+    [centerId, `%${todayDay}%`, isTrialMember]
   );
 
   const { rows: directFlavours } = await pool.query(
@@ -347,9 +375,12 @@ router.get("/members/:id/checkin-options", async (req, res) => {
      LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
      WHERE i.flavour IS NOT NULL AND i.flavour != ''
        AND ib.center_id = $1 AND ib.status = 'open'
-       AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
+       AND (
+         $3 = TRUE AND i.trial_eligible = TRUE
+         OR $3 = FALSE AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
+       )
      ORDER BY i.id, i.name`,
-    [centerId, `%${todayDay}%`]
+    [centerId, `%${todayDay}%`, isTrialMember]
   );
 
   const { rows: menuSels } = await pool.query(

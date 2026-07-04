@@ -67,11 +67,11 @@ export function Login() {
   async function verifyOtp() {
     setError(null); setLoading(true);
     try {
-      const d = await apiPost<{ token: string; member_id: number }>("/auth/verify-otp", {
+      const d = await apiPost<{ token: string; member_id: number; needs_terms_acceptance?: boolean }>("/auth/verify-otp", {
         otp_token: otpToken,
         otp: otpValue,
       });
-      login(d.token, d.member_id);
+      login(d.token, d.member_id, d.needs_terms_acceptance ?? false);
     } catch (e) { setError(e instanceof Error ? e.message : "Invalid OTP"); }
     finally { setLoading(false); }
   }

@@ -36,6 +36,9 @@ async function sendSuperAdminResetEmail(resetUrl: string): Promise<void> {
 
 const router = Router();
 const JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
+const CHECKIN_CAP = 32;
+const RENEWAL_DAYS = 40;
+const VALID_MEMBER_TYPES = new Set(["trial_1day", "trial_3day", "regular", "virtual"]);
 
 interface AdminJwt {
   centerId: string;
@@ -253,7 +256,7 @@ router.post("/admin/login", async (req, res) => {
     return;
   }
   const { rows } = await pool.query(
-    `SELECT ca.password_hash, ca.valid_until, c.name, c.is_active
+    `SELECT ca.password_hash, ca.valid_until, ca.terms_accepted_at, c.name, c.is_active
      FROM center_auth ca JOIN centers c ON c.id = ca.center_id WHERE ca.center_id = $1`,
     [center_id]
   );
@@ -265,7 +268,17 @@ router.post("/admin/login", async (req, res) => {
   const ok = await bcrypt.compare(password, rows[0].password_hash as string);
   if (!ok) { res.status(401).json({ error: "Invalid center or password" }); return; }
   const token = signAdminToken(center_id);
-  res.json({ token, center_id, center_name: rows[0].name });
+  res.json({ token, center_id, center_name: rows[0].name, needs_terms_acceptance: !rows[0].terms_accepted_at });
+});
+
+// POST /api/admin/accept-terms — record first-login consent acceptance for the authenticated center admin
+router.post("/admin/accept-terms", requireAdmin, async (req, res) => {
+  const adminReq = req as AdminRequest;
+  await pool.query(
+    "UPDATE center_auth SET terms_accepted_at = COALESCE(terms_accepted_at, NOW()) WHERE center_id = $1",
+    [adminReq.adminCenterId]
+  );
+  res.json({ accepted: true });
 });
 
 // POST /api/admin/super/login
@@ -527,10 +540,16 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
       `SELECT COUNT(*) AS count
        FROM members m
        JOIN member_center_mapping mcm ON mcm.member_id = m.id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) AS used FROM member_check_ins mci
+         WHERE mci.member_id = m.id AND mci.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
+       ) ci ON TRUE
        WHERE mcm.center_id = $1
-         AND m.valid_until IS NOT NULL
-         AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '10 days'`,
-      [centerId]
+         AND (
+           (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days')
+           OR ($2 - COALESCE(ci.used, 0)) <= 7
+         )`,
+      [centerId, CHECKIN_CAP]
     ),
     pool.query(
       `SELECT DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') AS day,
@@ -971,7 +990,11 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
   const { rows } = await pool.query(
     `SELECT
        m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
-       m.dob, m.age_at_joining, m.valid_until, m.is_active,
+       m.dob, m.age_at_joining, m.valid_until, m.is_active, m.member_type, m.cycle_started_at,
+       (
+         SELECT COUNT(*) FROM member_check_ins mci3
+         WHERE mci3.member_id = m.id AND mci3.checked_in_at >= m.cycle_started_at
+       ) AS checkins_used,
        ci.id          AS checkin_id,
        ci.checked_in_at,
        ci.checked_out_at,
@@ -987,7 +1010,12 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
      LEFT JOIN member_check_ins ci
        ON ci.member_id = m.id AND ci.center_id = $1 AND ci.checked_out_at IS NULL
      WHERE mcm.center_id = $1
-       ${expiringSoon ? "AND m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '10 days'" : ""}
+       ${expiringSoon ? `AND (
+         (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days')
+         OR (
+           (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.checked_in_at >= m.cycle_started_at) >= ${CHECKIN_CAP - 7}
+         )
+       )` : ""}
      ORDER BY m.valid_until ASC NULLS LAST, m.name`,
     [centerId]
   );
@@ -1000,21 +1028,25 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until } = req.body as {
+  const { name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type } = req.body as {
     name?: string; height_cm?: number | null; date_of_joining?: string | null;
     mobile?: string | null; email?: string | null; membership_no?: string | null;
     dob?: string | null; age_at_joining?: number | null; valid_until?: string | null;
+    member_type?: string | null;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   if (!mobile?.trim() && !email?.trim()) { res.status(400).json({ error: "mobile or email is required" }); return; }
   if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
     res.status(400).json({ error: "age_at_joining must be between 0 and 100" }); return;
   }
+  if (member_type != null && !VALID_MEMBER_TYPES.has(member_type)) {
+    res.status(400).json({ error: "invalid member_type" }); return;
+  }
 
   const { rows: memberRows } = await pool.query(
-    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null]
+    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type, cycle_started_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) RETURNING *`,
+    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null, member_type ?? "regular"]
   );
   const member = memberRows[0];
   await pool.query(
@@ -1036,14 +1068,18 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
   );
   if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
 
-  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until, daily_kcal } = req.body as {
+  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until, daily_kcal, member_type } = req.body as {
     name?: string; mobile?: string | null; email?: string | null; membership_no?: string | null;
     height_cm?: number | null; date_of_joining?: string | null;
     dob?: string | null; age_at_joining?: number | null; valid_until?: string | null; daily_kcal?: number | null;
+    member_type?: string | null;
   };
   if (name !== undefined && !name?.trim()) { res.status(400).json({ error: "name cannot be blank" }); return; }
   if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
     res.status(400).json({ error: "age_at_joining must be between 0 and 100" }); return;
+  }
+  if (member_type != null && !VALID_MEMBER_TYPES.has(member_type)) {
+    res.status(400).json({ error: "invalid member_type" }); return;
   }
 
   const { rows } = await pool.query(
@@ -1057,8 +1093,9 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
        dob            = $7,
        age_at_joining = $8,
        valid_until    = $9,
-       daily_kcal     = $10
-     WHERE id = $11 RETURNING *`,
+       daily_kcal     = $10,
+       member_type    = COALESCE($11, member_type)
+     WHERE id = $12 RETURNING *`,
     [
       name?.trim() ?? null,
       mobile?.trim() || null,
@@ -1070,6 +1107,7 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
       age_at_joining ?? null,
       valid_until ?? null,
       daily_kcal ?? null,
+      member_type ?? null,
       Number(memberId),
     ]
   );
@@ -1121,11 +1159,19 @@ router.delete("/admin/centers/:centerId/members/:memberId/hard-delete", requireA
   res.status(204).send();
 });
 
-// PATCH /api/admin/centers/:centerId/members/:memberId/renew — extend validity by 32 days
+// PATCH /api/admin/centers/:centerId/members/:memberId/renew — record payment, extend validity by 40 days, reset check-in cycle
 router.patch("/admin/centers/:centerId/members/:memberId/renew", requireAdmin, async (req, res) => {
   const { centerId, memberId } = req.params;
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { payment_method, amount } = req.body as { payment_method?: string; amount?: number };
+  if (payment_method !== "cash" && payment_method !== "online") {
+    res.status(400).json({ error: "payment_method must be 'cash' or 'online'" }); return;
+  }
+  if (amount == null || Number.isNaN(Number(amount)) || Number(amount) <= 0) {
+    res.status(400).json({ error: "amount is required and must be greater than 0" }); return;
+  }
 
   const { rows: membership } = await pool.query(
     `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
@@ -1133,11 +1179,38 @@ router.patch("/admin/centers/:centerId/members/:memberId/renew", requireAdmin, a
   );
   if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
 
+  const { rows: currentRows } = await pool.query(`SELECT valid_until FROM members WHERE id = $1`, [Number(memberId)]);
+  const previousValidUntil = currentRows[0]?.valid_until as string | null;
+
   const { rows } = await pool.query(
-    `UPDATE members SET valid_until = CURRENT_DATE + INTERVAL '32 days' WHERE id = $1 RETURNING valid_until`,
+    `UPDATE members
+     SET valid_until = GREATEST(CURRENT_DATE, COALESCE(valid_until, CURRENT_DATE)) + INTERVAL '${RENEWAL_DAYS} days',
+         cycle_started_at = NOW()
+     WHERE id = $1 RETURNING valid_until, cycle_started_at`,
     [Number(memberId)]
   );
-  res.json({ valid_until: rows[0].valid_until });
+  const updated = rows[0] as { valid_until: string; cycle_started_at: string };
+
+  await pool.query(
+    `INSERT INTO member_renewals (member_id, center_id, payment_method, amount, previous_valid_until, new_valid_until, recorded_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [Number(memberId), centerId, payment_method, amount, previousValidUntil, updated.valid_until, centerId]
+  );
+
+  res.json({ valid_until: updated.valid_until, cycle_started_at: updated.cycle_started_at });
+});
+
+// GET /api/admin/centers/:centerId/members/:memberId/renewals — renewal payment history
+router.get("/admin/centers/:centerId/members/:memberId/renewals", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { rows } = await pool.query(
+    `SELECT * FROM member_renewals WHERE member_id = $1 ORDER BY created_at DESC`,
+    [Number(memberId)]
+  );
+  res.json(rows);
 });
 
 // DELETE /api/admin/centers/:centerId/members/:memberId — unlink member from center
@@ -1170,6 +1243,19 @@ router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, 
     [Number(memberId)]
   );
   if (existing[0]) { res.status(409).json({ error: "Member is already checked in" }); return; }
+
+  const { rows: cycleRows } = await pool.query(`SELECT cycle_started_at FROM members WHERE id = $1`, [Number(memberId)]);
+  const cycleStartedAt = cycleRows[0]?.cycle_started_at as string | null;
+  if (cycleStartedAt) {
+    const { rows: usedRows } = await pool.query(
+      `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND checked_in_at >= $2`,
+      [Number(memberId), cycleStartedAt]
+    );
+    if (Number(usedRows[0].count) >= CHECKIN_CAP) {
+      res.status(403).json({ error: `Member has reached the ${CHECKIN_CAP} check-in limit for this membership cycle. Renew membership to reset.` });
+      return;
+    }
+  }
 
   const { weight_kg } = req.body as { weight_kg?: number };
 
@@ -1541,6 +1627,16 @@ router.post("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (
     req.body as { ingredient_id?: number; batch_number?: string; assigned_member_id?: number; assigned_member_name?: string; received_qty?: number; received_unit?: string };
   if (!ingredient_id) { res.status(400).json({ error: "ingredient_id is required" }); return; }
   if (!batch_number?.trim()) { res.status(400).json({ error: "batch_number is required" }); return; }
+
+  // Member-assigned inventory issuance is only allowed for virtual members
+  if (assigned_member_id != null) {
+    const { rows: memberTypeRows } = await pool.query(`SELECT member_type FROM members WHERE id = $1`, [assigned_member_id]);
+    if (!memberTypeRows[0]) { res.status(404).json({ error: "Member not found" }); return; }
+    if (memberTypeRows[0].member_type !== "virtual") {
+      res.status(400).json({ error: "Inventory can only be issued directly to virtual members" });
+      return;
+    }
+  }
 
   // Member packs are immediately opened (they're "in use" by the member right away)
   const isMemberPack = assigned_member_id != null;

@@ -11,6 +11,7 @@ import * as XLSX from "xlsx";
 import {
   apiGet, apiPost, apiPatch, apiDelete, getAdminCenter,
   type CenterMember, type CenterSettings, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord, type SelfLogEntry,
+  type MemberType, type MemberRenewal, MEMBER_TYPE_LABELS, CHECKIN_CAP,
 } from "@/lib/api";
 
 interface FlavourOption { id: number; name: string; flavour: string; unit: string; }
@@ -53,6 +54,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   const [dobMonth, setDobMonth] = useState("");
   const [ageAtJoining, setAgeAtJoining] = useState("");
   const [validUntil, setValidUntil] = useState("");
+  const [memberType, setMemberType] = useState<MemberType>("regular");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Health record step
@@ -71,7 +73,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   function reset() {
     setStep("search"); setQuery(""); setFound(null); setError("");
     setName(""); setEmail(""); setMobile(""); setHeight(""); setDoj(""); setMembershipNo("");
-    setDobDay(""); setDobMonth(""); setAgeAtJoining(""); setValidUntil("");
+    setDobDay(""); setDobMonth(""); setAgeAtJoining(""); setValidUntil(""); setMemberType("regular");
     setLinkedMemberId(null);
     setHrDate(new Date().toISOString().slice(0, 10));
     setHrWeight(""); setHrBmi(""); setHrBodyFat(""); setHrVisceralFat("");
@@ -122,6 +124,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
         dob: dobDay && dobMonth ? `${dobDay} ${dobMonth}` : null,
         age_at_joining: ageAtJoining ? Number(ageAtJoining) : null,
         valid_until: validUntil || null,
+        member_type: memberType,
       });
       setLinkedMemberId(member.id);
       setStep("healthrecord");
@@ -278,6 +281,14 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
             <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-muted-foreground mb-1">Membership Valid Until</label>
               <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className={inputCls} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Member Type</label>
+              <select value={memberType} onChange={e => setMemberType(e.target.value as MemberType)} className={inputCls}>
+                {(Object.keys(MEMBER_TYPE_LABELS) as MemberType[]).map(t => (
+                  <option key={t} value={t}>{MEMBER_TYPE_LABELS[t]}</option>
+                ))}
+              </select>
             </div>
           </div>
           <p className="text-[10px] text-amber-600">* Mobile or email is required (at least one)</p>
@@ -936,8 +947,17 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
   const [editAge, setEditAge]                 = useState("");
   const [editValidUntil, setEditValidUntil]   = useState("");
   const [editDailyKcal, setEditDailyKcal]     = useState("");
+  const [editMemberType, setEditMemberType]   = useState<MemberType>("regular");
   const [editSaving, setEditSaving]           = useState(false);
   const [editError, setEditError]             = useState("");
+  const [showRenewDialog, setShowRenewDialog] = useState(false);
+  const [renewPaymentMethod, setRenewPaymentMethod] = useState<"cash" | "online">("cash");
+  const [renewAmount, setRenewAmount]         = useState("");
+  const [renewSaving, setRenewSaving]         = useState(false);
+  const [renewError, setRenewError]           = useState("");
+  const [showHistory, setShowHistory]         = useState(false);
+  const [history, setHistory] = useState<MemberRenewal[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const isCheckedIn = !!member.checkin_id;
   const mins = isCheckedIn ? minutesSince(member.checked_in_at!) : 0;
@@ -955,6 +975,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     setEditAge(member.age_at_joining != null ? String(member.age_at_joining) : "");
     setEditValidUntil(member.valid_until ? member.valid_until.slice(0, 10) : "");
     setEditDailyKcal(member.daily_kcal != null ? String(member.daily_kcal) : "");
+    setEditMemberType(member.member_type ?? "regular");
     setEditError("");
     setShowEditPanel(true);
   }
@@ -974,6 +995,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
         age_at_joining: editAge ? Number(editAge) : null,
         valid_until: editValidUntil || null,
         daily_kcal: editDailyKcal ? Number(editDailyKcal) : null,
+        member_type: editMemberType,
       });
       setShowEditPanel(false);
       onRefresh();
@@ -994,15 +1016,42 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     ? Math.ceil((new Date(member.valid_until).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null;
   const showRenew = renewDaysLeft !== null && renewDaysLeft <= 10;
+  const checkinsUsed = member.checkins_used ?? 0;
+
+  function openRenewDialog() {
+    setRenewPaymentMethod("cash");
+    setRenewAmount("");
+    setRenewError("");
+    setShowRenewDialog(true);
+  }
 
   async function handleRenew() {
-    if (!confirm(`Renew Membership for ${member.name} by 32 days?`)) return;
-    setBusy(true);
+    if (!renewAmount || Number(renewAmount) <= 0) { setRenewError("Enter a valid amount"); return; }
+    setRenewSaving(true); setRenewError("");
     try {
-      await apiPatch(`/admin/centers/${centerId}/members/${member.id}/renew`);
+      await apiPatch(`/admin/centers/${centerId}/members/${member.id}/renew`, {
+        payment_method: renewPaymentMethod,
+        amount: Number(renewAmount),
+      });
+      setShowRenewDialog(false);
       onRefresh();
-    } catch (e) { alert(e instanceof Error ? e.message : "Renewal failed"); }
-    finally { setBusy(false); }
+    } catch (e) { setRenewError(e instanceof Error ? e.message : "Renewal failed"); }
+    finally { setRenewSaving(false); }
+  }
+
+  async function loadHistory() {
+    setHistoryLoading(true);
+    try {
+      const rows = await apiGet<MemberRenewal[]>(`/admin/centers/${centerId}/members/${member.id}/renewals`);
+      setHistory(rows);
+    } catch { /* ignore */ }
+    finally { setHistoryLoading(false); }
+  }
+
+  function toggleHistory() {
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next) void loadHistory();
   }
 
   async function handleCheckin() {
@@ -1046,6 +1095,12 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               </span>
             )}
             {validityBadge(member.valid_until)}
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5">
+              {MEMBER_TYPE_LABELS[member.member_type ?? "regular"]}
+            </span>
+            <span className={`inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5 border ${checkinsUsed >= CHECKIN_CAP ? "text-red-700 bg-red-50 border-red-300" : checkinsUsed >= CHECKIN_CAP - 7 ? "text-amber-700 bg-amber-50 border-amber-300" : "text-muted-foreground bg-muted/40 border-border"}`}>
+              {checkinsUsed}/{CHECKIN_CAP} check-ins
+            </span>
             {isCheckedIn && member.checked_in_at && (
               <p className={`text-xs flex items-center gap-1 ${mins >= 150 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
                 <Clock className="w-3 h-3" />
@@ -1101,14 +1156,21 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
           )}
           {showRenew && (
             <button
-              onClick={() => void handleRenew()}
+              onClick={openRenewDialog}
               disabled={busy}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-colors border border-emerald-200"
-              title="Renew Membership (+32 days from today)"
+              title="Renew Membership (+40 days, resets check-in cycle)"
             >
               <RotateCcw className="w-3.5 h-3.5" />Renew Membership
             </button>
           )}
+          <button
+            onClick={toggleHistory}
+            className={`p-1.5 rounded-lg transition-colors ${showHistory ? "text-emerald-600 bg-emerald-100" : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"}`}
+            title="Renewal history"
+          >
+            <ClipboardList className="w-4 h-4" />
+          </button>
           <button
             onClick={openEdit}
             className={`p-1.5 rounded-lg transition-colors ${showEditPanel ? "text-violet-600 bg-violet-100" : "text-muted-foreground hover:text-violet-600 hover:bg-violet-50"}`}
@@ -1206,6 +1268,15 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               <input type="number" min="500" max="5000" value={editDailyKcal} onChange={e => setEditDailyKcal(e.target.value)} placeholder="2000"
                 className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Member Type</label>
+              <select value={editMemberType} onChange={e => setEditMemberType(e.target.value as MemberType)}
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                {(Object.keys(MEMBER_TYPE_LABELS) as MemberType[]).map(t => (
+                  <option key={t} value={t}>{MEMBER_TYPE_LABELS[t]}</option>
+                ))}
+              </select>
+            </div>
           </div>
           {editError && (
             <p className="mt-2 text-xs text-destructive bg-destructive/8 rounded-lg px-3 py-2">{editError}</p>
@@ -1229,6 +1300,76 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
       )}
       {showHealthPanel && (
         <HealthPanel memberId={member.id} centerId={centerId} onClose={() => setShowHealthPanel(false)} />
+      )}
+      {showHistory && (
+        <div className="border-t border-emerald-100 bg-emerald-50/40 px-5 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Renewal History</p>
+            <button onClick={() => setShowHistory(false)} className="p-1 rounded text-muted-foreground hover:text-foreground">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {historyLoading ? (
+            <p className="text-xs text-muted-foreground">Loading…</p>
+          ) : history.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No renewals recorded yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {history.map(r => (
+                <div key={r.id} className="flex items-center justify-between text-xs bg-white border border-emerald-100 rounded-lg px-3 py-2">
+                  <span className="font-medium text-foreground">{fmtDateDMY(r.created_at)}</span>
+                  <span className="text-muted-foreground capitalize">{r.payment_method}</span>
+                  <span className="font-semibold text-emerald-700">₹{r.amount}</span>
+                  <span className="text-muted-foreground">→ {r.new_valid_until ? fmtDateDMY(r.new_valid_until) : "—"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {showRenewDialog && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowRenewDialog(false)}>
+          <div className="bg-card border border-border rounded-2xl p-5 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-foreground">Renew Membership</h3>
+              <button onClick={() => setShowRenewDialog(false)} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Extends validity by 40 days from {member.valid_until && new Date(member.valid_until) > new Date() ? "current expiry" : "today"} and resets the check-in cycle for {member.name}.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Payment Method *</label>
+              <div className="flex bg-muted rounded-lg p-1 gap-1">
+                <button onClick={() => setRenewPaymentMethod("cash")}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${renewPaymentMethod === "cash" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  Cash
+                </button>
+                <button onClick={() => setRenewPaymentMethod("online")}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${renewPaymentMethod === "online" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  Online
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Amount (₹) *</label>
+              <input type="number" min="0" step="1" value={renewAmount} onChange={e => setRenewAmount(e.target.value)}
+                placeholder="e.g. 2000" autoFocus
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary" />
+            </div>
+            {renewError && <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{renewError}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowRenewDialog(false)} disabled={renewSaving}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-50 transition-colors">
+                Cancel
+              </button>
+              <button onClick={() => void handleRenew()} disabled={renewSaving}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+                {renewSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                Confirm Renewal
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

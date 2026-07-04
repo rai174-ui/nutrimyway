@@ -171,8 +171,30 @@ router.post("/auth/verify-otp", async (req, res) => {
     );
   }
 
+  const { rows: consentRows } = await pool.query(
+    "SELECT terms_accepted_at FROM user_auth WHERE member_id = $1",
+    [memberId]
+  );
+  const needsTermsAcceptance = !consentRows[0]?.terms_accepted_at;
+
   const token = signToken(memberId, email);
-  res.json({ token, member_id: memberId });
+  res.json({ token, member_id: memberId, needs_terms_acceptance: needsTermsAcceptance });
+});
+
+// POST /api/auth/accept-terms — record first-login consent acceptance for the authenticated member
+router.post("/auth/accept-terms", async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as { memberId: number };
+    await pool.query(
+      "UPDATE user_auth SET terms_accepted_at = COALESCE(terms_accepted_at, NOW()) WHERE member_id = $1",
+      [payload.memberId]
+    );
+    res.json({ accepted: true });
+  } catch {
+    res.status(401).json({ error: "Invalid token" });
+  }
 });
 
 // POST /api/auth/register — disabled: member onboarding is center-only

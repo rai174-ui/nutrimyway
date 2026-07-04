@@ -301,7 +301,7 @@ export default function DashboardPage() {
               <StatCard icon={UtensilsCrossed} label="Menu Items" value={data.menu_item_count} color="bg-teal-mid" onClick={() => navigate("/set-menu")} />
               <StatCard
                 icon={CalendarClock}
-                label="Expiring (10 days)"
+                label="Expiring Membership or Servings"
                 value={data.expiring_soon_count}
                 color={data.expiring_soon_count > 0 ? "bg-amber-500" : "bg-slate-400"}
                 onClick={data.expiring_soon_count > 0 ? () => navigate("/members?expiring_soon=true") : undefined}

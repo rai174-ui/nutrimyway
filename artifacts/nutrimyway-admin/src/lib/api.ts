@@ -197,6 +197,17 @@ export interface MemberLookup {
   date_of_joining: string | null;
 }
 
+export type MemberType = "trial_1day" | "trial_3day" | "regular" | "virtual";
+
+export const MEMBER_TYPE_LABELS: Record<MemberType, string> = {
+  trial_1day: "Trial (1-day)",
+  trial_3day: "Trial (3-day)",
+  regular: "Regular",
+  virtual: "Virtual",
+};
+
+export const CHECKIN_CAP = 32;
+
 export interface CenterMember {
   id: number;
   name: string;
@@ -210,10 +221,25 @@ export interface CenterMember {
   valid_until: string | null;
   daily_kcal: number | null;
   is_active: boolean;
+  member_type: MemberType;
+  cycle_started_at: string | null;
+  checkins_used: number;
   checkin_id: number | null;
   checked_in_at: string | null;
   checked_out_at: string | null;
   already_consumed_today: boolean;
+}
+
+export interface MemberRenewal {
+  id: number;
+  member_id: number;
+  center_id: string;
+  payment_method: "cash" | "online";
+  amount: number;
+  previous_valid_until: string | null;
+  new_valid_until: string;
+  recorded_by: string | null;
+  created_at: string;
 }
 
 export interface SelfLogEntry {
@@ -250,16 +276,26 @@ export interface ConsumptionReport {
   logs: ConsumptionLog[];
 }
 
-export function saveAuth(token: string, centerId: string, centerName: string) {
+export function saveAuth(token: string, centerId: string, centerName: string, needsTermsAcceptance = false) {
   localStorage.setItem("nmw_admin_token", token);
   localStorage.setItem("nmw_admin_center_id", centerId);
   localStorage.setItem("nmw_admin_center_name", centerName);
+  localStorage.setItem("nmw_admin_needs_terms", needsTermsAcceptance ? "true" : "false");
 }
 
 export function clearAuth() {
   localStorage.removeItem("nmw_admin_token");
   localStorage.removeItem("nmw_admin_center_id");
   localStorage.removeItem("nmw_admin_center_name");
+  localStorage.removeItem("nmw_admin_needs_terms");
+}
+
+export function needsTermsAcceptance(): boolean {
+  return localStorage.getItem("nmw_admin_needs_terms") === "true";
+}
+
+export function markTermsAccepted() {
+  localStorage.setItem("nmw_admin_needs_terms", "false");
 }
 
 export function getAdminCenter(): { id: string; name: string } | null {

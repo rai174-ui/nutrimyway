@@ -689,6 +689,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables33();
   await migrateAdminTables34();
   await migrateAdminTables35();
+  await migrateAdminTables36();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -950,4 +951,38 @@ async function migrateAdminTables35(): Promise<void> {
   // Push notification tokens for FCM
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS push_token TEXT`);
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS push_platform TEXT`);
+}
+
+async function migrateAdminTables36(): Promise<void> {
+  // Membership types: trial_1day, trial_3day, regular, virtual — backfill existing members to 'regular'
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS member_type TEXT NOT NULL DEFAULT 'regular'`);
+  await pool.query(`UPDATE members SET member_type = 'regular' WHERE member_type IS NULL`);
+
+  // Check-in cycle tracking — 32 check-ins per cycle, reset on renewal
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS cycle_started_at TIMESTAMPTZ`);
+  await pool.query(`UPDATE members SET cycle_started_at = COALESCE(cycle_started_at, NULLIF(date_of_joining, '')::timestamptz, NOW()) WHERE cycle_started_at IS NULL`);
+
+  // Trial-eligible flavours/menu items (no day-of-week restriction for trial members)
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS trial_eligible BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS trial_eligible BOOLEAN NOT NULL DEFAULT FALSE`);
+
+  // Renewal payment history
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_renewals (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER NOT NULL REFERENCES members(id),
+      center_id TEXT REFERENCES centers(id),
+      payment_method TEXT NOT NULL,
+      amount NUMERIC NOT NULL,
+      previous_valid_until DATE,
+      new_valid_until DATE NOT NULL,
+      recorded_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_member_renewals_member_id ON member_renewals(member_id)`);
+
+  // First-login consent capture
+  await pool.query(`ALTER TABLE user_auth ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE center_auth ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ`);
 }

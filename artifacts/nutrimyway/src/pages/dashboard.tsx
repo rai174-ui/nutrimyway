@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment, type ReactNode } from "react";
 import { useGetMember, getGetMemberQueryKey, useGetDailySummary, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
@@ -417,6 +417,31 @@ export function Dashboard() {
   );
 }
 
+const URL_PATTERN = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+
+function linkifyMessage(message: string): ReactNode[] {
+  const parts = message.split(URL_PATTERN);
+  return parts.map((part, i) => {
+    const isUrl = i % 2 === 1;
+    if (isUrl) {
+      const href = part.startsWith("http") ? part : `https://${part}`;
+      return (
+        <a
+          key={i}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-teal-700 underline break-words"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return <Fragment key={i}>{part}</Fragment>;
+  });
+}
+
 function BroadcastCard({ broadcast, memberId, onDismiss }: {
   broadcast: Broadcast; memberId: number; onDismiss: () => void;
 }) {
@@ -434,9 +459,9 @@ function BroadcastCard({ broadcast, memberId, onDismiss }: {
       >
         <X className="w-3.5 h-3.5" />
       </button>
-      <p className="text-sm text-amber-900 pr-6 leading-snug">{broadcast.message}</p>
+      <p className="text-sm text-amber-900 pr-6 leading-snug">{linkifyMessage(broadcast.message)}</p>
       <p className="text-[10px] text-amber-600 mt-1.5">
-        {broadcast.sent_by === "scheduled" ? "Scheduled" : "From your center"} · {new Date(broadcast.sent_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+        {new Date(broadcast.sent_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
       </p>
     </div>
   );

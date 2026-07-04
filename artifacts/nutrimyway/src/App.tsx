@@ -11,14 +11,19 @@ import { Profile } from "@/pages/profile";
 import { Login } from "@/pages/login";
 import { About } from "@/pages/about";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
+import { ConsentModal } from "@/components/consent-modal";
 
 const queryClient = new QueryClient();
 
 function ProtectedRouter() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, needsTermsAcceptance, markTermsAccepted } = useAuth();
 
   if (!isAuthenticated) {
     return <Login />;
+  }
+
+  if (needsTermsAcceptance) {
+    return <ConsentModal onAccepted={markTermsAccepted} endpoint="/auth/accept-terms" />;
   }
 
   return (
