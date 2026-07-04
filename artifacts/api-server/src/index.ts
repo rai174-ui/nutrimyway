@@ -17,7 +17,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// Start HTTP server FIRST to satisfy Hostinger's 3-second listen() check,
+// Start HTTP server FIRST so Railway's health check sees a live port quickly,
 // then initialize database and schedulers in the background.
 const server = app.listen(port, () => {
   logger.info({ port }, "Server listening");

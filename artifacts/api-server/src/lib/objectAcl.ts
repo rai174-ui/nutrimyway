@@ -1,7 +1,8 @@
-const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
+const ACL_POLICY_METADATA_KEY = "aclpolicy";
 
-// Type-only reference to GCS File (resolved dynamically in objectStorage.ts)
-type GcsFile = any;
+// Type-only reference to a stored object handle (resolved dynamically in objectStorage.ts,
+// to avoid a circular import — it's just `{ key: string }`).
+type GcsFile = { key: string };
 
 // Can be flexibly defined according to the use case.
 //
@@ -72,27 +73,26 @@ export async function setObjectAclPolicy(
   objectFile: GcsFile,
   aclPolicy: ObjectAclPolicy,
 ): Promise<void> {
-  const [exists] = await objectFile.exists();
-  if (!exists) {
-    throw new Error(`Object not found: ${objectFile.name}`);
-  }
-
-  await objectFile.setMetadata({
-    metadata: {
-      [ACL_POLICY_METADATA_KEY]: JSON.stringify(aclPolicy),
-    },
+  // S3 has no in-place metadata update — copy the object onto itself with
+  // replaced metadata (this preserves existing metadata keys we don't touch).
+  const { copyObjectWithMetadata, headObjectMetadata } = await import("./objectStorage");
+  const existingMetadata = (await headObjectMetadata(objectFile.key)) ?? {};
+  await copyObjectWithMetadata(objectFile.key, {
+    ...existingMetadata,
+    [ACL_POLICY_METADATA_KEY]: JSON.stringify(aclPolicy),
   });
 }
 
 export async function getObjectAclPolicy(
   objectFile: GcsFile,
 ): Promise<ObjectAclPolicy | null> {
-  const [metadata] = await objectFile.getMetadata();
-  const aclPolicy = metadata?.metadata?.[ACL_POLICY_METADATA_KEY];
+  const { headObjectMetadata } = await import("./objectStorage");
+  const metadata = await headObjectMetadata(objectFile.key);
+  const aclPolicy = metadata?.[ACL_POLICY_METADATA_KEY];
   if (!aclPolicy) {
     return null;
   }
-  return JSON.parse(aclPolicy as string);
+  return JSON.parse(aclPolicy);
 }
 
 export async function canAccessObject({

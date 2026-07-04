@@ -1,76 +1,12 @@
-name: Build and Deploy to Hostinger
+name: Build and Deploy to Hostinger (disabled)
+
+# This workflow is obsolete. NutriMyWay now deploys as a single Railway
+# service (API server + both frontends) via Railway's GitHub auto-deploy,
+# not via FTP to Hostinger. See DEPLOY.md for the current deployment flow.
+#
+# Disabled rather than deleted because CI workflow file deletions require
+# git permissions not available to the agent in this workspace. If you no
+# longer need this file, delete it manually from GitHub or your local clone.
 
 on:
-  push:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build API server (libs)
-        run: pnpm run typecheck:libs
-
-      - name: Build member app
-        run: PORT=8080 BASE_PATH=/ pnpm --filter @workspace/nutrimyway run build
-
-      - name: Build admin panel
-        run: BASE_PATH=/admin pnpm --filter @workspace/nutrimyway-admin run build
-
-      - name: Prepare deployment package
-        run: |
-          mkdir -p deploy/admin
-          cp -r artifacts/nutrimyway/dist/public/* deploy/
-          cp artifacts/nutrimyway/public/.htaccess deploy/.htaccess
-          cp -r artifacts/nutrimyway-admin/dist/public/* deploy/admin/
-          cp artifacts/nutrimyway-admin/public/.htaccess deploy/admin/.htaccess
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: nutrimyway-hostinger
-          path: deploy/
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: nutrimyway-hostinger
-          path: deploy/
-
-      - name: Install lftp
-        run: sudo apt-get update && sudo apt-get install -y lftp
-
-      - name: Deploy to Hostinger via FTP (curl)
-        run: |
-          set -e
-          echo "=== Files to deploy ==="
-          find deploy -type f | head -20
-          echo "=== Uploading via curlftp ==="
-          for file in $(find deploy -type f); do
-            target="${file#deploy/}"
-            dir=$(dirname "$target")
-            echo "Uploading: $file -> $target"
-            curl -v --ftp-create-dirs -T "$file" "ftp://${{ secrets.HOSTINGER_USERNAME }}:${{ secrets.HOSTINGER_PASSWORD }}@145.79.213.151:21/domains/nutrimyway.in/public_html/$target" || true
-          done
-          echo "=== Upload complete ==="
+  workflow_dispatch: {}

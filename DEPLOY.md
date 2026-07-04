@@ -1,112 +1,105 @@
-# NutriMyWay Deployment Guide
+# NutriMyWay Deployment Guide (Railway)
 
-> Last updated: 2026-07-02 — CI/CD pipeline active
+> Last updated: 2026-07-04
 
-## Architecture
+NutriMyWay runs as a **single Railway service**. One Express process serves:
 
-| Component | Hosting | Domain |
-|---|---|---|
-| **PostgreSQL Database** | Railway | Internal (no public URL needed) |
-| **API Server (Node.js)** | Railway | Railway app URL or custom domain |
-| **Member App (React)** | Hostinger | `https://nutrimyway.in` |
-| **Admin Panel (React)** | Hostinger | `https://nutrimyway.in/admin` |
-
-## 1. Backend → Railway (Auto-deploy from GitHub)
-
-### Step 1: Push code to GitHub
-1. Create a GitHub repository
-2. Connect your Replit project:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
-   git push -u origin main
-   ```
-
-### Step 2: Connect Railway to GitHub
-1. Go to [railway.app](https://railway.app) → your project
-2. Click on your Node.js service → **Settings** → **Source**
-3. Click **Connect to GitHub Repo**
-4. Select your repository and branch (`main`)
-5. Railway will auto-deploy on every push to `main`
-
-### Step 3: Environment variables
-Make sure these are set in Railway (Settings → Variables):
-- `DATABASE_URL` → your Railway Postgres connection string
-- `PORT` → `3000`
-- `NODE_ENV` → `production`
-- `SESSION_SECRET` → generate a long random string
-- `APP_URL` → `https://nutrimyway.in`
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` → for password reset emails
-- `SUPER_ADMIN_EMAIL` → `rai.174@gmail.com`
-
-### Step 4: Custom domain (optional)
-If you want the API on a custom subdomain:
-1. Railway Settings → Domains → Add custom domain
-2. Add a CNAME record in Hostinger DNS: `api.nutrimyway.in` → Railway domain
-3. Update `APP_URL` to match
-
-## 2. Frontend → Hostinger (Auto-deploy via GitHub Actions)
-
-### Step 1: Add GitHub secrets
-In your GitHub repo → Settings → Secrets and variables → Actions:
-
-| Secret | Value |
+| Path | What it serves |
 |---|---|
-| `HOSTINGER_HOST` | Your Hostinger FTP server (e.g., `ftp.nutrimyway.in` or server IP) |
-| `HOSTINGER_USERNAME` | Your Hostinger FTP/cPanel username |
-| `HOSTINGER_PASSWORD` | Your Hostinger FTP/cPanel password |
+| `/` | Member app (React, built by `@workspace/nutrimyway`) |
+| `/admin` | Admin panel (React, built by `@workspace/nutrimyway-admin`) |
+| `/api` | REST API (`@workspace/api-server`) |
 
-> Find your FTP credentials in Hostinger → Files → FTP Accounts
+There is no separate frontend host — the API server serves the built frontend
+static files itself (see `artifacts/api-server/src/app.ts`). Object/photo
+storage uses an S3-compatible bucket (e.g. Railway's own bucket storage, or
+any other S3-compatible provider).
 
-### Step 2: Verify workflow
-The `.github/workflows/deploy.yml` is already in your repo. It will:
-1. Build both frontend apps on every push to `main`
-2. Deploy them to Hostinger via FTP
+## 1. Create the Railway project
 
-### Step 3: First manual deploy (optional)
-If GitHub Actions hasn't run yet, you can manually trigger it:
-- GitHub → Actions → "Build and Deploy to Hostinger" → Run workflow
+1. Go to [railway.app](https://railway.app) and create a new project.
+2. Add a **PostgreSQL** database plugin — Railway will provision it and
+   expose a `DATABASE_URL` you can reference.
+3. Add a **bucket / object storage** service (Railway's S3-compatible bucket
+   offering, e.g. "roomy-flask", or any other S3-compatible provider such as
+   Cloudflare R2 or MinIO). You'll need its endpoint, bucket name, and
+   access key pair.
+4. Add a new service for the app itself, connected to your GitHub repo (see
+   below).
 
-## 3. What happens on each push?
+## 2. Connect GitHub for auto-deploy
 
-1. You push code to GitHub `main` branch
-2. Railway sees the push → rebuilds and redeploys the API server
-3. GitHub Actions sees the push → builds both frontends → deploys to Hostinger
+1. Push this repo to GitHub.
+2. In your Railway app service → **Settings → Source**, click **Connect to
+   GitHub Repo** and select this repository and branch (`main`).
+3. Railway will auto-deploy on every push to `main`.
+
+Railway picks up `railway.json` at the repo root, which defines:
+- **Build**: `bash railway-build.sh` — builds both frontends (with the
+  correct `BASE_PATH` for each), builds the API server bundle, then copies
+  the frontend output into `artifacts/api-server/dist/public` (and
+  `dist/public/admin`) so the single service can serve everything.
+- **Start**: `node --enable-source-maps artifacts/api-server/dist/index.mjs`
+- **Health check**: `/api/healthz`
+
+You should not need to change build/start commands in the Railway dashboard
+— they come from `railway.json`.
+
+## 3. Environment variables
+
+Set these in Railway (Service → Variables):
+
+| Variable | Required | Notes |
+|---|---|---|
+| `DATABASE_URL` | Yes | Reference your Railway Postgres plugin's connection string |
+| `PORT` | Yes | Railway sets this automatically — do not override |
+| `NODE_ENV` | Yes | `production` |
+| `SESSION_SECRET` | Yes | Long random string; used to sign auth JWTs |
+| `S3_ENDPOINT` | Yes | S3-compatible endpoint URL for your bucket |
+| `S3_BUCKET` | Yes | Bucket name (e.g. `roomy-flask`) |
+| `S3_ACCESS_KEY_ID` | Yes | Bucket access key |
+| `S3_SECRET_ACCESS_KEY` | Yes | Bucket secret key |
+| `S3_REGION` | No | Defaults to `auto`; set if your provider requires a specific region |
+| `APP_URL` | No | Public URL of the app, used in emails (defaults to `http://localhost:8080`) |
+| `SUPER_ADMIN_EMAIL` | No | Bootstrap super-admin email (defaults to a placeholder — set your own) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | No | For password-reset emails; emails are skipped if unset |
+| `ADMIN_STATIC` | No | Local/dev override only — do not set in production |
+
+## 4. Custom domain (optional)
+
+Railway Settings → Domains → Add custom domain. Since this is a single
+service, one domain covers the member app, admin panel, and API — no DNS
+split needed.
+
+## 5. What happens on each push?
+
+1. You push to `main`.
+2. Railway runs `railway-build.sh`: installs deps, typechecks shared libs,
+   builds both frontends with their production `BASE_PATH`, builds the API
+   server, and assembles everything into one deployable bundle.
+3. Railway starts the bundled server, which serves `/`, `/admin`, and `/api`
+   from the same process and port.
 
 ## Troubleshooting
 
 ### Frontend shows blank page after deploy
-- Check `.htaccess` files are uploaded (they enable SPA routing)
-- Verify the `assets/` folder was uploaded alongside `index.html`
+- Check the Railway build logs for the `railway-build.sh` output — confirm
+  both frontend builds and the "Assembling static assets" step succeeded.
+- SPA routing is handled in Express (`app.ts`), not via `.htaccess` — no
+  extra web-server config is needed.
+
+### Photo upload/download fails
+- Verify `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
+  are all set correctly.
+- Check the service logs for `Object not found` or S3 auth errors.
 
 ### API calls fail
-- Check that your backend is running on Railway (Deployments tab → check logs)
-- Verify `APP_URL` in Railway matches your actual domain
-- Check CORS: the backend allows all origins (`app.use(cors())`), so this shouldn't be an issue
+- Check the Railway service logs (Deployments tab).
+- Confirm `DATABASE_URL` points at the Railway Postgres plugin and that the
+  service can reach it (same Railway project/network).
+- CORS is open by default (`app.use(cors())`), so this is rarely the cause.
 
-### FTP deploy fails
-- Double-check `HOSTINGER_HOST`, `HOSTINGER_USERNAME`, `HOSTINGER_PASSWORD` in GitHub secrets
-- Some Hostinger plans use SFTP on port 22 instead of FTP on port 21 — if so, switch to an SFTP action
-
-## .htaccess reference
-
-Both apps need `.htaccess` for SPA routing (already included in the build):
-
-```apache
-RewriteEngine On
-RewriteBase /
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /index.html [L]
-```
-
-For the admin panel at `/admin`:
-```apache
-RewriteEngine On
-RewriteBase /admin
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /admin/index.html [L]
-```
+### Database connection / SSL errors
+- The Postgres client auto-detects Railway-hosted databases (by matching
+  `rlwy.net` / `railway.app` in `DATABASE_URL`) and enables SSL automatically
+  — no extra configuration needed.

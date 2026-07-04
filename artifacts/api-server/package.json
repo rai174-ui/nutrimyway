@@ -11,7 +11,8 @@
     "reset-passwords": "node --env-file-if-exists=../../.env reset-passwords.mjs"
   },
   "dependencies": {
-    "@google-cloud/storage": "^7.21.0",
+    "@aws-sdk/client-s3": "^3.1079.0",
+    "@aws-sdk/s3-request-presigner": "^3.1079.0",
     "@google/generative-ai": "^0.24.1",
     "@types/better-sqlite3": "^7.6.13",
     "@workspace/api-zod": "workspace:*",
@@ -23,7 +24,6 @@
     "drizzle-orm": "catalog:",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
-    "google-auth-library": "^10.9.0",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^9.0.1",
     "pg": "^8.22.0",

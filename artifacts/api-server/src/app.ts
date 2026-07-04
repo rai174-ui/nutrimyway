@@ -37,9 +37,9 @@ app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use("/api", router);
 
 // ── Static frontend serving ──────────────────────────────────────────────
-// On single-domain hosts (e.g. Hostinger's Node.js app hosting), there is no
-// separate web server for static files — the whole domain is proxied to this
-// Express process. So this app must serve the built frontend(s) itself.
+// Railway runs this as a single service on one domain — there is no
+// separate web server for static files, so this Express process must serve
+// the built frontend(s) itself.
 //
 // Bundled layout (populated at deploy time, see `public/` next to index.mjs):
 //   public/index.html, public/assets/*        → main frontend (served at "/")
@@ -171,7 +171,7 @@ export function startPhotoCleanupScheduler(): void {
             logger.info({ logId: row.id, photo_url: row.photo_url }, "Deleted expired meal photo");
           } catch (err) {
             if (err instanceof ObjectNotFoundError) {
-              logger.info({ logId: row.id }, "Photo already missing in GCS, clearing DB reference");
+              logger.info({ logId: row.id }, "Photo already missing in object storage, clearing DB reference");
             } else {
               logger.error({ err, logId: row.id }, "Failed to delete expired meal photo, skipping");
               continue;
