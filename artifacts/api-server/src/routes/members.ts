@@ -44,6 +44,7 @@ router.get("/members/:id/status", async (req, res) => {
             (COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)) AS cycle_started_at,
             (SELECT COUNT(*) FROM member_check_ins mci
              WHERE mci.member_id = m.id
+               AND mci.cancelled = FALSE
                AND mci.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
             ) AS checkins_used,
             (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days') AS expiring_by_date,
@@ -303,7 +304,7 @@ router.post("/members/:id/checkin", async (req, res) => {
   if (cycleStartedAt) {
     const checkinCap = await getCenterCheckinCap(center_id);
     const { rows: usedRows } = await pool.query(
-      `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND checked_in_at >= $2`,
+      `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND cancelled = FALSE AND checked_in_at >= $2`,
       [memberId, cycleStartedAt]
     );
     if (Number(usedRows[0].count) >= checkinCap) {

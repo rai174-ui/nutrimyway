@@ -577,7 +577,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
     pool.query(
       `SELECT COUNT(DISTINCT member_id) AS count
        FROM member_check_ins
-       WHERE center_id = $1 AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') = $2`,
+       WHERE center_id = $1 AND cancelled = FALSE AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') = $2`,
       [centerId, today]
     ),
     pool.query(
@@ -586,7 +586,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
        JOIN member_center_mapping mcm ON mcm.member_id = m.id
        LEFT JOIN LATERAL (
          SELECT COUNT(*) AS used FROM member_check_ins mci
-         WHERE mci.member_id = m.id AND mci.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
+         WHERE mci.member_id = m.id AND mci.cancelled = FALSE AND mci.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
        ) ci ON TRUE
        WHERE mcm.center_id = $1
          AND (
@@ -600,6 +600,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
               COUNT(DISTINCT member_id) AS count
        FROM member_check_ins
        WHERE center_id = $1
+         AND cancelled = FALSE
          AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') >= DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Kolkata')
          AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') <  DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Kolkata') + INTERVAL '1 month'
        GROUP BY day ORDER BY day`,
@@ -1071,7 +1072,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        m.dob, m.age_at_joining, m.valid_until, m.is_active, m.member_type, m.cycle_started_at,
        (
          SELECT COUNT(*) FROM member_check_ins mci3
-         WHERE mci3.member_id = m.id AND mci3.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
+         WHERE mci3.member_id = m.id AND mci3.cancelled = FALSE AND mci3.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
        ) AS checkins_used,
        ci.id          AS checkin_id,
        ci.checked_in_at,
@@ -1091,7 +1092,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        ${expiringSoon ? `AND (
          (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days')
          OR (
-           (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)) >= $2
+           (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.cancelled = FALSE AND mci4.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)) >= $2
          )
        )` : ""}
      ORDER BY m.valid_until ASC NULLS LAST, m.name`,
@@ -1335,7 +1336,7 @@ router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, 
   if (cycleStartedAt) {
     const { checkinCap } = await getCenterLimits(centerId);
     const { rows: usedRows } = await pool.query(
-      `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND checked_in_at >= $2`,
+      `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND cancelled = FALSE AND checked_in_at >= $2`,
       [Number(memberId), cycleStartedAt]
     );
     if (Number(usedRows[0].count) >= checkinCap) {
