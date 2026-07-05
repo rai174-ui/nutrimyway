@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Users, Flame, Activity, CalendarClock, ChevronRight, Megaphone, Send, X, Loader2, CheckCircle2, AlertTriangle, Trash2 } from "lucide-react";
+import { Users, Flame, Activity, CalendarClock, ChevronRight, Megaphone, Send, X, Loader2, CheckCircle2, AlertTriangle, Trash2, Sparkles } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList,
@@ -10,13 +10,11 @@ import {
   apiGet, apiPost, apiDelete, getAdminCenter,
   type Dashboard, type Broadcast, type FlavoursToday, type DepletingBatch,
 } from "@/lib/api";
-import flavourIcon from "@/assets/flavour-icon.png";
 
 function StatCard({
-  icon: Icon, iconImage, label, value, color, onClick, badge,
+  icon: Icon, label, value, color, onClick, badge,
 }: {
-  icon?: React.ElementType;
-  iconImage?: string;
+  icon: React.ElementType;
   label: string;
   value: string | number;
   color: string;
@@ -30,11 +28,7 @@ function StatCard({
         ${onClick ? "cursor-pointer hover:border-primary/40 hover:shadow-sm active:scale-[0.98]" : ""}`}
     >
       <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}>
-        {iconImage ? (
-          <img src={iconImage} alt="" className="w-5 h-5" />
-        ) : Icon ? (
-          <Icon className="w-4 h-4 text-white" />
-        ) : null}
+        <Icon className="w-4 h-4 text-white" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -183,7 +177,7 @@ function FlavoursTodayModal({ day, flavours, onClose }: { day: string; flavours:
       <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm max-h-[70vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <img src={flavourIcon} alt="" className="w-5 h-5" />
+            <Sparkles className="w-4 h-4 text-teal-base" />
             <h2 className="font-semibold text-foreground">Flavours for {day}</h2>
           </div>
           <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:text-foreground">
@@ -393,7 +387,7 @@ export default function DashboardPage() {
               <StatCard icon={Activity} label="Active Today" value={data.today_active_members} color="bg-teal-dark" onClick={() => navigate("/members")} />
               <StatCard icon={Flame} label="kcal Today" value={Math.round(data.today_calories).toLocaleString()} color="bg-amber-500" onClick={() => navigate("/consumption")} />
               <StatCard
-                iconImage={flavourIcon}
+                icon={Sparkles}
                 label={`Flavours for ${flavoursToday?.day ?? "Today"}`}
                 value={flavoursToday?.flavours.length ?? 0}
                 color="bg-teal-mid"
