@@ -9,7 +9,7 @@ import {
   isSuperAuthenticated, saveSuperAuth, clearSuperAuth, superFetch, type CenterWithStatus,
 } from "@/lib/api";
 import {
-  UploadMembersDialog, UploadBatchesDialog, UploadFlavoursDialog, UploadItemsDialog, UploadCentersDialog,
+  UploadMembersDialog, UploadBatchesDialog, UploadFlavoursDialog, UploadItemsDialog,
 } from "@/components/bulk-upload-dialogs";
 
 // ─── Reset password form (accessed via email link with ?token=xxx) ───────────
@@ -561,7 +561,6 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
   const [uploadFlavoursCenter, setUploadFlavoursCenter] = useState<CenterWithStatus | null>(null);
   const [showUploadBatches, setShowUploadBatches] = useState(false);
   const [showUploadItems, setShowUploadItems] = useState(false);
-  const [showUploadCenters, setShowUploadCenters] = useState(false);
   const [showAddCenter, setShowAddCenter] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -682,17 +681,6 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
         />
       )}
 
-      {showUploadCenters && (
-        <UploadCentersDialog
-          onClose={() => setShowUploadCenters(false)}
-          onSuccess={count => {
-            setShowUploadCenters(false);
-            showToast(`${count} center${count !== 1 ? "s" : ""} created`);
-            void load();
-          }}
-        />
-      )}
-
       {showAddCenter && (
         <AddCenterDialog
           onClose={() => setShowAddCenter(false)}
@@ -732,13 +720,6 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
             >
               <Plus className="w-4 h-4" />
               Add Center
-            </button>
-            <button
-              onClick={() => setShowUploadCenters(true)}
-              className="flex items-center gap-1.5 text-sm bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors font-medium"
-            >
-              <Upload className="w-4 h-4" />
-              Upload Centers
             </button>
             <button
               onClick={() => setShowUploadBatches(true)}
