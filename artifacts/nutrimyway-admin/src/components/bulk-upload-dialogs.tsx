@@ -409,15 +409,17 @@ export function UploadFlavoursDialog({
         </div>
         <p className="text-xs text-muted-foreground">
           Upload an XLSX or CSV with columns: <strong>name</strong>, available_days (comma-separated
-          days or "all"), <strong>center</strong> (optional — center ID or name; leave blank to use{" "}
-          <strong>{center.name}</strong>). Rows can target different centers in the same file.
+          days or "all"), <strong>center</strong> (required on every row — a center ID or name, e.g.{" "}
+          <strong>{center.id}</strong> or <strong>{center.name}</strong>). Rows can target different
+          centers in the same file; rows with a missing or unrecognized center are rejected with an
+          error and nothing is created for that row.
         </p>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => {
             const headers = ["name", "available_days", "center"];
             const sample = [
               ["Vanilla", "all", center.id],
-              ["Chocolate", "Mon,Wed,Fri", ""],
+              ["Chocolate", "Mon,Wed,Fri", center.id],
             ];
             const ws = XLSX.utils.aoa_to_sheet([headers, ...sample]);
             const wb = XLSX.utils.book_new();

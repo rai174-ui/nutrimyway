@@ -2573,10 +2573,12 @@ router.post("/admin/super/upload/batches", requireSuperAdmin, async (req, res) =
 });
 
 // POST /api/admin/super/centers/:centerId/upload/flavours
-// Accepts XLSX/CSV with columns: name, available_days, center (optional per-row override)
-// :centerId in the path is used as the default/fallback center for rows that omit "center".
+// Accepts XLSX/CSV with columns: name, available_days, center (required per-row)
+// :centerId in the path must be a valid center (the one the dialog was opened from) but is
+// only used to validate the request; each row's own "center" value determines where it lands.
 // A row's "center" value may be a center ID or a center name (case-insensitive) and can
-// target a different center than the one the dialog was opened from.
+// target a different center than the one the dialog was opened from. Missing or unrecognized
+// center values are reported as per-row errors, never silently defaulted or misassigned.
 router.post("/admin/super/centers/:centerId/upload/flavours", requireSuperAdmin, async (req, res) => {
   const defaultCenterId = String(req.params.centerId);
 
@@ -2614,7 +2616,7 @@ router.post("/admin/super/centers/:centerId/upload/flavours", requireSuperAdmin,
       const centerRaw = String(row.center ?? row.Center ?? row.CenterID ?? "").trim();
       let centerId: string;
       if (!centerRaw) {
-        centerId = defaultCenterId;
+        results.errors.push(`Row ${rowNum}: center is required`); continue;
       } else if (centerIds.has(centerRaw)) {
         centerId = centerRaw;
       } else if (centerNameMap.has(centerRaw.toLowerCase())) {
