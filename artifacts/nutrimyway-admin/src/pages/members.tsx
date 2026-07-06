@@ -1948,7 +1948,7 @@ export default function MembersPage() {
                   onClick={() => setShowRenewalHistory(true)}
                   className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
                 >
-                  <CalendarClock className="w-4 h-4 text-emerald-600" />Renewal History
+                  <CalendarClock className="w-4 h-4 text-emerald-600" />Download Renewal History
                 </button>
               </>
             )}

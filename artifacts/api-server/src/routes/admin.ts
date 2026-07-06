@@ -1310,9 +1310,15 @@ router.get("/admin/centers/:centerId/renewals", requireAdmin, async (req, res) =
 
   // Default date range: last 30 days
   const toDate = to ? new Date(to) : new Date();
-  toDate.setHours(23, 59, 59, 999);
   const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  if (Number.isNaN(toDate.getTime()) || Number.isNaN(fromDate.getTime())) {
+    res.status(400).json({ error: "from/to must be valid dates (YYYY-MM-DD)" }); return;
+  }
+  toDate.setHours(23, 59, 59, 999);
   fromDate.setHours(0, 0, 0, 0);
+  if (fromDate.getTime() > toDate.getTime()) {
+    res.status(400).json({ error: "from must be on or before to" }); return;
+  }
 
   const { rows } = await pool.query(
     `SELECT mr.id, mr.member_id, m.name AS member_name, m.mobile AS member_mobile,
