@@ -133,9 +133,13 @@ If you change React code later:
 
 ```bash
 cd artifacts/nutrimyway
-PORT=5173 BASE_PATH=/ pnpm run build
+pnpm run build:mobile
 ./node_modules/.bin/cap sync android
 ```
+
+**Important:** always use `pnpm run build:mobile` (not the plain `pnpm run build` used for the web deployment), because the native app loads its HTML/JS from local bundled assets instead of the live domain. `build:mobile` bakes in the full production API URL (`VITE_API_BASE=https://nutrimyway.in/api`) so the app's `fetch()` calls resolve correctly. Using the plain `build` script here causes login and every API call to fail with a `"<!DOCTYPE ..." is not valid JSON` error, since relative `/api` paths resolve against the app's local bundle instead of your real backend.
+
+If your production domain ever changes, update the `build:mobile` script in `package.json` accordingly before rebuilding.
 
 Then re-open the `android` folder in Android Studio and rebuild.
 

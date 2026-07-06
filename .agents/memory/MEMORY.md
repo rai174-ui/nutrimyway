@@ -5,3 +5,4 @@
 - [Admin routes bypass OpenAPI codegen](admin-routes-no-openapi.md) — /admin/* routes use plain Express + superFetch, not Orval-generated hooks; don't touch openapi.yaml for them.
 - [.github/workflows deletion blocked](railway-workflow-file-deletion.md) — main agent can't rm files under .github/workflows/; overwrite content to disable instead.
 - [S3-compatible object storage migration](s3-object-storage-migration.md) — GCS→S3 swap keeps the same ObjectStorageService method signatures; S3 metadata updates require copy-in-place, not in-place setMetadata.
+- [Mobile native API base](mobile-native-api-base.md) — Capacitor/Expo builds need an absolute API URL baked in, not relative `/api`, or login/fetches fail with a DOCTYPE-JSON error.
