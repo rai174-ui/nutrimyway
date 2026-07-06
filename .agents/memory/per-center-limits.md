@@ -11,3 +11,11 @@ Check-in cap and renewal-day extension are stored per-center (`centers.checkin_c
 - Read limits through the helpers, never re-hardcode: `getCenterLimits(centerId)` in `admin.ts`, `getCenterCheckinCap(centerId)` / `getMemberCheckinCap(memberId)` in `members.ts`.
 - A member can map to multiple centers (many-to-many), so member-facing self-service status uses `MIN(checkin_cap)` across their mapped centers — the conservative bound. Center-scoped endpoints (checkin with explicit `center_id`, admin dashboard/renew) use that one center's value directly.
 - Any new endpoint that checks a check-in count or extends validity on renewal must go through these helpers, not a literal `32`/`40`.
+
+## Trial 3-Day member overrides
+
+Trial 3-Day (`trial_3day`) members get a fixed 5-day renewal extension and a fixed 3-check-in cap that always override the center's configured values — Trial 1-Day and all other member types still use the center config unchanged.
+
+**Why:** business rule requested per member type, not per center; must not be confused with the per-center settings above.
+
+**How to apply:** resolve per-member effective limits via `getEffectiveMemberLimits(centerId, memberId)` in `admin.ts` (checks `member_type` before falling back to `getCenterLimits`) and via `getMemberCheckinCap(memberId)` / the inline `member_type === "trial_3day"` check in the self-checkin handler in `members.ts`. Any bulk/list query that filters or displays "checkins remaining" against a cap (e.g. the admin members-list "expiring soon" filter) must branch on `member_type = 'trial_3day'` per row instead of applying one center-wide cap to every member.

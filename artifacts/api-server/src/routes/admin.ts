@@ -9,9 +9,13 @@ import { logger } from "../lib/logger";
 const SUPER_ADMIN_EMAIL = process.env["SUPER_ADMIN_EMAIL"] ?? "rai.174@gmail.com";
 const APP_URL = process.env["APP_URL"] ?? "http://localhost:8080";
 
-async function isTrialMemberType(memberId: number): Promise<boolean> {
+async function getMemberType(memberId: number): Promise<string | undefined> {
   const { rows } = await pool.query("SELECT member_type FROM members WHERE id = $1", [memberId]);
-  const type = rows[0]?.member_type as string | undefined;
+  return rows[0]?.member_type as string | undefined;
+}
+
+async function isTrialMemberType(memberId: number): Promise<boolean> {
+  const type = await getMemberType(memberId);
   return type === "trial_1day" || type === "trial_3day";
 }
 
@@ -51,6 +55,23 @@ async function getCenterLimits(centerId: string): Promise<{ checkinCap: number; 
     checkinCap: Number(rows[0]?.checkin_cap ?? DEFAULT_CHECKIN_CAP),
     renewalDays: Number(rows[0]?.renewal_days ?? DEFAULT_RENEWAL_DAYS),
   };
+}
+
+// Trial 3-Day members always get a fixed 5-day renewal and 3-check-in cap,
+// overriding whatever the center has configured. Trial 1-Day members and all
+// other member types continue to use the center's configured limits.
+const TRIAL_3DAY_RENEWAL_DAYS = 5;
+const TRIAL_3DAY_CHECKIN_CAP = 3;
+
+async function getEffectiveMemberLimits(centerId: string, memberId: number): Promise<{ checkinCap: number; renewalDays: number }> {
+  const [centerLimits, memberType] = await Promise.all([
+    getCenterLimits(centerId),
+    getMemberType(memberId),
+  ]);
+  if (memberType === "trial_3day") {
+    return { checkinCap: TRIAL_3DAY_CHECKIN_CAP, renewalDays: TRIAL_3DAY_RENEWAL_DAYS };
+  }
+  return centerLimits;
 }
 
 const VALID_MEMBER_TYPES = new Set(["trial_1day", "trial_3day", "regular", "virtual"]);
@@ -1092,11 +1113,12 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        ${expiringSoon ? `AND (
          (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days')
          OR (
-           (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.cancelled = FALSE AND mci4.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)) >= $2
+           (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.cancelled = FALSE AND mci4.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz))
+             >= (CASE WHEN m.member_type = 'trial_3day' THEN $3 ELSE $2 END)
          )
        )` : ""}
      ORDER BY m.valid_until ASC NULLS LAST, m.name`,
-    expiringSoon ? [centerId, checkinCap - 7] : [centerId]
+    expiringSoon ? [centerId, checkinCap - 7, TRIAL_3DAY_CHECKIN_CAP - 7] : [centerId]
   );
   res.json(rows);
 });
@@ -1261,7 +1283,7 @@ router.patch("/admin/centers/:centerId/members/:memberId/renew", requireAdmin, a
   const { rows: currentRows } = await pool.query(`SELECT valid_until FROM members WHERE id = $1`, [Number(memberId)]);
   const previousValidUntil = currentRows[0]?.valid_until as string | null;
 
-  const { renewalDays } = await getCenterLimits(centerId);
+  const { renewalDays } = await getEffectiveMemberLimits(centerId, Number(memberId));
 
   const { rows } = await pool.query(
     `UPDATE members
@@ -1368,7 +1390,7 @@ router.post("/admin/centers/:centerId/members/:memberId/checkin", requireAdmin, 
   const { rows: cycleRows } = await pool.query(`SELECT cycle_started_at FROM members WHERE id = $1`, [Number(memberId)]);
   const cycleStartedAt = cycleRows[0]?.cycle_started_at as string | null;
   if (cycleStartedAt) {
-    const { checkinCap } = await getCenterLimits(centerId);
+    const { checkinCap } = await getEffectiveMemberLimits(centerId, Number(memberId));
     const { rows: usedRows } = await pool.query(
       `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND cancelled = FALSE AND checked_in_at >= $2`,
       [Number(memberId), cycleStartedAt]

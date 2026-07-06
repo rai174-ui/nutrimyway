@@ -4,15 +4,28 @@ import { pool } from "../lib/sqlite";
 const router = Router();
 const DEFAULT_CHECKIN_CAP = 32;
 
-async function isTrialMemberType(memberId: number): Promise<boolean> {
+// Trial 3-Day members always get a fixed 3-check-in cap, overriding whatever
+// the center(s) have configured. Trial 1-Day members and all other member
+// types continue to use the center's configured cap.
+const TRIAL_3DAY_CHECKIN_CAP = 3;
+
+async function getMemberType(memberId: number): Promise<string | undefined> {
   const { rows } = await pool.query("SELECT member_type FROM members WHERE id = $1", [memberId]);
-  const type = rows[0]?.member_type as string | undefined;
+  return rows[0]?.member_type as string | undefined;
+}
+
+async function isTrialMemberType(memberId: number): Promise<boolean> {
+  const type = await getMemberType(memberId);
   return type === "trial_1day" || type === "trial_3day";
 }
 
 // A member can be mapped to more than one center; use the strictest (lowest)
 // check-in cap among their centers so no single center's limit is exceeded.
+// Trial 3-Day members always use the fixed override regardless of center config.
 async function getMemberCheckinCap(memberId: number): Promise<number> {
+  const memberType = await getMemberType(memberId);
+  if (memberType === "trial_3day") return TRIAL_3DAY_CHECKIN_CAP;
+
   const { rows } = await pool.query(
     `SELECT MIN(c.checkin_cap) AS cap
      FROM member_center_mapping mcm
@@ -302,7 +315,8 @@ router.post("/members/:id/checkin", async (req, res) => {
   const { rows: cycleRows } = await pool.query(`SELECT cycle_started_at FROM members WHERE id = $1`, [memberId]);
   const cycleStartedAt = cycleRows[0]?.cycle_started_at as string | null;
   if (cycleStartedAt) {
-    const checkinCap = await getCenterCheckinCap(center_id);
+    const memberType = await getMemberType(memberId);
+    const checkinCap = memberType === "trial_3day" ? TRIAL_3DAY_CHECKIN_CAP : await getCenterCheckinCap(center_id);
     const { rows: usedRows } = await pool.query(
       `SELECT COUNT(*) AS count FROM member_check_ins WHERE member_id = $1 AND cancelled = FALSE AND checked_in_at >= $2`,
       [memberId, cycleStartedAt]
