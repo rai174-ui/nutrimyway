@@ -139,6 +139,8 @@ pnpm run build:mobile
 
 **Important:** always use `pnpm run build:mobile` (not the plain `pnpm run build` used for the web deployment), because the native app loads its HTML/JS from local bundled assets instead of the live domain. `build:mobile` bakes in the full production API URL (`VITE_API_BASE=https://nutrimyway.in/api`) so the app's `fetch()` calls resolve correctly. Using the plain `build` script here causes login and every API call to fail with a `"<!DOCTYPE ..." is not valid JSON` error, since relative `/api` paths resolve against the app's local bundle instead of your real backend.
 
+**Fallback domain:** `build:mobile` also bakes in `VITE_API_BASE_FALLBACK=https://nutrimyway-production.up.railway.app/api`. The app tries `nutrimyway.in` first; if that custom domain is ever unreachable (DNS issue, expired cert, etc.), it automatically retries against the raw Railway domain and keeps using whichever one worked. Both domains must point at the same backend for this to work correctly.
+
 If your production domain ever changes, update the `build:mobile` script in `package.json` accordingly before rebuilding.
 
 Then re-open the `android` folder in Android Studio and rebuild.
@@ -151,7 +153,7 @@ Then re-open the `android` folder in Android Studio and rebuild.
 |---|---|
 | Package name | `com.zerolimitautomation.nutrimyway` |
 | App name | `NutriMyWay` |
-| Version | `1.0.1` (versionCode 2) |
+| Version | `1.0.2` (versionCode 3) |
 | Min SDK | 22 (Android 5.1) |
 | Target SDK | 35 (Android 15) |
 

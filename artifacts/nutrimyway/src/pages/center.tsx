@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
+import { apiFetch } from "@/lib/api-base";
 
 interface CheckinLog {
   id: number;
@@ -101,8 +102,7 @@ export function Center() {
   const { data: checkinLogs } = useQuery<CheckinLog[]>({
     queryKey: ["checkin-logs", MEMBER_ID],
     queryFn: async () => {
-      const base = import.meta.env.VITE_API_BASE || "/api";
-      const res = await fetch(`${base}/members/${MEMBER_ID}/checkin-logs`);
+      const res = await apiFetch(`/members/${MEMBER_ID}/checkin-logs`);
       if (!res.ok) throw new Error("Failed to load visit history");
       return res.json() as Promise<CheckinLog[]>;
     },

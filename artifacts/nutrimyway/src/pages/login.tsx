@@ -2,12 +2,12 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ChevronLeft, Loader2, Mail, Hash } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { apiFetch } from "@/lib/api-base";
 
 type Step = "contact" | "otp";
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const base = import.meta.env.VITE_API_BASE || "/api";
-  const res = await fetch(base + path, {
+  const res = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

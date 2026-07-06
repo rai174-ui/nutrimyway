@@ -6,8 +6,7 @@ import { Package, Calendar, LogOut, Camera, Loader2, X, CheckCircle2, Info, Aler
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-
-const BASE = import.meta.env.VITE_API_BASE || "/api";
+import { apiFetch } from "@/lib/api-base";
 
 export function Profile() {
   const { memberId: MEMBER_ID, logout } = useAuth();
@@ -33,7 +32,7 @@ export function Profile() {
 
   useEffect(() => {
     if (!MEMBER_ID) return;
-    fetch(`${BASE}/members/${MEMBER_ID}/gemini-key`)
+    apiFetch(`/members/${MEMBER_ID}/gemini-key`)
       .then(r => r.json())
       .then((d: { has_key: boolean }) => setHasKey(d.has_key))
       .catch(() => {});
@@ -43,7 +42,7 @@ export function Profile() {
     if (!MEMBER_ID || !keyInput.trim()) return;
     setSavingKey(true);
     try {
-      const res = await fetch(`${BASE}/members/${MEMBER_ID}/gemini-key`, {
+      const res = await apiFetch(`/members/${MEMBER_ID}/gemini-key`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: keyInput.trim() }),
@@ -64,7 +63,7 @@ export function Profile() {
     if (!MEMBER_ID) return;
     setSavingKey(true);
     try {
-      await fetch(`${BASE}/members/${MEMBER_ID}/gemini-key`, {
+      await apiFetch(`/members/${MEMBER_ID}/gemini-key`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: "" }),

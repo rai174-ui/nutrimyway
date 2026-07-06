@@ -7,10 +7,10 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { Html5Qrcode } from "html5-qrcode";
+import { apiFetch } from "@/lib/api-base";
 
 function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
 const TODAY = todayLocal();
-const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 interface CheckIn {
   id: number;
@@ -40,7 +40,7 @@ function useActiveCheckin(memberId: number | null) {
 
   function load() {
     if (!memberId) return;
-    fetch(`${BASE}/members/${memberId}/checkin/active`)
+    apiFetch(`/members/${memberId}/checkin/active`)
       .then(r => r.json())
       .then(setCheckin)
       .catch(() => setCheckin(null));
@@ -54,7 +54,7 @@ function useMemberCenters(memberId: number | null) {
   const [centers, setCenters] = useState<Center[]>([]);
   useEffect(() => {
     if (!memberId) return;
-    fetch(`${BASE}/members/${memberId}/centers`)
+    apiFetch(`/members/${memberId}/centers`)
       .then(r => r.json())
       .then(setCenters)
       .catch(() => {});
@@ -116,7 +116,7 @@ function WeightPromptModal({ memberId, onDone }: { memberId: number; onDone: () 
     if (weight && Number(weight) > 0) {
       setSaving(true);
       try {
-        await fetch(`${BASE}/members/${memberId}/health-records`, {
+        await apiFetch(`/members/${memberId}/health-records`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ weight_kg: Number(weight) }),
@@ -179,7 +179,7 @@ function CheckInCard({ memberId, checkin, onRefresh }: {
   async function doCheckin(centerId: string) {
     setBusy(true);
     try {
-      await fetch(`${BASE}/members/${memberId}/checkin`, {
+      await apiFetch(`/members/${memberId}/checkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ center_id: centerId }),
@@ -198,7 +198,7 @@ function CheckInCard({ memberId, checkin, onRefresh }: {
   async function handleCheckout() {
     setBusy(true);
     try {
-      await fetch(`${BASE}/members/${memberId}/checkout`, { method: "POST" });
+      await apiFetch(`/members/${memberId}/checkout`, { method: "POST" });
       onRefresh();
     } catch { /* ignore */ } finally { setBusy(false); }
   }
@@ -294,7 +294,7 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!MEMBER_ID) return;
-    fetch(`${BASE}/members/${MEMBER_ID}/broadcasts?limit=5`)
+    apiFetch(`/members/${MEMBER_ID}/broadcasts?limit=5`)
       .then(r => r.ok ? r.json() : [])
       .then((d: Broadcast[]) => setBroadcasts(d))
       .catch(() => { /* ignore */ });
@@ -472,7 +472,7 @@ function BroadcastCard({ broadcast, memberId, onDismiss }: {
 }) {
   async function markRead() {
     try {
-      await fetch(`${BASE}/members/${memberId}/broadcasts/${broadcast.id}/read`, { method: "POST" });
+      await apiFetch(`/members/${memberId}/broadcasts/${broadcast.id}/read`, { method: "POST" });
       onDismiss();
     } catch { /* ignore */ }
   }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { apiFetch } from "@/lib/api-base";
 
 export function ConsentModal({ onAccepted, endpoint }: { onAccepted: () => void; endpoint: string }) {
   const { token } = useAuth();
@@ -13,8 +14,7 @@ export function ConsentModal({ onAccepted, endpoint }: { onAccepted: () => void;
     setSaving(true);
     setError(null);
     try {
-      const base = import.meta.env.VITE_API_BASE || "/api";
-      const res = await fetch(base + endpoint, {
+      const res = await apiFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

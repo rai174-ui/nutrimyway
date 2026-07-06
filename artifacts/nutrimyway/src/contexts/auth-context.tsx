@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { initPushNotifications } from "@/lib/capacitor";
+import { getApiBase } from "@/lib/api-base";
 
 interface AuthState {
   token: string | null;
@@ -46,8 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setState(next);
     // Register push token after login
-    const base = import.meta.env.VITE_API_BASE || "/api";
-    setTimeout(() => initPushNotifications(memberId, base), 1000);
+    setTimeout(() => initPushNotifications(memberId, getApiBase()), 1000);
   }, []);
 
   const logout = useCallback(() => {

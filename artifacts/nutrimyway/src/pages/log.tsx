@@ -6,9 +6,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { native, snapPhoto } from "@/lib/capacitor";
+import { apiFetch } from "@/lib/api-base";
 
 function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
-const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 function autoSlot(): string {
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -93,7 +93,7 @@ export function Log() {
 
   useEffect(() => {
     if (!MEMBER_ID) return;
-    fetch(`${BASE}/members/${MEMBER_ID}/checkin-options`)
+    apiFetch(`/members/${MEMBER_ID}/checkin-options`)
       .then(r => r.json())
       .then((data: CheckinOptions) => {
         setCheckinOptions(data);
@@ -101,7 +101,7 @@ export function Log() {
       })
       .catch(() => {});
 
-    fetch(`${BASE}/members/${MEMBER_ID}/gemini-key`)
+    apiFetch(`/members/${MEMBER_ID}/gemini-key`)
       .then(r => r.json())
       .then((d: { has_key: boolean }) => setHasGeminiKey(d.has_key))
       .catch(() => {});
@@ -116,7 +116,7 @@ export function Log() {
     let photoUrl: string | null = null;
     if (pendingPhoto) {
       try {
-        const urlRes = await fetch(`${BASE}/storage/uploads/request-url`, {
+        const urlRes = await apiFetch(`/storage/uploads/request-url`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: pendingPhoto.name, size: pendingPhoto.size, contentType: pendingPhoto.type }),
@@ -212,7 +212,7 @@ export function Log() {
     if (!MEMBER_ID) return;
     setSavingSelections(true);
     try {
-      const res = await fetch(`${BASE}/members/${MEMBER_ID}/checkin/selections`, {
+      const res = await apiFetch(`/members/${MEMBER_ID}/checkin/selections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: selections }),
@@ -252,7 +252,7 @@ export function Log() {
         setAiLoading(false);
         return;
       }
-      const res = await fetch(`${BASE}/members/${MEMBER_ID}/analyze-food-photo`, {
+      const res = await apiFetch(`/members/${MEMBER_ID}/analyze-food-photo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image_base64: base64, mime_type: "image/jpeg" }),
@@ -283,7 +283,7 @@ export function Log() {
     setAiLoading(true);
     try {
       const base64 = await compressAndEncode(file);
-      const res = await fetch(`${BASE}/members/${MEMBER_ID}/analyze-food-photo`, {
+      const res = await apiFetch(`/members/${MEMBER_ID}/analyze-food-photo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image_base64: base64, mime_type: "image/jpeg" }),
@@ -335,7 +335,7 @@ export function Log() {
     if (!MEMBER_ID || !apiKeyInput.trim()) return;
     setSavingKey(true);
     try {
-      const res = await fetch(`${BASE}/members/${MEMBER_ID}/gemini-key`, {
+      const res = await apiFetch(`/members/${MEMBER_ID}/gemini-key`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: apiKeyInput.trim() }),

@@ -12,6 +12,9 @@ import { Login } from "@/pages/login";
 import { About } from "@/pages/about";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ConsentModal } from "@/components/consent-modal";
+import { initApiBase } from "@/lib/api-base";
+
+initApiBase();
 
 const queryClient = new QueryClient();
 
