@@ -1016,7 +1016,10 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     ? Math.ceil((new Date(member.valid_until).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null;
   const checkinsUsed = member.checkins_used ?? 0;
-  const checkinCapReached = checkinsUsed >= CHECKIN_CAP;
+  const effectiveCheckinCap = member.effective_checkin_cap ?? CHECKIN_CAP;
+  const effectiveRenewalDays = member.effective_renewal_days ?? 40;
+  const isTrial3Day = member.member_type === "trial_3day";
+  const checkinCapReached = checkinsUsed >= effectiveCheckinCap;
   const showRenew = (renewDaysLeft !== null && renewDaysLeft <= 10) || checkinCapReached;
 
   function openRenewDialog() {
@@ -1099,8 +1102,8 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
             <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5">
               {MEMBER_TYPE_LABELS[member.member_type ?? "regular"]}
             </span>
-            <span className={`inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5 border ${checkinsUsed >= CHECKIN_CAP ? "text-red-700 bg-red-50 border-red-300" : checkinsUsed >= CHECKIN_CAP - 7 ? "text-amber-700 bg-amber-50 border-amber-300" : "text-muted-foreground bg-muted/40 border-border"}`}>
-              {checkinsUsed}/{CHECKIN_CAP} check-ins
+            <span className={`inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5 border ${checkinsUsed >= effectiveCheckinCap ? "text-red-700 bg-red-50 border-red-300" : checkinsUsed >= effectiveCheckinCap - 7 ? "text-amber-700 bg-amber-50 border-amber-300" : "text-muted-foreground bg-muted/40 border-border"}`}>
+              {checkinsUsed}/{effectiveCheckinCap} check-ins{isTrial3Day ? " (trial cap)" : ""}
             </span>
             {isCheckedIn && member.checked_in_at && (
               <p className={`text-xs flex items-center gap-1 ${mins >= 150 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
@@ -1160,7 +1163,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               onClick={openRenewDialog}
               disabled={busy}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-colors border border-emerald-200"
-              title="Renew Membership (+40 days, resets check-in cycle)"
+              title={`Renew Membership (+${effectiveRenewalDays} days, resets check-in cycle)`}
             >
               <RotateCcw className="w-3.5 h-3.5" />Renew Membership
             </button>
@@ -1336,7 +1339,8 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               <button onClick={() => setShowRenewDialog(false)} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Extends validity by 40 days from {member.valid_until && new Date(member.valid_until) > new Date() ? "current expiry" : "today"} and resets the check-in cycle for {member.name}.
+              Extends validity by <span className="font-semibold text-foreground">+{effectiveRenewalDays} days</span> from {member.valid_until && new Date(member.valid_until) > new Date() ? "current expiry" : "today"} and resets the check-in cycle for {member.name}.
+              {isTrial3Day && " Trial 3-Day members always get a fixed 5-day renewal, regardless of this center's configured renewal period."}
             </p>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Payment Method *</label>

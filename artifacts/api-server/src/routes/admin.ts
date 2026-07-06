@@ -1085,7 +1085,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
   // Auto-checkout any sessions that have exceeded the time limit
   await autoCheckoutExpired(centerId);
 
-  const { checkinCap } = await getCenterLimits(centerId);
+  const { checkinCap, renewalDays } = await getCenterLimits(centerId);
 
   const { rows } = await pool.query(
     `SELECT
@@ -1120,7 +1120,15 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
      ORDER BY m.valid_until ASC NULLS LAST, m.name`,
     expiringSoon ? [centerId, checkinCap - 7, TRIAL_3DAY_CHECKIN_CAP - 7] : [centerId]
   );
-  res.json(rows);
+  // Trial 3-Day members always use the fixed override, regardless of this
+  // center's configured checkin_cap/renewal_days — surface the value that
+  // will actually be enforced so the admin UI never shows a misleading number.
+  const withEffectiveLimits = rows.map(row => ({
+    ...row,
+    effective_checkin_cap: row.member_type === "trial_3day" ? TRIAL_3DAY_CHECKIN_CAP : checkinCap,
+    effective_renewal_days: row.member_type === "trial_3day" ? TRIAL_3DAY_RENEWAL_DAYS : renewalDays,
+  }));
+  res.json(withEffectiveLimits);
 });
 
 // POST /api/admin/centers/:centerId/members — create & onboard new member

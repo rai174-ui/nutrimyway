@@ -229,6 +229,8 @@ export interface CenterMember {
   checked_in_at: string | null;
   checked_out_at: string | null;
   already_consumed_today: boolean;
+  effective_checkin_cap: number;
+  effective_renewal_days: number;
 }
 
 export interface MemberRenewal {
