@@ -408,14 +408,16 @@ export function UploadFlavoursDialog({
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">&#10005;</button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Upload an XLSX or CSV with columns: <strong>name</strong>, available_days (comma-separated days or "all")
+          Upload an XLSX or CSV with columns: <strong>name</strong>, available_days (comma-separated
+          days or "all"), <strong>center</strong> (optional — center ID or name; leave blank to use{" "}
+          <strong>{center.name}</strong>). Rows can target different centers in the same file.
         </p>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => {
-            const headers = ["name", "available_days"];
+            const headers = ["name", "available_days", "center"];
             const sample = [
-              ["Vanilla", "all"],
-              ["Chocolate", "Mon,Wed,Fri"],
+              ["Vanilla", "all", center.id],
+              ["Chocolate", "Mon,Wed,Fri", ""],
             ];
             const ws = XLSX.utils.aoa_to_sheet([headers, ...sample]);
             const wb = XLSX.utils.book_new();

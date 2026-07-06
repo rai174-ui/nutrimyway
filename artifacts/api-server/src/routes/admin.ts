@@ -2573,9 +2573,12 @@ router.post("/admin/super/upload/batches", requireSuperAdmin, async (req, res) =
 });
 
 // POST /api/admin/super/centers/:centerId/upload/flavours
-// Accepts XLSX/CSV with columns: name, available_days
+// Accepts XLSX/CSV with columns: name, available_days, center (optional per-row override)
+// :centerId in the path is used as the default/fallback center for rows that omit "center".
+// A row's "center" value may be a center ID or a center name (case-insensitive) and can
+// target a different center than the one the dialog was opened from.
 router.post("/admin/super/centers/:centerId/upload/flavours", requireSuperAdmin, async (req, res) => {
-  const { centerId } = req.params;
+  const defaultCenterId = String(req.params.centerId);
 
   const { rows } = req.body as { rows: Record<string, unknown>[] };
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -2587,8 +2590,14 @@ router.post("/admin/super/centers/:centerId/upload/flavours", requireSuperAdmin,
   try {
     await client.query("BEGIN");
 
-    const { rows: centerRows } = await client.query("SELECT id FROM centers WHERE id = $1", [centerId]);
-    if (!centerRows[0]) {
+    const { rows: allCenterRows } = await client.query("SELECT id, name FROM centers");
+    const centerIds = new Set<string>(allCenterRows.map((r: { id: string }) => String(r.id).trim()));
+    const centerNameMap = new Map<string, string>();
+    for (const r of allCenterRows as { id: string; name: string }[]) {
+      centerNameMap.set(String(r.name).trim().toLowerCase(), String(r.id).trim());
+    }
+
+    if (!centerIds.has(defaultCenterId)) {
       await client.query("ROLLBACK");
       client.release();
       res.status(404).json({ error: "Unknown center" });
@@ -2601,6 +2610,18 @@ router.post("/admin/super/centers/:centerId/upload/flavours", requireSuperAdmin,
       const name = String(row.name ?? "").trim();
       if (!name) { results.errors.push(`Row ${rowNum}: name is required`); continue; }
       const availableDays = String(row.available_days ?? "").trim() || "all";
+
+      const centerRaw = String(row.center ?? row.Center ?? row.CenterID ?? "").trim();
+      let centerId: string;
+      if (!centerRaw) {
+        centerId = defaultCenterId;
+      } else if (centerIds.has(centerRaw)) {
+        centerId = centerRaw;
+      } else if (centerNameMap.has(centerRaw.toLowerCase())) {
+        centerId = centerNameMap.get(centerRaw.toLowerCase())!;
+      } else {
+        results.errors.push(`Row ${rowNum}: Unknown center "${centerRaw}"`); continue;
+      }
 
       const { rows: r } = await client.query(
         `INSERT INTO center_flavours (center_id, name, available_days)
