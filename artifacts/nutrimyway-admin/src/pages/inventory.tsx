@@ -96,7 +96,8 @@ function QuickReceiptForm({
   const [receivedQty, setReceivedQty] = useState<string>("");
 
   const isMemberPack = assignMemberId !== "";
-  const selectedMember = members.find(m => String(m.id) === assignMemberId);
+  const virtualMembers = members.filter(m => m.member_type === "virtual");
+  const selectedMember = virtualMembers.find(m => String(m.id) === assignMemberId);
 
   async function receive() {
     if (!ingredientId || !batchNumber.trim()) return;
@@ -199,23 +200,26 @@ function QuickReceiptForm({
             </div>
           </div>
 
-          {members.length > 0 && (
-            <div className="flex flex-col gap-1 min-w-[180px] flex-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Assign To
-              </label>
-              <select
-                value={assignMemberId}
-                onChange={e => setAssignMemberId(e.target.value)}
-                className="h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                <option value="">— Center Stock —</option>
-                {members.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="flex flex-col gap-1 min-w-[180px] flex-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Assign To
+            </label>
+            <select
+              value={assignMemberId}
+              onChange={e => setAssignMemberId(e.target.value)}
+              className="h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">— Center Stock —</option>
+              {virtualMembers.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            {virtualMembers.length === 0 && (
+              <span className="text-[11px] text-muted-foreground">
+                No Virtual members at this center yet
+              </span>
+            )}
+          </div>
 
           {!isMemberPack && (
             <div className="flex flex-col gap-1">
