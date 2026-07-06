@@ -1944,13 +1944,15 @@ export default function MembersPage() {
                 >
                   <ClipboardList className="w-4 h-4 text-sky-600" />Health Report
                 </button>
-                <button
-                  onClick={() => setShowRenewalHistory(true)}
-                  className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
-                >
-                  <CalendarClock className="w-4 h-4 text-emerald-600" />Download Renewal History
-                </button>
               </>
+            )}
+            {center && (
+              <button
+                onClick={() => setShowRenewalHistory(true)}
+                className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
+              >
+                <CalendarClock className="w-4 h-4 text-emerald-600" />Download Renewal History
+              </button>
             )}
             {center && <AddMemberForm centerId={center.id} onAdded={load} />}
           </div>
