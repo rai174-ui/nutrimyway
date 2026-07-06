@@ -33,7 +33,7 @@ function DayPicker({ value, onChange }: { value: Day[]; onChange: (v: Day[]) => 
           key={day}
           type="button"
           onClick={() => toggle(day)}
-          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
+          className={`text-xs font-semibold px-2 py-1 rounded transition-colors ${
             value.includes(day)
               ? "bg-violet-600 text-white"
               : "bg-muted text-muted-foreground hover:bg-violet-100 hover:text-violet-600"
@@ -411,7 +411,7 @@ function FlavourMaster() {
       )}
 
       {adding && (
-        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-2">
+        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-3">
           <div className="flex items-center gap-2">
             <input
               value={newName}
@@ -419,12 +419,12 @@ function FlavourMaster() {
               onKeyDown={e => e.key === "Enter" && void addFlavour()}
               autoFocus
               placeholder="Flavour name e.g. Chocolate"
-              className="flex-1 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-violet-500"
+              className="flex-1 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-violet-500"
             />
             <button
               onClick={() => void addFlavour()}
               disabled={!newName.trim() || saving}
-              className="h-8 px-3 rounded-lg bg-violet-600 text-white text-xs font-medium disabled:opacity-40"
+              className="h-9 px-3 rounded-lg bg-violet-600 text-white text-xs font-medium disabled:opacity-40"
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
             </button>
@@ -448,13 +448,13 @@ function FlavourMaster() {
           No flavours yet. Add some above — they'll appear as a dropdown in Item Master.
         </p>
       ) : (
-        <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        <div className="divide-y divide-border">
           {flavours.map(f => (
-            <div key={f.id} className="group rounded-xl border border-border px-3 py-2.5 hover:border-violet-300 hover:bg-violet-50/30 transition-colors">
+            <div key={f.id} className="px-5 py-3 hover:bg-muted/20 transition-colors">
               {editId === f.id ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground flex-1 truncate">{f.name}</span>
+                    <span className="text-sm font-medium text-foreground flex-1">{f.name}</span>
                     <button
                       onClick={() => void saveEdit(f.id)}
                       disabled={saving}
@@ -469,24 +469,24 @@ function FlavourMaster() {
                   <DayPicker value={editDays} onChange={setEditDays} />
                 </div>
               ) : (
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-violet-700 truncate">{f.name}</p>
-                    <div className="flex items-center gap-1 flex-wrap mt-1">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-violet-700">{f.name}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                       {f.available_days && f.available_days !== "all" ? (
                         f.available_days.split(",").map(d => (
-                          <span key={d} className="text-[9px] bg-violet-50 text-violet-600 border border-violet-200 px-1.5 py-0.5 rounded-full">{d.trim()}</span>
+                          <span key={d} className="text-xs bg-violet-50 text-violet-600 border border-violet-200 px-2 py-0.5 rounded-full">{d.trim()}</span>
                         ))
                       ) : (
-                        <span className="text-[9px] text-muted-foreground">All days</span>
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">All days</span>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all shrink-0">
-                    <button onClick={() => startEdit(f)} className="text-muted-foreground hover:text-violet-600 p-0.5">
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => startEdit(f)} className="text-muted-foreground hover:text-violet-600 p-1">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => void deleteFlavour(f.id)} className="text-muted-foreground hover:text-destructive p-0.5">
+                    <button onClick={() => void deleteFlavour(f.id)} className="text-muted-foreground hover:text-destructive p-1">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -652,12 +652,12 @@ function ItemMaster() {
       )}
 
       {adding && (
-        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-3">
+          <div className="flex items-center gap-2">
             <input
               value={newName}
               onChange={e => setNewName(e.target.value)}
-              className="flex-1 min-w-[160px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              className="flex-1 min-w-[200px] h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="Item name *"
               onKeyDown={e => e.key === "Enter" && void addIngredient()}
               autoFocus
@@ -665,13 +665,13 @@ function ItemMaster() {
             <input
               value={newMaterialCode}
               onChange={e => setNewMaterialCode(e.target.value)}
-              className="w-36 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="Material code *"
             />
             <select
               value={newFlavour}
               onChange={e => setNewFlavour(e.target.value)}
-              className="w-36 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">— Flavour —</option>
               {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
@@ -680,18 +680,18 @@ function ItemMaster() {
           <input
             value={newDescription}
             onChange={e => setNewDescription(e.target.value)}
-            className="w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder="Description (optional)"
           />
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
             <select
               value={newUnit}
               onChange={e => setNewUnit(e.target.value)}
-              className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-24 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
             >
               {UNITS.map(u => <option key={u}>{u}</option>)}
             </select>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <label className="text-xs text-muted-foreground whitespace-nowrap">Serving qty</label>
               <input
                 type="number"
@@ -699,10 +699,10 @@ function ItemMaster() {
                 step="0.1"
                 value={newServingQty}
                 onChange={e => setNewServingQty(e.target.value)}
-                className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <label className="text-xs text-muted-foreground whitespace-nowrap">kcal/serve</label>
               <input
                 type="number"
@@ -711,7 +711,7 @@ function ItemMaster() {
                 value={newKcalPerServing}
                 onChange={e => setNewKcalPerServing(e.target.value)}
                 placeholder="—"
-                className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
@@ -726,7 +726,7 @@ function ItemMaster() {
             <button
               onClick={() => void addIngredient()}
               disabled={!newName.trim() || saving}
-              className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+              className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
             </button>
@@ -742,33 +742,33 @@ function ItemMaster() {
           <Loader2 className="w-5 h-5 animate-spin text-primary" />
         </div>
       ) : (
-        <div className={ingredients.length === 0 ? "" : "p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"}>
+        <div className="divide-y divide-border">
           {ingredients.length === 0 && (
             <p className="px-5 py-8 text-center text-sm text-muted-foreground">
               No items yet. Add one above — BOM and inventory can only use items from this list.
             </p>
           )}
           {ingredients.map(ing => (
-            <div key={ing.id} className={`group ${editId === ing.id ? "" : "rounded-xl border border-border hover:border-primary/30 hover:bg-muted/20 transition-colors"}`}>
+            <div key={ing.id} className="px-5 py-4 hover:bg-muted/20 transition-colors">
               {editId === ing.id ? (
-                <div className="px-5 py-3 space-y-2 bg-muted/20 rounded-xl border border-border">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
                     <input
                       value={editName}
                       onChange={e => setEditName(e.target.value)}
-                      className="flex-1 min-w-[140px] h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="flex-1 min-w-[200px] h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                       placeholder="Item name *"
                     />
                     <input
                       value={editMaterialCode}
                       onChange={e => setEditMaterialCode(e.target.value)}
-                      className="w-32 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                       placeholder="Material code *"
                     />
                     <select
                       value={editFlavour}
                       onChange={e => setEditFlavour(e.target.value)}
-                      className="w-36 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                     >
                       <option value="">— Flavour —</option>
                       {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
@@ -777,18 +777,18 @@ function ItemMaster() {
                   <input
                     value={editDescription}
                     onChange={e => setEditDescription(e.target.value)}
-                    className="w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="Description"
                   />
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <select
                       value={editUnit}
                       onChange={e => setEditUnit(e.target.value)}
-                      className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="w-24 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                     >
                       {UNITS.map(u => <option key={u}>{u}</option>)}
                     </select>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <label className="text-xs text-muted-foreground whitespace-nowrap">Serving qty</label>
                       <input
                         type="number"
@@ -796,10 +796,10 @@ function ItemMaster() {
                         step="0.1"
                         value={editServingQty}
                         onChange={e => setEditServingQty(e.target.value)}
-                        className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <label className="text-xs text-muted-foreground whitespace-nowrap">kcal/serve</label>
                       <input
                         type="number"
@@ -808,7 +808,7 @@ function ItemMaster() {
                         value={editKcalPerServing}
                         onChange={e => setEditKcalPerServing(e.target.value)}
                         placeholder="—"
-                        className="w-16 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                     </div>
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
@@ -833,40 +833,33 @@ function ItemMaster() {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-start gap-2 px-3 py-2.5">
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-medium text-foreground truncate">{ing.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-foreground">{ing.name}</span>
                       {ing.material_code && (
-                        <span className="text-[9px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{ing.material_code}</span>
+                        <span className="text-xs font-mono bg-muted text-muted-foreground px-2 py-0.5 rounded">{ing.material_code}</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 flex-wrap mt-1">
+                    <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{ing.description || "No description"}</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-2">
                       {ing.flavour && (
-                        <span className="text-[9px] bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full">{ing.flavour}</span>
+                        <span className="text-xs bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">{ing.flavour}</span>
                       )}
-                      {ing.flavour && (
-                        <span className="text-[9px] bg-orange-50 text-orange-600 border border-orange-200 px-1.5 py-0.5 rounded-full">{ing.serving_qty} {ing.pack_unit}/serve</span>
-                      )}
-                      {ing.flavour && ing.kcal_per_serving != null && (
-                        <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full">{ing.kcal_per_serving} kcal/serve</span>
-                      )}
-                      {!ing.flavour && (
-                        <span className="text-[9px] text-muted-foreground">Unit: {ing.pack_unit}</span>
+                      <span className="text-xs bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">{ing.serving_qty} {ing.pack_unit}/serve</span>
+                      {ing.kcal_per_serving != null && (
+                        <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">{ing.kcal_per_serving} kcal/serve</span>
                       )}
                       {ing.trial_eligible && (
-                        <span className="text-[9px] bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded-full">Trial-eligible</span>
+                        <span className="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">Trial-eligible</span>
                       )}
                     </div>
-                    {ing.description && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{ing.description}</p>
-                    )}
                   </div>
-                  <div className="flex items-center gap-0.5 pt-0.5 opacity-0 group-hover:opacity-100 transition-all shrink-0">
-                    <button onClick={() => startEdit(ing)} className="text-muted-foreground hover:text-primary p-0.5">
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => startEdit(ing)} className="text-muted-foreground hover:text-primary p-1">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => void deleteIngredient(ing.id)} className="text-muted-foreground hover:text-destructive p-0.5">
+                    <button onClick={() => void deleteIngredient(ing.id)} className="text-muted-foreground hover:text-destructive p-1">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
