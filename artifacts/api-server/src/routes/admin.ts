@@ -57,19 +57,32 @@ async function getCenterLimits(centerId: string): Promise<{ checkinCap: number; 
   };
 }
 
-// Trial 3-Day members always get a fixed 5-day renewal and 3-check-in cap,
-// overriding whatever the center has configured. Trial 1-Day members and all
+// Trial 3-Day members always get a fixed renewal/check-in cap override,
+// regardless of what the center has configured. Trial 1-Day members and all
 // other member types continue to use the center's configured limits.
-const TRIAL_3DAY_RENEWAL_DAYS = 5;
-const TRIAL_3DAY_CHECKIN_CAP = 3;
+// These defaults apply only if the `app_settings` row is somehow missing —
+// the actual values are editable by the Super Admin (no code deploy needed).
+const DEFAULT_TRIAL_3DAY_RENEWAL_DAYS = 5;
+const DEFAULT_TRIAL_3DAY_CHECKIN_CAP = 3;
+
+export async function getTrialSettings(): Promise<{ checkinCap: number; renewalDays: number }> {
+  const { rows } = await pool.query(
+    "SELECT trial_3day_checkin_cap, trial_3day_renewal_days FROM app_settings WHERE id = 'global'"
+  );
+  return {
+    checkinCap: Number(rows[0]?.trial_3day_checkin_cap ?? DEFAULT_TRIAL_3DAY_CHECKIN_CAP),
+    renewalDays: Number(rows[0]?.trial_3day_renewal_days ?? DEFAULT_TRIAL_3DAY_RENEWAL_DAYS),
+  };
+}
 
 async function getEffectiveMemberLimits(centerId: string, memberId: number): Promise<{ checkinCap: number; renewalDays: number }> {
-  const [centerLimits, memberType] = await Promise.all([
+  const [centerLimits, memberType, trialSettings] = await Promise.all([
     getCenterLimits(centerId),
     getMemberType(memberId),
+    getTrialSettings(),
   ]);
   if (memberType === "trial_3day") {
-    return { checkinCap: TRIAL_3DAY_CHECKIN_CAP, renewalDays: TRIAL_3DAY_RENEWAL_DAYS };
+    return trialSettings;
   }
   return centerLimits;
 }
@@ -382,6 +395,41 @@ router.patch("/admin/super/centers/:centerId/deactivate", requireSuperAdmin, asy
   );
   if (!rows[0]) { res.status(404).json({ error: "Center not found" }); return; }
   res.json(rows[0]);
+});
+
+// GET /api/admin/super/trial-settings — global Trial 3-Day renewal/check-in overrides
+router.get("/admin/super/trial-settings", requireSuperAdmin, async (_req, res) => {
+  const { checkinCap, renewalDays } = await getTrialSettings();
+  res.json({ trial_3day_checkin_cap: checkinCap, trial_3day_renewal_days: renewalDays });
+});
+
+// PATCH /api/admin/super/trial-settings
+router.patch("/admin/super/trial-settings", requireSuperAdmin, async (req, res) => {
+  const { trial_3day_checkin_cap, trial_3day_renewal_days } = req.body as {
+    trial_3day_checkin_cap?: unknown; trial_3day_renewal_days?: unknown;
+  };
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  if (trial_3day_checkin_cap != null) {
+    const cap = Number(trial_3day_checkin_cap);
+    if (!Number.isInteger(cap) || cap < 1 || cap > 500) {
+      res.status(400).json({ error: "trial_3day_checkin_cap must be a whole number between 1 and 500" }); return;
+    }
+    updates.push(`trial_3day_checkin_cap = $${updates.length + 1}`);
+    values.push(cap);
+  }
+  if (trial_3day_renewal_days != null) {
+    const days = Number(trial_3day_renewal_days);
+    if (!Number.isInteger(days) || days < 1 || days > 365) {
+      res.status(400).json({ error: "trial_3day_renewal_days must be a whole number between 1 and 365" }); return;
+    }
+    updates.push(`trial_3day_renewal_days = $${updates.length + 1}`);
+    values.push(days);
+  }
+  if (updates.length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
+  await pool.query(`UPDATE app_settings SET ${updates.join(", ")} WHERE id = 'global'`, values);
+  const { checkinCap, renewalDays } = await getTrialSettings();
+  res.json({ trial_3day_checkin_cap: checkinCap, trial_3day_renewal_days: renewalDays });
 });
 
 // PATCH /api/admin/super/centers/:centerId/password — reset a center's password
@@ -1085,7 +1133,10 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
   // Auto-checkout any sessions that have exceeded the time limit
   await autoCheckoutExpired(centerId);
 
-  const { checkinCap, renewalDays } = await getCenterLimits(centerId);
+  const [{ checkinCap, renewalDays }, trialSettings] = await Promise.all([
+    getCenterLimits(centerId),
+    getTrialSettings(),
+  ]);
 
   const { rows } = await pool.query(
     `SELECT
@@ -1118,15 +1169,15 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
          )
        )` : ""}
      ORDER BY m.valid_until ASC NULLS LAST, m.name`,
-    expiringSoon ? [centerId, checkinCap - 7, TRIAL_3DAY_CHECKIN_CAP - 7] : [centerId]
+    expiringSoon ? [centerId, checkinCap - 7, trialSettings.checkinCap - 7] : [centerId]
   );
   // Trial 3-Day members always use the fixed override, regardless of this
   // center's configured checkin_cap/renewal_days — surface the value that
   // will actually be enforced so the admin UI never shows a misleading number.
   const withEffectiveLimits = rows.map(row => ({
     ...row,
-    effective_checkin_cap: row.member_type === "trial_3day" ? TRIAL_3DAY_CHECKIN_CAP : checkinCap,
-    effective_renewal_days: row.member_type === "trial_3day" ? TRIAL_3DAY_RENEWAL_DAYS : renewalDays,
+    effective_checkin_cap: row.member_type === "trial_3day" ? trialSettings.checkinCap : checkinCap,
+    effective_renewal_days: row.member_type === "trial_3day" ? trialSettings.renewalDays : renewalDays,
   }));
   res.json(withEffectiveLimits);
 });

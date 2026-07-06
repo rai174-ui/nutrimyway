@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
-  isSuperAuthenticated, saveSuperAuth, clearSuperAuth, superFetch, type CenterWithStatus,
+  isSuperAuthenticated, saveSuperAuth, clearSuperAuth, superFetch, type CenterWithStatus, type TrialSettings,
 } from "@/lib/api";
 import {
   UploadMembersDialog, UploadBatchesDialog, UploadFlavoursDialog, UploadItemsDialog,
@@ -547,6 +547,118 @@ function ValidityBadge({ center }: { center: CenterWithStatus }) {
   );
 }
 
+// ─── Trial 3-Day Settings Card ─────────────────────────────────────────────────
+
+function TrialSettingsCard() {
+  const [settings, setSettings] = useState<TrialSettings | null>(null);
+  const [checkinCap, setCheckinCap] = useState("");
+  const [renewalDays, setRenewalDays] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await superFetch<TrialSettings>("/admin/super/trial-settings");
+        setSettings(data);
+        setCheckinCap(String(data.trial_3day_checkin_cap));
+        setRenewalDays(String(data.trial_3day_renewal_days));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load trial settings");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const cap = Number(checkinCap);
+  const days = Number(renewalDays);
+  const valid =
+    Number.isInteger(cap) && cap >= 1 && cap <= 500 &&
+    Number.isInteger(days) && days >= 1 && days <= 365;
+  const dirty = settings != null && (cap !== settings.trial_3day_checkin_cap || days !== settings.trial_3day_renewal_days);
+
+  async function handleSave() {
+    if (!valid) return;
+    setSaving(true); setError(null); setSaved(false);
+    try {
+      const updated = await superFetch<TrialSettings>("/admin/super/trial-settings", {
+        method: "PATCH",
+        body: JSON.stringify({ trial_3day_checkin_cap: cap, trial_3day_renewal_days: days }),
+      });
+      setSettings(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save trial settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-card rounded-2xl border border-border p-5">
+      <h2 className="text-base font-bold text-foreground mb-1">Trial 3-Day Settings</h2>
+      <p className="text-sm text-muted-foreground mb-4">
+        Applies to every Trial 3-Day member across all centers, overriding each center&apos;s own check-in cap and renewal days.
+      </p>
+      {loading ? (
+        <div className="flex items-center justify-center py-6">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4 max-w-md">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Check-in Cap</label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={checkinCap}
+                onChange={e => setCheckinCap(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Renewal Days</label>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={renewalDays}
+                onChange={e => setRenewalDays(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+          </div>
+          {error && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-xl px-4 py-3">
+              <span className="text-sm text-destructive">{error}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => void handleSave()}
+              disabled={!valid || !dirty || saving}
+              className="h-10 px-4 flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-40"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+            </button>
+            {saved && (
+              <span className="flex items-center gap-1.5 text-sm text-emerald-600">
+                <CheckCircle2 className="w-4 h-4" />Saved
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Super Admin Dashboard ────────────────────────────────────────────────────
 
 function SuperDashboard({ onLogout }: { onLogout: () => void }) {
@@ -860,6 +972,8 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
             </table>
           </div>
         )}
+
+        <TrialSettingsCard />
 
         <div className="bg-card rounded-2xl border border-border p-5">
           <h2 className="text-base font-bold text-foreground mb-1">Your Password</h2>

@@ -691,6 +691,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables35();
   await migrateAdminTables36();
   await migrateAdminTables37();
+  await migrateAdminTables38();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -993,4 +994,22 @@ async function migrateAdminTables37(): Promise<void> {
   // day extension (was a global 40-day constant).
   await pool.query(`ALTER TABLE centers ADD COLUMN IF NOT EXISTS checkin_cap INTEGER NOT NULL DEFAULT 32`);
   await pool.query(`ALTER TABLE centers ADD COLUMN IF NOT EXISTS renewal_days INTEGER NOT NULL DEFAULT 40`);
+}
+
+async function migrateAdminTables38(): Promise<void> {
+  // Global, super-admin-editable Trial 3-Day overrides (was hardcoded
+  // TRIAL_3DAY_RENEWAL_DAYS=5 / TRIAL_3DAY_CHECKIN_CAP=3 in admin.ts/members.ts).
+  // Single-row table (id = 'global') since the override applies across all centers.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id TEXT PRIMARY KEY,
+      trial_3day_renewal_days INTEGER NOT NULL DEFAULT 5,
+      trial_3day_checkin_cap INTEGER NOT NULL DEFAULT 3
+    )
+  `);
+  await pool.query(`
+    INSERT INTO app_settings (id, trial_3day_renewal_days, trial_3day_checkin_cap)
+    VALUES ('global', 5, 3)
+    ON CONFLICT (id) DO NOTHING
+  `);
 }
