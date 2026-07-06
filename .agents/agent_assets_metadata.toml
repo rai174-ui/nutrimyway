@@ -102,3 +102,9 @@ id = "1NjrV29IIAN6941gUTP1c"
 uri = "file://.local/deliverables/nutrimyway-android-update-v1.0.2.tar.gz"
 type = "unspecified"
 title = "NutriMyWay Android Update (v1.0.2, with nutrimyway.in → Railway fallback)"
+
+[[outputs]]
+id = "Xe8a5Gt6cgaKVStNpJ_pA"
+uri = "file://.local/deliverables/nutrimyway-android-full-source-v1.0.2.tar.gz"
+type = "unspecified"
+title = "NutriMyWay — Full Mobile App Source + Android Project (v1.0.2)"
