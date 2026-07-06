@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --background: 210 20% 98%;
+  --foreground: 0 0% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 10%;
+  --primary: 161 69% 37%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 160 56% 92%;
+  --secondary-foreground: 170 85% 11%;
+  --muted: 210 20% 96%;
+  --muted-foreground: 60 2% 41%;
+  --accent: 160 56% 92%;
+  --accent-foreground: 161 69% 37%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 210 14% 89%;
+  --input: 210 14% 89%;
+  --ring: 161 69% 37%;
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-teal-dark: hsl(170, 85%, 11%);
+  --color-teal-mid: hsl(165, 76%, 25%);
+  --color-teal-base: hsl(161, 69%, 37%);
+  --color-teal-light: hsl(160, 52%, 75%);
+  --color-teal-pale: hsl(160, 56%, 92%);
+  --font-sans: 'Inter', sans-serif;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
