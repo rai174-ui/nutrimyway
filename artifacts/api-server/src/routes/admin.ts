@@ -2687,4 +2687,62 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
   res.json(results);
 });
 
+// POST /api/admin/super/upload/centers
+// Accepts XLSX/CSV with columns: id, name, password
+// Creates center + center_auth in one transaction per row.
+// Skips if center id already exists.
+router.post("/admin/super/upload/centers", requireSuperAdmin, async (req, res) => {
+  const { rows } = req.body as { rows: Record<string, unknown>[] };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "rows array is required" }); return;
+  }
+
+  const results = { created: 0, skipped: 0, errors: [] as string[] };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Pre-load existing center ids
+    const { rows: existingRows } = await client.query("SELECT id FROM centers");
+    const existingIds = new Set<string>(existingRows.map((r: { id: string }) => String(r.id).trim()));
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2;
+      const id = String(row.id ?? "").trim().toLowerCase();
+      const name = String(row.name ?? "").trim();
+      const password = String(row.password ?? "").trim();
+
+      if (!id) { results.errors.push(`Row ${rowNum}: id is required`); continue; }
+      if (!/^[a-z0-9-]+$/.test(id)) {
+        results.errors.push(`Row ${rowNum}: id must be lowercase letters, numbers and hyphens only (got "${id}")`); continue;
+      }
+      if (!name) { results.errors.push(`Row ${rowNum}: name is required`); continue; }
+      if (!password || password.length < 8) {
+        results.errors.push(`Row ${rowNum}: password must be at least 8 characters`); continue;
+      }
+
+      if (existingIds.has(id)) {
+        results.skipped++;
+        continue;
+      }
+
+      const hash = await bcrypt.hash(password, 10);
+      await client.query("INSERT INTO centers (id, name) VALUES ($1, $2)", [id, name]);
+      await client.query("INSERT INTO center_auth (center_id, password_hash) VALUES ($1, $2)", [id, hash]);
+      existingIds.add(id);
+      results.created++;
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    client.release();
+    res.status(500).json({ error: "Center upload failed", detail: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  client.release();
+  res.json(results);
+});
+
 export default router;
