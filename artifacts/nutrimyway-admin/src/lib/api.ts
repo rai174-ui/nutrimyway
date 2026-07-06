@@ -243,6 +243,12 @@ export interface MemberRenewal {
   created_at: string;
 }
 
+export interface MemberRenewalReportRow extends MemberRenewal {
+  member_name: string;
+  member_mobile: string | null;
+  membership_no: string | null;
+}
+
 export interface SelfLogEntry {
   id: number;
   member_id: number;

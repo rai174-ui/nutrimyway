@@ -1300,6 +1300,34 @@ router.get("/admin/centers/:centerId/members/:memberId/renewals", requireAdmin, 
   res.json(rows);
 });
 
+// GET /api/admin/centers/:centerId/renewals — renewal history report (all members, date range)
+router.get("/admin/centers/:centerId/renewals", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { from, to } = req.query as { from?: string; to?: string };
+
+  // Default date range: last 30 days
+  const toDate = to ? new Date(to) : new Date();
+  toDate.setHours(23, 59, 59, 999);
+  const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  fromDate.setHours(0, 0, 0, 0);
+
+  const { rows } = await pool.query(
+    `SELECT mr.id, mr.member_id, m.name AS member_name, m.mobile AS member_mobile,
+            m.membership_no, mr.center_id, mr.payment_method, mr.amount,
+            mr.previous_valid_until, mr.new_valid_until, mr.recorded_by, mr.created_at
+     FROM member_renewals mr
+     JOIN members m ON m.id = mr.member_id
+     WHERE mr.center_id = $1
+       AND mr.created_at >= $2 AND mr.created_at <= $3
+     ORDER BY mr.created_at DESC`,
+    [centerId, fromDate, toDate]
+  );
+  res.json(rows);
+});
+
 // DELETE /api/admin/centers/:centerId/members/:memberId — unlink member from center
 router.delete("/admin/centers/:centerId/members/:memberId", requireAdmin, async (req, res) => {
   const { centerId, memberId } = req.params;

@@ -11,7 +11,7 @@ import * as XLSX from "xlsx";
 import {
   apiGet, apiPost, apiPatch, apiDelete, getAdminCenter,
   type CenterMember, type CenterSettings, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord, type SelfLogEntry,
-  type MemberType, type MemberRenewal, MEMBER_TYPE_LABELS, CHECKIN_CAP,
+  type MemberType, type MemberRenewal, type MemberRenewalReportRow, MEMBER_TYPE_LABELS, CHECKIN_CAP,
 } from "@/lib/api";
 
 interface FlavourOption { id: number; name: string; flavour: string; unit: string; }
@@ -1746,6 +1746,131 @@ function HealthReportModal({ centerId, members, onClose }: {
   );
 }
 
+// ── Renewal History Modal ─────────────────────────────────────────────────────
+
+function RenewalHistoryModal({ centerId, onClose }: {
+  centerId: string;
+  onClose: () => void;
+}) {
+  const [from, setFrom] = useState(thirtyDaysAgoISO);
+  const [to, setTo] = useState(todayISO);
+  const [records, setRecords] = useState<MemberRenewalReportRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!from || !to) return;
+    setLoading(true);
+    const qs = new URLSearchParams({ from, to });
+    apiGet<MemberRenewalReportRow[]>(`/admin/centers/${centerId}/renewals?${qs.toString()}`)
+      .then(setRecords)
+      .catch(() => setRecords([]))
+      .finally(() => setLoading(false));
+  }, [from, to, centerId]);
+
+  function downloadXLSX() {
+    const rows = records.map(r => ({
+      "Member Name": r.member_name,
+      "Mobile": r.member_mobile ?? "",
+      "Membership No": r.membership_no ?? "",
+      "Renewed On": fmtDateDMY(r.created_at),
+      "Payment Method": r.payment_method,
+      "Amount": r.amount,
+      "Previous Valid Until": r.previous_valid_until ? fmtDateDMY(r.previous_valid_until) : "",
+      "New Valid Until": fmtDateDMY(r.new_valid_until),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Renewal History");
+    XLSX.writeFile(wb, `renewal-history-${centerId}-${from}-to-${to}.xlsx`);
+  }
+
+  const uniqueMemberCount = new Set(records.map(r => r.member_id)).size;
+  const totalAmount = records.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-background">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-border bg-card flex-shrink-0 flex-wrap gap-y-2">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="w-5 h-5 text-emerald-600" />
+          <h2 className="text-base font-semibold text-foreground">Renewal History</h2>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <label className="font-medium">From</label>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+              className="h-8 px-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            <label className="font-medium">To</label>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)}
+              className="h-8 px-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+          </div>
+          <button onClick={downloadXLSX} disabled={records.length === 0}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors">
+            <FileDown className="w-4 h-4" />Download XLSX
+          </button>
+          <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Summary row */}
+        <div className="px-4 py-2 border-b border-border bg-muted/30 flex items-center gap-3 flex-shrink-0">
+          {loading ? (
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />Fetching renewals…
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              Showing <span className="font-semibold text-foreground">{records.length}</span> renewal{records.length !== 1 ? "s" : ""} for{" "}
+              <span className="font-semibold text-foreground">{uniqueMemberCount}</span> member{uniqueMemberCount !== 1 ? "s" : ""}
+              {records.length > 0 && (
+                <> · Total collected <span className="font-semibold text-foreground">₹{totalAmount.toLocaleString("en-IN")}</span></>
+              )}
+            </span>
+          )}
+        </div>
+
+        {/* Scrollable table */}
+        <div className="flex-1 overflow-auto">
+          {!loading && records.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center py-16 px-8 gap-3">
+              <CalendarClock className="w-10 h-10 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-muted-foreground">No renewals found</p>
+              <p className="text-xs text-muted-foreground/70">Try expanding the date range.</p>
+            </div>
+          ) : (
+            <table className="w-full text-xs border-collapse min-w-[900px]">
+              <thead className="sticky top-0 bg-muted z-10">
+                <tr>
+                  {["Member","Mobile","Membership No","Renewed On","Payment","Amount","Previous Valid Until","New Valid Until"].map(h => (
+                    <th key={h} className="text-left px-3 py-2 font-semibold text-muted-foreground border-b border-border whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {records.map(r => (
+                  <tr key={r.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                    <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">{r.member_name}</td>
+                    <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{r.member_mobile ?? "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{r.membership_no ?? "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{fmtDateDMY(r.created_at)}</td>
+                    <td className="px-3 py-2 text-muted-foreground capitalize whitespace-nowrap">{r.payment_method}</td>
+                    <td className="px-3 py-2 tabular-nums whitespace-nowrap">₹{Number(r.amount).toLocaleString("en-IN")}</td>
+                    <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{r.previous_valid_until ? fmtDateDMY(r.previous_valid_until) : "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{fmtDateDMY(r.new_valid_until)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MembersPage() {
@@ -1756,6 +1881,7 @@ export default function MembersPage() {
   const [search, setSearch] = useState("");
   const [showHealthReport, setShowHealthReport] = useState(false);
   const [showOutsideMeals, setShowOutsideMeals] = useState(false);
+  const [showRenewalHistory, setShowRenewalHistory] = useState(false);
   const [, navigate] = useLocation();
 
   const expiringSoon = new URLSearchParams(window.location.search).get("expiring_soon") === "true";
@@ -1818,6 +1944,12 @@ export default function MembersPage() {
                 >
                   <ClipboardList className="w-4 h-4 text-sky-600" />Health Report
                 </button>
+                <button
+                  onClick={() => setShowRenewalHistory(true)}
+                  className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
+                >
+                  <CalendarClock className="w-4 h-4 text-emerald-600" />Renewal History
+                </button>
               </>
             )}
             {center && <AddMemberForm centerId={center.id} onAdded={load} />}
@@ -1828,6 +1960,13 @@ export default function MembersPage() {
           <OutsideMealsModal
             centerId={center.id}
             onClose={() => setShowOutsideMeals(false)}
+          />
+        )}
+
+        {showRenewalHistory && center && (
+          <RenewalHistoryModal
+            centerId={center.id}
+            onClose={() => setShowRenewalHistory(false)}
           />
         )}
 
