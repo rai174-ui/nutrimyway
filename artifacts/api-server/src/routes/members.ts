@@ -4,7 +4,7 @@ import { requireMember, type MemberRequest } from "./auth";
 import { bookAndCheckout } from "../lib/checkout";
 
 const router = Router();
-router.use(requireMember);
+router.use("/members", requireMember);
 
 // Ensure that member routes cannot access data belonging to other members
 router.param("id", (req, res, next, id) => {
