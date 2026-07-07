@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { randomBytes } from "crypto";
 import { pool } from "../lib/sqlite";
 import { logger } from "../lib/logger";
@@ -50,40 +51,70 @@ export function requireMember(
 
 
 async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
-  if (!process.env.RESEND_API_KEY) {
-    logger.warn({ to }, "RESEND_API_KEY not configured — OTP email skipped");
-    return false;
-  }
-
-  try {
-    const { data, error } = await resend.emails.send({
-      // Free Resend accounts must send from onboarding@resend.dev until a domain is verified
-      from: "NutriMyWay <onboarding@resend.dev>",
-      to: [to],
-      subject: "Your NutriMyWay Login Code",
-      html: `<div style="font-family:sans-serif;max-width:480px;margin:auto">
+  const htmlContent = `<div style="font-family:sans-serif;max-width:480px;margin:auto">
         <h2 style="color:#0d9488">Login Code</h2>
         <p>Use the following 6-digit code to log in to your NutriMyWay account:</p>
         <div style="font-size:32px;font-weight:700;letter-spacing:0.2em;color:#0d9488;padding:16px 24px;background:#f0fdfa;border-radius:8px;display:inline-block;margin:8px 0">${otp}</div>
         <p style="color:#6b7280;font-size:13px;margin-top:16px">This code expires in ${OTP_TTL_MIN} minutes.</p>
         <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this code, please ignore this email.</p>
-      </div>`,
-    });
+      </div>`;
+  const subject = "Your NutriMyWay Login Code";
 
-    if (error) {
-      logger.warn(
-        { to, error },
-        "Resend API returned an error processing the email",
-      );
+  // 1. Try SMTP first if configured
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || "587", 10),
+        secure: process.env.SMTP_PORT === "465",
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+
+      await transporter.sendMail({
+        from: `"${process.env.SMTP_FROM_NAME || "NutriMyWay"}" <${process.env.SMTP_USER}>`,
+        to,
+        subject,
+        html: htmlContent,
+      });
+
+      return true;
+    } catch (err) {
+      logger.error({ err }, "Error sending OTP via SMTP");
       return false;
     }
-
-    logger.info({ to, id: data?.id }, "Email sent successfully via Resend API");
-    return true;
-  } catch (err) {
-    logger.warn({ to, err }, "Failed to send OTP email via Resend");
-    return false;
   }
+
+  // 2. Fall back to Resend if configured
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: "NutriMyWay <onboarding@resend.dev>",
+        to: [to],
+        subject,
+        html: htmlContent,
+      });
+
+      if (error) {
+        logger.warn(
+          { to, error },
+          "Resend API returned an error processing the email",
+        );
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      logger.error({ err }, "Error sending OTP via Resend");
+      return false;
+    }
+  }
+
+  // 3. Fall back to DEV MODE preview
+  logger.warn({ to }, "No SMTP or RESEND_API_KEY configured — OTP email skipped");
+  return false;
 }
 
 // POST /api/auth/request-otp
