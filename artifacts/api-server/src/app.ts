@@ -31,26 +31,39 @@ app.use(
   }),
 );
 // Allow browser, Capacitor (Android/iOS), and dev origins
+// Allow browser, Capacitor (Android/iOS), and dev origins
 const ALLOWED_ORIGINS = [
-  /^https?:\/\/localhost(:\d+)?$/,
-  /^capacitor:\/\/localhost$/,
-  /^ionic:\/\/localhost$/,
-  /^https:\/\/nutrimyway\.in$/,
-  /^https:\/\/nutrimyway-production\.up\.railway\.app$/,
+  "http://localhost",
+  "https://localhost",
+  "capacitor://localhost",
+  "ionic://localhost",
+  "https://nutrimyway.in",
+  "https://nutrimyway-production.up.railway.app",
 ];
 
 app.use(
   cors({
-    origin(origin, cb) {
+    origin: function (origin, cb) {
       // No origin = same-origin or server-to-server — allow
       if (!origin) return cb(null, true);
-      if (ALLOWED_ORIGINS.some((r) => r.test(origin))) return cb(null, true);
+
+      // Allow exact matches from our list
+      if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+
+      // Allow local development ports (e.g., localhost:5173)
+      if (
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("https://localhost:")
+      ) {
+        return cb(null, true);
+      }
+
       cb(new Error(`CORS: origin not allowed — ${origin}`));
     },
     credentials: true,
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
@@ -81,7 +94,10 @@ if (existsSync(adminDir)) {
   });
   logger.info({ adminDir }, "Serving admin static files");
 } else if (adminStaticOverride) {
-  logger.warn({ adminDir }, "ADMIN_STATIC set but directory does not exist; skipping admin static serving");
+  logger.warn(
+    { adminDir },
+    "ADMIN_STATIC set but directory does not exist; skipping admin static serving",
+  );
 }
 
 if (existsSync(bundledPublicDir)) {
@@ -105,7 +121,11 @@ export function startBroadcastScheduler(): void {
   async function tick() {
     try {
       const now = new Date();
-      const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
+      const timeStr = now.toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Kolkata",
+      });
       const todayStart = new Date(now);
       todayStart.setHours(0, 0, 0, 0);
       const { rows: schedules } = await pool.query(
@@ -114,17 +134,22 @@ export function startBroadcastScheduler(): void {
          WHERE is_active = TRUE
            AND schedule_time = $1
            AND (last_sent_at IS NULL OR last_sent_at < $2)`,
-        [timeStr, todayStart.toISOString()]
+        [timeStr, todayStart.toISOString()],
       );
-      for (const s of schedules as Array<{ id: number; center_id: string; message: string }>) {
+      for (const s of schedules as Array<{
+        id: number;
+        center_id: string;
+        message: string;
+      }>) {
         await pool.query("BEGIN");
         try {
           // Double-check inside transaction to avoid duplicate sends on race
           const { rows: fresh } = await pool.query(
             `SELECT last_sent_at FROM center_broadcast_schedules WHERE id = $1 FOR UPDATE`,
-            [s.id]
+            [s.id],
           );
-          const last = (fresh[0] as { last_sent_at: string | null }).last_sent_at;
+          const last = (fresh[0] as { last_sent_at: string | null })
+            .last_sent_at;
           if (last && new Date(last) >= todayStart) {
             await pool.query("ROLLBACK");
             continue;
@@ -133,15 +158,18 @@ export function startBroadcastScheduler(): void {
           await pool.query(
             `INSERT INTO member_broadcasts (center_id, message, sent_at, sent_by)
              VALUES ($1, $2, NOW(), 'scheduled')`,
-            [s.center_id, s.message]
+            [s.center_id, s.message],
           );
           // Mark schedule as sent today
           await pool.query(
             `UPDATE center_broadcast_schedules SET last_sent_at = NOW() WHERE id = $1`,
-            [s.id]
+            [s.id],
           );
           await pool.query("COMMIT");
-          logger.info({ scheduleId: s.id, centerId: s.center_id, time: timeStr }, "Scheduled broadcast sent");
+          logger.info(
+            { scheduleId: s.id, centerId: s.center_id, time: timeStr },
+            "Scheduled broadcast sent",
+          );
         } catch (err) {
           await pool.query("ROLLBACK");
           logger.error({ err, scheduleId: s.id }, "Scheduled broadcast failed");
@@ -167,9 +195,12 @@ export function startPhotoCleanupScheduler(): void {
   async function tick() {
     try {
       const { rows: centers } = await pool.query(
-        `SELECT id, photo_retention_days FROM centers WHERE photo_retention_days IS NOT NULL`
+        `SELECT id, photo_retention_days FROM centers WHERE photo_retention_days IS NOT NULL`,
       );
-      for (const c of centers as Array<{ id: string; photo_retention_days: number }>) {
+      for (const c of centers as Array<{
+        id: string;
+        photo_retention_days: number;
+      }>) {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - c.photo_retention_days);
         const { rows: expired } = await pool.query(
@@ -183,18 +214,27 @@ export function startPhotoCleanupScheduler(): void {
                WHERE mcm.member_id = consumption_logs.member_id
                  AND mcm.center_id = $2
              )`,
-          [cutoff.toISOString(), c.id]
+          [cutoff.toISOString(), c.id],
         );
         const ids: number[] = [];
         for (const row of expired as Array<{ id: number; photo_url: string }>) {
           try {
             await objectStorageService.deleteObjectEntity(row.photo_url);
-            logger.info({ logId: row.id, photo_url: row.photo_url }, "Deleted expired meal photo");
+            logger.info(
+              { logId: row.id, photo_url: row.photo_url },
+              "Deleted expired meal photo",
+            );
           } catch (err) {
             if (err instanceof ObjectNotFoundError) {
-              logger.info({ logId: row.id }, "Photo already missing in object storage, clearing DB reference");
+              logger.info(
+                { logId: row.id },
+                "Photo already missing in object storage, clearing DB reference",
+              );
             } else {
-              logger.error({ err, logId: row.id }, "Failed to delete expired meal photo, skipping");
+              logger.error(
+                { err, logId: row.id },
+                "Failed to delete expired meal photo, skipping",
+              );
               continue;
             }
           }
@@ -203,7 +243,7 @@ export function startPhotoCleanupScheduler(): void {
         if (ids.length > 0) {
           await pool.query(
             `UPDATE consumption_logs SET photo_url = NULL, photo_uploaded_at = NULL WHERE id = ANY($1)`,
-            [ids]
+            [ids],
           );
         }
       }
