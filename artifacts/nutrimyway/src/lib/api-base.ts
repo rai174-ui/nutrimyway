@@ -56,7 +56,7 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     }
   }
 
-  throw lastErr instanceof Error ? lastErr : new Error("Network request failed. Please check your connection.");
+  throw new Error("Unable to connect to the server. Please check your internet connection and try again.");
 }
 
 /**

@@ -30,7 +30,28 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// Allow browser, Capacitor (Android/iOS), and dev origins
+const ALLOWED_ORIGINS = [
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^capacitor:\/\/localhost$/,
+  /^ionic:\/\/localhost$/,
+  /^https:\/\/nutrimyway\.in$/,
+  /^https:\/\/nutrimyway-production\.up\.railway\.app$/,
+];
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      // No origin = same-origin or server-to-server — allow
+      if (!origin) return cb(null, true);
+      if (ALLOWED_ORIGINS.some((r) => r.test(origin))) return cb(null, true);
+      cb(new Error(`CORS: origin not allowed — ${origin}`));
+    },
+    credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
