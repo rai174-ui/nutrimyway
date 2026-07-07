@@ -1,6 +1,6 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { randomBytes } from "crypto";
 import { pool } from "../lib/sqlite";
 import { logger } from "../lib/logger";
@@ -9,6 +9,9 @@ const router = Router();
 
 const JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
 const OTP_TTL_MIN = 10;
+
+// Initialize Resend using the environment variable
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -23,21 +26,16 @@ function signToken(memberId: number, email: string): string {
 }
 
 async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
-  const host = process.env["SMTP_HOST"];
-  const user = process.env["SMTP_USER"];
-  const pass = process.env["SMTP_PASS"];
-  const port = Number(process.env["SMTP_PORT"] ?? "587");
-  if (!host || !user || !pass) {
-    logger.warn({ to }, "SMTP not configured — OTP email skipped");
+  if (!process.env.RESEND_API_KEY) {
+    logger.warn({ to }, "RESEND_API_KEY not configured — OTP email skipped");
     return false;
   }
-  const transporter = nodemailer.createTransport({
-    host, port, secure: port === 465, auth: { user, pass },
-  });
+
   try {
-    await transporter.sendMail({
-      from: `"NutriMyWay" <${user}>`,
-      to,
+    const { data, error } = await resend.emails.send({
+      // Free Resend accounts must send from onboarding@resend.dev until a domain is verified
+      from: "NutriMyWay <onboarding@resend.dev>",
+      to: [to],
       subject: "Your NutriMyWay Login Code",
       html: `<div style="font-family:sans-serif;max-width:480px;margin:auto">
         <h2 style="color:#0d9488">Login Code</h2>
@@ -47,9 +45,19 @@ async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
         <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this code, please ignore this email.</p>
       </div>`,
     });
+
+    if (error) {
+      logger.warn(
+        { to, error },
+        "Resend API returned an error processing the email",
+      );
+      return false;
+    }
+
+    logger.info({ to, id: data?.id }, "Email sent successfully via Resend API");
     return true;
   } catch (err) {
-    logger.warn({ to, err }, "Failed to send OTP email");
+    logger.warn({ to, err }, "Failed to send OTP email via Resend");
     return false;
   }
 }
@@ -58,8 +66,10 @@ async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
 // Body: { email: string, membership_no: string }
 router.post("/auth/request-otp", async (req, res) => {
   const body = req.body as Record<string, unknown>;
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const membershipNo = typeof body.membership_no === "string" ? body.membership_no.trim() : "";
+  const email =
+    typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const membershipNo =
+    typeof body.membership_no === "string" ? body.membership_no.trim() : "";
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     res.status(400).json({ error: "A valid email address is required" });
@@ -73,23 +83,50 @@ router.post("/auth/request-otp", async (req, res) => {
   // Find member by membership_no (unique) and verify email + validity
   const { rows: memberRows } = await pool.query(
     "SELECT id, name, email, membership_no, is_active, valid_until FROM members WHERE membership_no = $1",
-    [membershipNo]
+    [membershipNo],
   );
   if (!memberRows[0]) {
-    res.status(404).json({ error: "No member found with this membership number. Please contact your wellness center." });
+    res
+      .status(404)
+      .json({
+        error:
+          "No member found with this membership number. Please contact your wellness center.",
+      });
     return;
   }
-  const member = memberRows[0] as { id: number; name: string; email: string | null; membership_no: string; is_active: boolean; valid_until: string | null };
+  const member = memberRows[0] as {
+    id: number;
+    name: string;
+    email: string | null;
+    membership_no: string;
+    is_active: boolean;
+    valid_until: string | null;
+  };
   if (!member.is_active) {
-    res.status(403).json({ error: "Your membership is inactive. Please contact your wellness center." });
+    res
+      .status(403)
+      .json({
+        error:
+          "Your membership is inactive. Please contact your wellness center.",
+      });
     return;
   }
   if (member.valid_until && new Date(member.valid_until) < new Date()) {
-    res.status(403).json({ error: "Your membership has expired. Please contact your wellness center to renew." });
+    res
+      .status(403)
+      .json({
+        error:
+          "Your membership has expired. Please contact your wellness center to renew.",
+      });
     return;
   }
   if (member.email !== email) {
-    res.status(401).json({ error: "Email does not match the membership number. Please contact your wellness center." });
+    res
+      .status(401)
+      .json({
+        error:
+          "Email does not match the membership number. Please contact your wellness center.",
+      });
     return;
   }
 
@@ -98,11 +135,14 @@ router.post("/auth/request-otp", async (req, res) => {
   const otpToken = generateOtpToken();
 
   // Invalidate any previous unused OTPs for this member
-  await pool.query("UPDATE otps SET used = TRUE WHERE member_id = $1 AND used = FALSE", [member.id]);
+  await pool.query(
+    "UPDATE otps SET used = TRUE WHERE member_id = $1 AND used = FALSE",
+    [member.id],
+  );
   // Store new OTP
   await pool.query(
     "INSERT INTO otps (member_id, email, otp, otp_token, expires_at) VALUES ($1,$2,$3,$4,$5)",
-    [member.id, email, otp, otpToken, expiresAt]
+    [member.id, email, otp, otpToken, expiresAt],
   );
 
   // Send email
@@ -120,7 +160,8 @@ router.post("/auth/request-otp", async (req, res) => {
 // Body: { otp_token: string, otp: string }
 router.post("/auth/verify-otp", async (req, res) => {
   const body = req.body as Record<string, unknown>;
-  const otpToken = typeof body.otp_token === "string" ? body.otp_token.trim() : "";
+  const otpToken =
+    typeof body.otp_token === "string" ? body.otp_token.trim() : "";
   const otp = typeof body.otp === "string" ? body.otp.trim() : "";
 
   if (!otpToken || !otp) {
@@ -132,7 +173,7 @@ router.post("/auth/verify-otp", async (req, res) => {
     `SELECT * FROM otps
      WHERE otp_token = $1 AND otp = $2 AND used = FALSE AND expires_at > NOW()
      ORDER BY id DESC LIMIT 1`,
-    [otpToken, otp]
+    [otpToken, otp],
   );
   if (!rows[0]) {
     res.status(401).json({ error: "Invalid or expired OTP" });
@@ -147,49 +188,70 @@ router.post("/auth/verify-otp", async (req, res) => {
   // Re-check member validity before issuing token
   const { rows: memberRows } = await pool.query(
     "SELECT is_active, valid_until FROM members WHERE id = $1",
-    [memberId]
+    [memberId],
   );
-  const member = memberRows[0] as { is_active: boolean; valid_until: string | null } | undefined;
+  const member = memberRows[0] as
+    | { is_active: boolean; valid_until: string | null }
+    | undefined;
   if (!member?.is_active) {
-    res.status(403).json({ error: "Your membership is inactive. Please contact your wellness center." });
+    res
+      .status(403)
+      .json({
+        error:
+          "Your membership is inactive. Please contact your wellness center.",
+      });
     return;
   }
   if (member.valid_until && new Date(member.valid_until) < new Date()) {
-    res.status(403).json({ error: "Your membership has expired. Please contact your wellness center to renew." });
+    res
+      .status(403)
+      .json({
+        error:
+          "Your membership has expired. Please contact your wellness center to renew.",
+      });
     return;
   }
 
   // Ensure user_auth record exists for this member
   const { rows: authRows } = await pool.query(
     "SELECT id FROM user_auth WHERE member_id = $1",
-    [memberId]
+    [memberId],
   );
   if (!authRows[0]) {
     await pool.query(
       "INSERT INTO user_auth (member_id, email, created_at) VALUES ($1,$2,NOW())",
-      [memberId, email]
+      [memberId, email],
     );
   }
 
   const { rows: consentRows } = await pool.query(
     "SELECT terms_accepted_at FROM user_auth WHERE member_id = $1",
-    [memberId]
+    [memberId],
   );
   const needsTermsAcceptance = !consentRows[0]?.terms_accepted_at;
 
   const token = signToken(memberId, email);
-  res.json({ token, member_id: memberId, needs_terms_acceptance: needsTermsAcceptance });
+  res.json({
+    token,
+    member_id: memberId,
+    needs_terms_acceptance: needsTermsAcceptance,
+  });
 });
 
 // POST /api/auth/accept-terms — record first-login consent acceptance for the authenticated member
 router.post("/auth/accept-terms", async (req, res) => {
   const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!auth?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   try {
-    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as { memberId: number };
+    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as {
+      memberId: number;
+    };
     await pool.query(
       "UPDATE user_auth SET terms_accepted_at = COALESCE(terms_accepted_at, NOW()) WHERE member_id = $1",
-      [payload.memberId]
+      [payload.memberId],
     );
     res.json({ accepted: true });
   } catch {
@@ -199,22 +261,42 @@ router.post("/auth/accept-terms", async (req, res) => {
 
 // POST /api/auth/register — disabled: member onboarding is center-only
 router.post("/auth/register", async (_req, res) => {
-  res.status(403).json({ error: "Self-registration is disabled. Please contact your wellness center to get registered." });
+  res
+    .status(403)
+    .json({
+      error:
+        "Self-registration is disabled. Please contact your wellness center to get registered.",
+    });
 });
 
 // POST /api/auth/register_legacy (kept for reference only, never called)
 router.post("/auth/register_legacy", async (_req, res) => {
-  res.status(403).json({ error: "Self-registration is disabled. Please contact your wellness center to get registered." });
+  res
+    .status(403)
+    .json({
+      error:
+        "Self-registration is disabled. Please contact your wellness center to get registered.",
+    });
 });
 
 // GET /api/auth/me
 router.get("/auth/me", async (req, res) => {
   const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!auth?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   try {
-    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as { memberId: number };
-    const { rows } = await pool.query("SELECT * FROM members WHERE id = $1", [payload.memberId]);
-    if (!rows[0]) { res.status(404).json({ error: "Member not found" }); return; }
+    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as {
+      memberId: number;
+    };
+    const { rows } = await pool.query("SELECT * FROM members WHERE id = $1", [
+      payload.memberId,
+    ]);
+    if (!rows[0]) {
+      res.status(404).json({ error: "Member not found" });
+      return;
+    }
     res.json(rows[0]);
   } catch {
     res.status(401).json({ error: "Invalid token" });
