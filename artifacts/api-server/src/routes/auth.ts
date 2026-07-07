@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { Resend } from "resend";
 import { randomBytes } from "crypto";
@@ -24,6 +24,30 @@ function generateOtpToken(): string {
 function signToken(memberId: number, email: string): string {
   return jwt.sign({ memberId, email }, JWT_SECRET, { expiresIn: "30d" });
 }
+
+export interface MemberRequest extends Request {
+  authMemberId: number;
+}
+
+export function requireMember(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as { memberId: number };
+    (req as unknown as MemberRequest).authMemberId = payload.memberId;
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
 
 async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
   if (!process.env.RESEND_API_KEY) {

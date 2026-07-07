@@ -1,7 +1,28 @@
 import { Router } from "express";
 import { pool } from "../lib/sqlite";
+import { requireMember, type MemberRequest } from "./auth";
+import { bookAndCheckout } from "../lib/checkout";
 
 const router = Router();
+router.use(requireMember);
+
+// Ensure that member routes cannot access data belonging to other members
+router.param("id", (req, res, next, id) => {
+  if ((req as unknown as MemberRequest).authMemberId !== Number(id)) {
+    res.status(403).json({ error: "Forbidden: Cannot access other member's data" });
+    return;
+  }
+  next();
+});
+
+router.param("memberId", (req, res, next, id) => {
+  if ((req as unknown as MemberRequest).authMemberId !== Number(id)) {
+    res.status(403).json({ error: "Forbidden: Cannot access other member's data" });
+    return;
+  }
+  next();
+});
+
 const DEFAULT_CHECKIN_CAP = 32;
 
 // Trial 3-Day members always get a fixed check-in cap, overriding whatever
@@ -354,54 +375,10 @@ router.post("/members/:id/checkout", async (req, res) => {
   if (!ciRows[0]) { res.status(404).json({ error: "No active check-in found" }); return; }
   const checkin = ciRows[0] as { id: number; center_id: string };
 
-  // Deduct serving qty from open batch for each direct-flavour selection
-  const { rows: flavourSels } = await pool.query(
-    `SELECT vfs.ingredient_id, vfs.flavour, i.name
-     FROM visit_flavour_selections vfs
-     JOIN ingredients i ON i.id = vfs.ingredient_id
-     WHERE vfs.checkin_id = $1`,
-    [checkin.id]
-  );
-  for (const fsel of flavourSels) {
-    const { rows: batches } = await pool.query(
-      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty,
-              COALESCE(
-                (SELECT mb.quantity FROM menu_item_bom mb
-                 JOIN visit_menu_selections vms ON vms.menu_item_id = mb.menu_item_id
-                 WHERE vms.checkin_id = $3 AND mb.ingredient_id = $1 LIMIT 1),
-                i.serving_qty,
-                1
-              ) AS serving_qty
-       FROM ingredient_batches ib
-       JOIN ingredients i ON i.id = ib.ingredient_id
-       WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
-       ORDER BY ib.opened_at ASC LIMIT 1`,
-      [fsel.ingredient_id as number, checkin.center_id, checkin.id]
-    );
-    if (!batches[0]) continue;
-    const batchRow = batches[0] as { id: number; total_qty: number; serving_qty: number };
-    await pool.query(
-      `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
-       VALUES ($1, $2, 'auto: flavour visit', NOW())`,
-      [batchRow.id, batchRow.serving_qty]
-    );
-    const { rows: bal } = await pool.query(
-      `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
-      [batchRow.id]
-    );
-    if (Number((bal[0] as { total: number }).total) >= batchRow.total_qty) {
-      await pool.query(
-        `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
-         WHERE id = $1 AND status = 'open'`,
-        [batchRow.id]
-      );
-    }
-  }
+  await bookAndCheckout(checkin.id, memberId, checkin.center_id);
 
   const { rows } = await pool.query(
-    `UPDATE member_check_ins SET checked_out_at = NOW()
-     WHERE id = $1
-     RETURNING *`,
+    `SELECT * FROM member_check_ins WHERE id = $1`,
     [checkin.id]
   );
   res.json(rows[0]);

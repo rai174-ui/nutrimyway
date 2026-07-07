@@ -101,6 +101,32 @@ function QrScannerModal({ onScanned, onClose }: { onScanned: (centerId: string) 
         <p className="text-xs text-muted-foreground text-center py-3 px-4">
           Point your camera at the QR code posted at the wellness center entrance
         </p>
+        <div className="px-4 py-3 border-t border-border flex flex-col gap-2 bg-muted/30">
+          <p className="text-xs text-muted-foreground text-center">Trouble scanning? Enter code manually:</p>
+          <div className="flex gap-2">
+            <input 
+              type="text" 
+              id="manual-code" 
+              placeholder="e.g. CI-1" 
+              className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm" 
+              onKeyDown={(e) => { 
+                if (e.key === 'Enter') {
+                  const val = e.currentTarget.value.trim();
+                  if (val) onScanned(val);
+                }
+              }} 
+            />
+            <button 
+              onClick={() => { 
+                const val = (document.getElementById('manual-code') as HTMLInputElement).value.trim(); 
+                if (val) onScanned(val); 
+              }} 
+              className="bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+            >
+              Check In
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

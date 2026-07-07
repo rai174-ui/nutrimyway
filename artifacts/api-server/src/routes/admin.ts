@@ -5,6 +5,7 @@ import nodemailer from "nodemailer";
 import { randomBytes } from "crypto";
 import { pool } from "../lib/sqlite";
 import { logger } from "../lib/logger";
+import { bookAndCheckout } from "../lib/checkout";
 
 const SUPER_ADMIN_EMAIL = process.env["SUPER_ADMIN_EMAIL"] ?? "rai.174@gmail.com";
 const APP_URL = process.env["APP_URL"] ?? "http://localhost:8080";
@@ -133,154 +134,6 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction): voi
   } catch {
     res.status(401).json({ error: "Invalid or expired super admin token" });
   }
-}
-
-// Shared helper: book consumption for all selections and mark check-in as checked out
-function slotForNowIST(): string {
-  const h = new Date(Date.now() + 5.5 * 60 * 60 * 1000).getUTCHours();
-  if (h < 12) return "Breakfast";
-  if (h < 15) return "Lunch";
-  if (h < 18) return "Snack";
-  return "Dinner";
-}
-
-async function bookAndCheckout(checkinId: number, memberId: number, centerId: string): Promise<void> {
-  // Fetch all selections (mandatory + optional) for this visit
-  const { rows: selections } = await pool.query(
-    `SELECT vms.menu_item_id, mi.name
-     FROM visit_menu_selections vms
-     JOIN menu_items mi ON mi.id = vms.menu_item_id
-     WHERE vms.checkin_id = $1`,
-    [checkinId]
-  );
-  for (const sel of selections) {
-    // Only log consumption if ALL tracked BOM ingredients have an open batch.
-    // If any tracked ingredient has no open batch, skip this item entirely.
-    const { rows: avail } = await pool.query(
-      `SELECT NOT EXISTS (
-         SELECT 1 FROM menu_item_bom mb
-         WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL
-           AND NOT EXISTS (
-             SELECT 1 FROM ingredient_batches ib
-             WHERE ib.ingredient_id = mb.ingredient_id AND ib.center_id = $2 AND ib.status = 'open'
-           )
-       ) AS is_available`,
-      [sel.menu_item_id as number, centerId]
-    );
-    if (!(avail[0] as { is_available: boolean }).is_available) continue;
-
-    // Sum BOM kcal for this menu item
-    const { rows: kcalRows } = await pool.query(
-      `SELECT COALESCE(SUM(kcal), 0) AS total_kcal FROM menu_item_bom WHERE menu_item_id = $1`,
-      [sel.menu_item_id as number]
-    );
-    const totalKcal = Number((kcalRows[0] as { total_kcal: number }).total_kcal) || null;
-
-    // Log consumption under the time-appropriate meal slot
-    await pool.query(
-      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, menu_item_id, calories_kcal, checkin_id, logged_at)
-       VALUES ($1, $5, $2, $3, $4, $6, NOW())`,
-      [memberId, sel.name as string, sel.menu_item_id as number, totalKcal, slotForNowIST(), checkinId]
-    );
-    // Deduct BOM quantities from the open ingredient batch (oldest open batch first)
-    const { rows: bom } = await pool.query(
-      `SELECT mb.ingredient_id, mb.quantity FROM menu_item_bom mb
-       WHERE mb.menu_item_id = $1 AND mb.ingredient_id IS NOT NULL`,
-      [sel.menu_item_id as number]
-    );
-    for (const b of bom) {
-      // Use received_qty if set, else fall back to ingredient's Item Master pack_size
-      const { rows: batches } = await pool.query(
-        `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size) AS pack_size FROM ingredient_batches ib
-         JOIN ingredients i ON i.id = ib.ingredient_id
-         WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
-         ORDER BY ib.opened_at ASC LIMIT 1`,
-        [b.ingredient_id as number, centerId]
-      );
-      if (batches[0]) {
-        const batchRow = batches[0] as { id: number; pack_size: number };
-        await pool.query(
-          `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
-           VALUES ($1, $2, 'auto: member visit', NOW())`,
-          [batchRow.id, b.quantity as number]
-        );
-        // Auto-close the batch if the running total has reached or exceeded the actual received qty
-        const { rows: bal } = await pool.query(
-          `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
-          [batchRow.id]
-        );
-        if (Number((bal[0] as { total: number }).total) >= batchRow.pack_size) {
-          await pool.query(
-            `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
-             WHERE id = $1 AND status = 'open'`,
-            [batchRow.id]
-          );
-        }
-      }
-    }
-  }
-  // Process direct-order flavour selections (ingredients ordered by flavour at check-in)
-  const { rows: flavourSels } = await pool.query(
-    `SELECT vfs.ingredient_id, vfs.flavour, i.name
-     FROM visit_flavour_selections vfs
-     JOIN ingredients i ON i.id = vfs.ingredient_id
-     WHERE vfs.checkin_id = $1`,
-    [checkinId]
-  );
-  for (const fsel of flavourSels) {
-    const { rows: batches } = await pool.query(
-      `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size, 1) AS total_qty,
-              COALESCE(
-                (SELECT mb.quantity FROM menu_item_bom mb
-                 JOIN visit_menu_selections vms ON vms.menu_item_id = mb.menu_item_id
-                 WHERE vms.checkin_id = $3 AND mb.ingredient_id = $1 LIMIT 1),
-                i.serving_qty,
-                1
-              ) AS serving_qty
-       FROM ingredient_batches ib
-       JOIN ingredients i ON i.id = ib.ingredient_id
-       WHERE ib.ingredient_id = $1 AND ib.center_id = $2 AND ib.status = 'open'
-       ORDER BY ib.opened_at ASC LIMIT 1`,
-      [fsel.ingredient_id as number, centerId, checkinId]
-    );
-    if (!batches[0]) continue;
-    const batchRow = batches[0] as { id: number; total_qty: number; serving_qty: number };
-    const foodLabel = `${fsel.name as string} – ${fsel.flavour as string}`;
-    // Look up kcal_per_serving for this ingredient to log calories
-    const { rows: kcalIngRows } = await pool.query(
-      `SELECT kcal_per_serving FROM ingredients WHERE id = $1`,
-      [fsel.ingredient_id as number]
-    );
-    const kcalPerServing = (kcalIngRows[0] as { kcal_per_serving: number | null } | undefined)?.kcal_per_serving ?? null;
-    await pool.query(
-      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, quantity_g, calories_kcal, checkin_id, logged_at)
-       VALUES ($1, $3, $2, $4, $5, $6, NOW())`,
-      [memberId, foodLabel, slotForNowIST(), batchRow.serving_qty, kcalPerServing, checkinId]
-    );
-    // Deduct serving qty from the open batch
-    await pool.query(
-      `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
-       VALUES ($1, $2, 'auto: flavour visit', NOW())`,
-      [batchRow.id, batchRow.serving_qty]
-    );
-    // Auto-close batch if fully consumed
-    const { rows: bal } = await pool.query(
-      `SELECT COALESCE(SUM(quantity), 0) AS total FROM batch_consumption_logs WHERE batch_id = $1`,
-      [batchRow.id]
-    );
-    if (Number((bal[0] as { total: number }).total) >= batchRow.total_qty) {
-      await pool.query(
-        `UPDATE ingredient_batches SET status = 'consumed', consumed_at = NOW()
-         WHERE id = $1 AND status = 'open'`,
-        [batchRow.id]
-      );
-    }
-  }
-  // Mark check-in as checked out
-  await pool.query(
-    `UPDATE member_check_ins SET checked_out_at = NOW() WHERE id = $1 AND checked_out_at IS NULL`,
-    [checkinId]
-  );
 }
 
 // Auto-checkout sessions older than the center's configured auto_checkout_min
@@ -665,7 +518,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
       [centerId, checkinCap]
     ),
     pool.query(
-      `SELECT DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') AS day,
+      `SELECT TO_CHAR(checked_in_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS day,
               COUNT(DISTINCT member_id) AS count
        FROM member_check_ins
        WHERE center_id = $1
@@ -944,16 +797,15 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
   // Resolve each log to a menu_item_id that belongs to THIS center.
   // Only center-issued logs (checkin_id IS NOT NULL) are included.
   const { rows: byComponent } = await pool.query(
-    `WITH resolved AS (
+    `WITH resolved_menu AS (
        SELECT
          cl.id,
          cl.member_id,
+         cl.checkin_id,
          COALESCE(
-           -- FK path: only trust it if the item actually belongs to this center
            (SELECT mi.id FROM menu_items mi
             WHERE mi.id = cl.menu_item_id AND mi.center_id = $1
             LIMIT 1),
-           -- Name-fallback for legacy logs
            (SELECT mi2.id FROM menu_items mi2
             WHERE mi2.center_id = $1
               AND LOWER(mi2.name) = LOWER(cl.food_item)
@@ -964,17 +816,48 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
        WHERE mcm.center_id = $1
          AND cl.checkin_id IS NOT NULL
          AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     ),
+     components AS (
+       SELECT
+         mb.ingredient,
+         mb.unit,
+         mb.quantity AS qty,
+         rm.member_id,
+         rm.id AS log_id
+       FROM resolved_menu rm
+       JOIN menu_item_bom mb ON mb.menu_item_id = rm.menu_item_id
+       WHERE rm.menu_item_id IS NOT NULL
+
+       UNION ALL
+
+       SELECT
+         i.name AS ingredient,
+         i.pack_unit AS unit,
+         COALESCE(
+           (SELECT mb.quantity FROM menu_item_bom mb
+            JOIN visit_menu_selections vms ON vms.menu_item_id = mb.menu_item_id
+            WHERE vms.checkin_id = vfs.checkin_id AND mb.ingredient_id = i.id LIMIT 1),
+           i.serving_qty,
+           1
+         ) AS qty,
+         mci.member_id,
+         vfs.id AS log_id
+       FROM visit_flavour_selections vfs
+       JOIN member_check_ins mci ON mci.id = vfs.checkin_id
+       JOIN ingredients i ON i.id = vfs.ingredient_id
+       WHERE mci.center_id = $1
+         AND mci.checked_out_at IS NOT NULL
+         AND mci.cancelled = FALSE
+         AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
      )
      SELECT
-       mb.ingredient,
-       mb.unit,
-       SUM(mb.quantity)         AS total_quantity,
-       COUNT(DISTINCT r.member_id) AS member_count,
-       COUNT(DISTINCT r.id)     AS log_count
-     FROM resolved r
-     JOIN menu_item_bom mb ON mb.menu_item_id = r.menu_item_id
-     WHERE r.menu_item_id IS NOT NULL
-     GROUP BY mb.ingredient, mb.unit
+       ingredient,
+       unit,
+       SUM(qty) AS total_quantity,
+       COUNT(DISTINCT member_id) AS member_count,
+       COUNT(DISTINCT log_id) AS log_count
+     FROM components
+     GROUP BY ingredient, unit
      ORDER BY total_quantity DESC`,
     [centerId, from, to]
   );
