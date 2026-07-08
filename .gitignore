@@ -47,3 +47,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+db_data/
+test-express.js
+test_pg_date.mjs
