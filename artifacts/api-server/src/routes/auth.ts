@@ -200,15 +200,20 @@ router.post("/auth/request-otp", async (req, res) => {
     [member.id, email, otp, otpToken, expiresAt],
   );
 
-  // Send email
-  const sent = await sendOtpEmail(email, otp);
-
-  if (sent) {
-    res.json({ message: "OTP sent", otp_token: otpToken });
-  } else {
-    // Dev mode fallback: return OTP preview
+  // If no email providers are configured, use Dev Mode fallback immediately
+  if (!process.env.SMTP_HOST && !process.env.RESEND_API_KEY) {
+    logger.warn({ email }, "No email provider configured — returning OTP preview in response");
     res.json({ message: "OTP sent", otp_token: otpToken, otp_preview: otp });
+    return;
   }
+
+  // Otherwise, send the email in the background without blocking the HTTP response.
+  // This prevents the frontend from timing out if the SMTP connection is slow (e.g., Gmail on Railway).
+  sendOtpEmail(email, otp).catch(err => {
+    logger.error({ err, email }, "Failed to send OTP email in background");
+  });
+
+  res.json({ message: "OTP sent", otp_token: otpToken });
 });
 
 // POST /api/auth/verify-otp
