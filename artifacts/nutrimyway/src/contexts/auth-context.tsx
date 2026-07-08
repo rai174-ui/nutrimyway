@@ -35,16 +35,16 @@ function loadState(): AuthState {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>(loadState);
-
-  // Wire token getter into the API client once on mount
-  useEffect(() => {
-    setAuthTokenGetter(() => state.token);
-  }, [state.token]);
+  const [state, setState] = useState<AuthState>(() => {
+    const initial = loadState();
+    setAuthTokenGetter(() => initial.token);
+    return initial;
+  });
 
   const login = useCallback((token: string, memberId: number, needsTermsAcceptance = false) => {
     const next = { token, memberId, needsTermsAcceptance };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    setAuthTokenGetter(() => token);
     setState(next);
     // Register push token after login
     setTimeout(() => initPushNotifications(memberId, getApiBase()), 1000);
@@ -52,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
+    setAuthTokenGetter(() => null);
     setState({ token: null, memberId: null, needsTermsAcceptance: false });
   }, []);
 
