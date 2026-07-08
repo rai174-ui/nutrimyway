@@ -962,7 +962,7 @@ async function migrateAdminTables36(): Promise<void> {
 
   // Check-in cycle tracking — 32 check-ins per cycle, reset on renewal
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS cycle_started_at TIMESTAMPTZ`);
-  await pool.query(`UPDATE members SET cycle_started_at = COALESCE(cycle_started_at, NULLIF(date_of_joining, '')::timestamptz, NOW()) WHERE cycle_started_at IS NULL`);
+  await pool.query(`UPDATE members SET cycle_started_at = NOW() WHERE cycle_started_at IS NULL`);
 
   // Trial-eligible flavours/menu items (no day-of-week restriction for trial members)
   await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS trial_eligible BOOLEAN NOT NULL DEFAULT FALSE`);
