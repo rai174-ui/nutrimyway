@@ -1,0 +1,1 @@
+C:/Program Files/PostgreSQL/16/bin/postgres.exe "-D" "c:\Users\ABC\projects\nutrimyway\db_data" "-p" "54321"

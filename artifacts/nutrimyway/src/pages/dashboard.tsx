@@ -6,7 +6,7 @@ import { Plus, LogOut, MapPin, Camera, X, Megaphone, ChevronRight, AlertTriangle
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
-import { Html5Qrcode } from "html5-qrcode";
+
 import { apiFetch } from "@/lib/api-base";
 
 // Safe date formatter — never throws "Invalid time value".
@@ -71,69 +71,43 @@ function useMemberCenters(memberId: number | null) {
   return centers;
 }
 
-import { Camera as CapCamera } from "@capacitor/camera";
+import { BarcodeScanner, BarcodeFormat } from "@capacitor-mlkit/barcode-scanning";
 
 // ── QR Scanner Modal ──────────────────────────────────────────────────────────
+// Uses @capacitor-mlkit/barcode-scanning (Google ML Kit native layer)
+// instead of html5-qrcode (WebView JS decoder) for reliable scanning.
 
 function QrScannerModal({ onScanned, onClose }: { onScanned: (centerId: string) => void; onClose: () => void }) {
+  const [scanning, setScanning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const didScan = useRef(false);
+  const [manualCode, setManualCode] = useState("");
 
-  useEffect(() => {
-    let active = true;
-    const scanner = new Html5Qrcode("nmw-qr-container");
-    scannerRef.current = scanner;
-
-    async function initScanner() {
-      try {
-        // Request camera permission natively using Capacitor
-        const perm = await CapCamera.requestPermissions({ permissions: ["camera"] });
-        if (!active) return;
-
-        if (perm.camera !== "granted") {
-          setErr("Camera permission was not granted. Please allow camera access in your phone settings.");
-          return;
-        }
-
-        await scanner.start(
-          { facingMode: "environment" },
-          {
-            fps: 30,
-            // Responsive box — 80% of the smaller viewport edge so the QR
-            // doesn't need to be tiny. On a 400px-wide WebView this gives
-            // a 320×320 box vs the old fixed 250px.
-            qrbox: (w: number, h: number) => {
-              const edge = Math.floor(Math.min(w, h) * 0.8);
-              return { width: edge, height: edge };
-            },
-            // Use Android's native BarcodeDetector ML API when available
-            // (same engine the Samsung camera app uses — far more robust
-            // than the pure-JS ZXing decoder, especially for screen QR codes).
-            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-          },
-          (decoded) => {
-            if (didScan.current) return;
-            didScan.current = true;
-            void scanner.stop().catch(() => {}).then(() => onScanned(decoded));
-          },
-          () => { /* per-frame decode errors are normal */ }
-        );
-      } catch (e) {
-        if (active) {
-          setErr("Camera access denied. Please allow camera access in your phone settings and try again.");
-        }
+  async function startScan() {
+    setErr(null);
+    setScanning(true);
+    try {
+      // Request camera permission natively
+      const perm = await BarcodeScanner.requestPermissions();
+      if (perm.camera !== "granted") {
+        setErr("Camera permission was not granted. Please allow camera access in your phone settings.");
+        setScanning(false);
+        return;
       }
+
+      // Open the native ML Kit scanner overlay (same engine as Samsung camera)
+      const result = await BarcodeScanner.scan({ formats: [BarcodeFormat.QrCode] });
+
+      if (result.barcodes.length > 0) {
+        onScanned(result.barcodes[0].displayValue);
+      } else {
+        setErr("No QR code detected. Please try again.");
+        setScanning(false);
+      }
+    } catch (e) {
+      setErr("Scanner failed. Please try again or enter the code manually.");
+      setScanning(false);
     }
-
-    void initScanner();
-
-    return () => {
-      active = false;
-      void scannerRef.current?.stop().catch(() => {});
-    };
-  }, []);
-
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 flex flex-col items-center justify-center p-4">
@@ -144,35 +118,48 @@ function QrScannerModal({ onScanned, onClose }: { onScanned: (centerId: string) 
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div id="nmw-qr-container" className="w-full" />
-        {err && <p className="px-4 pt-2 pb-1 text-xs text-destructive text-center">{err}</p>}
-        <p className="text-xs text-muted-foreground text-center py-3 px-4">
-          Point your camera at the QR code posted at the wellness center entrance
-        </p>
+
+        <div className="p-6 flex flex-col items-center gap-4">
+          <div className="w-40 h-40 rounded-2xl bg-muted flex items-center justify-center border-2 border-dashed border-border">
+            <Camera className="w-12 h-12 text-muted-foreground" />
+          </div>
+          <button
+            onClick={startScan}
+            disabled={scanning}
+            className="w-full bg-primary hover:bg-primary/90 disabled:opacity-60 text-primary-foreground py-3 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+          >
+            {scanning ? <><span className="animate-spin">⏳</span> Opening camera…</> : <><Camera className="w-4 h-4" /> Tap to Scan QR Code</>}
+          </button>
+          {err && <p className="text-xs text-destructive text-center">{err}</p>}
+          <p className="text-xs text-muted-foreground text-center">
+            Point your camera at the QR code posted at the wellness center entrance
+          </p>
+        </div>
+
         <div className="px-4 py-3 border-t border-border flex flex-col gap-2 bg-muted/30">
           <p className="text-xs text-muted-foreground text-center">Trouble scanning? Enter code manually:</p>
           <div className="flex gap-2">
-            <input 
-              type="text" 
-              id="manual-code" 
-              placeholder="e.g. CI-1" 
-              className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm" 
-              onKeyDown={(e) => { 
-                if (e.key === 'Enter') {
-                  const val = e.currentTarget.value.trim();
+            <input
+              type="text"
+              id="manual-code"
+              placeholder="e.g. CI-1"
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value)}
+              className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const val = manualCode.trim();
                   if (val) onScanned(val);
                 }
-              }} 
+              }}
             />
-            <button 
-              onClick={() => { 
-                const val = (document.getElementById('manual-code') as HTMLInputElement).value.trim(); 
-                if (val) onScanned(val); 
-              }} 
+            <button
+              onClick={() => { const val = manualCode.trim(); if (val) onScanned(val); }}
               className="bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
             >
               Check In
             </button>
+
           </div>
         </div>
       </div>
