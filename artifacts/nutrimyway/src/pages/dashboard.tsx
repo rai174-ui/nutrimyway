@@ -98,13 +98,26 @@ function QrScannerModal({ onScanned, onClose }: { onScanned: (centerId: string) 
 
         await scanner.start(
           { facingMode: "environment" },
-          { fps: 10, qrbox: 250 },
+          {
+            fps: 30,
+            // Responsive box — 80% of the smaller viewport edge so the QR
+            // doesn't need to be tiny. On a 400px-wide WebView this gives
+            // a 320×320 box vs the old fixed 250px.
+            qrbox: (w: number, h: number) => {
+              const edge = Math.floor(Math.min(w, h) * 0.8);
+              return { width: edge, height: edge };
+            },
+            // Use Android's native BarcodeDetector ML API when available
+            // (same engine the Samsung camera app uses — far more robust
+            // than the pure-JS ZXing decoder, especially for screen QR codes).
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          },
           (decoded) => {
             if (didScan.current) return;
             didScan.current = true;
             void scanner.stop().catch(() => {}).then(() => onScanned(decoded));
           },
-          () => { /* per-frame errors are normal */ }
+          () => { /* per-frame decode errors are normal */ }
         );
       } catch (e) {
         if (active) {
