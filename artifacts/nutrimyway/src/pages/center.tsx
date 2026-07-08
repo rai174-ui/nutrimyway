@@ -7,7 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { MapPin, Activity, Stethoscope, Plus, X, ChevronDown, LogIn, LogOut, Clock } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useState } from "react";
@@ -17,6 +17,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
 import { apiFetch } from "@/lib/api-base";
+
+function safeFormat(value: string | null | undefined, fmt: string, fallback = "--"): string {
+  if (!value) return fallback;
+  const d = new Date(value);
+  return isValid(d) ? format(d, fmt) : fallback;
+}
 
 interface CheckinLog {
   id: number;
@@ -112,7 +118,7 @@ export function Center() {
   const latestRecord = records?.[0];
   const reversed = [...(records || [])].reverse().slice(-8);
   const chartData = reversed.map((r) => ({
-    date: format(new Date(r.recorded_at), "MMM d"),
+    date: safeFormat(r.recorded_at, "MMM d"),
     weight: r.weight_kg,
     body_fat: r.body_fat_pct,
     muscle: r.muscle_mass_kg,
@@ -217,7 +223,7 @@ export function Center() {
           <div className="col-span-2 space-y-0.5 border-t border-border pt-3 mt-1">
             <p className="text-xs text-muted-foreground">Recorded</p>
             <p className="text-sm font-medium">
-              {latestRecord ? format(new Date(latestRecord.recorded_at), "MMM d, yyyy") : "--"}
+              {latestRecord ? safeFormat(latestRecord.recorded_at, "MMM d, yyyy") : "--"}
             </p>
           </div>
         </div>
@@ -290,7 +296,7 @@ export function Center() {
                   {r.center_id || "Center Visit"}
                 </p>
                 <p className="text-xs text-muted-foreground mb-2">
-                  {format(new Date(r.recorded_at), "MMM d, yyyy")}
+                  {safeFormat(r.recorded_at, "MMM d, yyyy")}
                 </p>
                 <div className="grid grid-cols-3 gap-x-3 gap-y-1">
                   {r.weight_kg != null && (
@@ -349,7 +355,7 @@ export function Center() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {format(new Date(log.checked_in_at), "MMM d, yyyy")}
+                    {safeFormat(log.checked_in_at, "MMM d, yyyy")}
                     {" · "}
                     {formatTime(log.checked_in_at)}
                     {log.checked_out_at && ` → ${formatTime(log.checked_out_at)}`}

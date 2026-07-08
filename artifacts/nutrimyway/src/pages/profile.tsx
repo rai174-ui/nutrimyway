@@ -1,12 +1,18 @@
 import { useState, useEffect } from "react";
 import { useGetMember, getGetMemberQueryKey, useGetMemberIssuances, getGetMemberIssuancesQueryKey, useGetMemberStatus, getGetMemberStatusQueryKey } from "@workspace/api-client-react";
+import { format, isValid } from "date-fns";
 import { motion } from "framer-motion";
-import { format } from "date-fns";
 import { Package, Calendar, LogOut, Camera, Loader2, X, CheckCircle2, Info, AlertTriangle, Ticket } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { apiFetch } from "@/lib/api-base";
+
+function safeFormat(value: string | null | undefined, fmt: string, fallback = "--"): string {
+  if (!value) return fallback;
+  const d = new Date(value);
+  return isValid(d) ? format(d, fmt) : fallback;
+}
 
 export function Profile() {
   const { memberId: MEMBER_ID, logout } = useAuth();
@@ -177,7 +183,7 @@ export function Profile() {
               <div className="flex justify-between items-center text-sm pt-1 border-t border-border/60">
                 <span className="font-medium">Valid Until</span>
                 <span className={`font-bold ${status.is_expiring_soon ? "text-amber-700" : ""}`}>
-                  {format(new Date(status.valid_until), "MMM d, yyyy")}
+                  {safeFormat(status.valid_until, "MMM d, yyyy")}
                   {status.days_until_expiry != null && status.days_until_expiry >= 0 && (
                     <span className="font-normal text-muted-foreground"> ({status.days_until_expiry}d left)</span>
                   )}
@@ -271,7 +277,7 @@ export function Profile() {
                 <p className="text-sm font-semibold truncate">{issuance.pack_label || "Standard Pack"}</p>
                 <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                   <Calendar className="w-3 h-3" />
-                  {format(new Date(issuance.issued_at), "MMM d, yyyy")}
+                  {safeFormat(issuance.issued_at, "MMM d, yyyy")}
                 </div>
               </div>
               <div>

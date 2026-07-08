@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment, type ReactNode } from "react";
 import { useGetMember, getGetMemberQueryKey, useGetDailySummary, getGetDailySummaryQueryKey, useGetMemberStatus, getGetMemberStatusQueryKey } from "@workspace/api-client-react";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { Link } from "wouter";
 import { Plus, LogOut, MapPin, Camera, X, Megaphone, ChevronRight, AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
@@ -8,6 +8,15 @@ import { useAuth } from "@/contexts/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { Html5Qrcode } from "html5-qrcode";
 import { apiFetch } from "@/lib/api-base";
+
+// Safe date formatter — never throws "Invalid time value".
+// PostgreSQL timestamps may not parse correctly in some Android WebViews
+// so we always validate the Date before passing it to date-fns format().
+function safeFormat(value: string | null | undefined, fmt: string, fallback = "--"): string {
+  if (!value) return fallback;
+  const d = new Date(value);
+  return isValid(d) ? format(d, fmt) : fallback;
+}
 
 function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
 const TODAY = todayLocal();
@@ -234,7 +243,7 @@ function CheckInCard({ memberId, checkin, onRefresh }: {
   }
 
   if (checkin) {
-    const since = format(new Date(checkin.checked_in_at), "h:mm a");
+    const since = safeFormat(checkin.checked_in_at, "h:mm a", "--:--");
     return (
       <section className="bg-teal-dark rounded-[12px] p-5 text-white">
         <div className="flex items-center justify-between">
