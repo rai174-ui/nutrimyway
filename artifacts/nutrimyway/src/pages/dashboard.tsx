@@ -71,6 +71,8 @@ function useMemberCenters(memberId: number | null) {
   return centers;
 }
 
+import { Camera as CapCamera } from "@capacitor/camera";
+
 // ── QR Scanner Modal ──────────────────────────────────────────────────────────
 
 function QrScannerModal({ onScanned, onClose }: { onScanned: (centerId: string) => void; onClose: () => void }) {
@@ -79,22 +81,46 @@ function QrScannerModal({ onScanned, onClose }: { onScanned: (centerId: string) 
   const didScan = useRef(false);
 
   useEffect(() => {
+    let active = true;
     const scanner = new Html5Qrcode("nmw-qr-container");
     scannerRef.current = scanner;
 
-    scanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      (decoded) => {
-        if (didScan.current) return;
-        didScan.current = true;
-        void scanner.stop().catch(() => {}).then(() => onScanned(decoded));
-      },
-      () => { /* per-frame errors are normal */ }
-    ).catch(() => setErr("Camera access denied. Please allow camera access in your browser settings and try again."));
+    async function initScanner() {
+      try {
+        // Request camera permission natively using Capacitor
+        const perm = await CapCamera.requestPermissions({ permissions: ["camera"] });
+        if (!active) return;
 
-    return () => { void scannerRef.current?.stop().catch(() => {}); };
+        if (perm.camera !== "granted") {
+          setErr("Camera permission was not granted. Please allow camera access in your phone settings.");
+          return;
+        }
+
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: 250 },
+          (decoded) => {
+            if (didScan.current) return;
+            didScan.current = true;
+            void scanner.stop().catch(() => {}).then(() => onScanned(decoded));
+          },
+          () => { /* per-frame errors are normal */ }
+        );
+      } catch (e) {
+        if (active) {
+          setErr("Camera access denied. Please allow camera access in your phone settings and try again.");
+        }
+      }
+    }
+
+    void initScanner();
+
+    return () => {
+      active = false;
+      void scannerRef.current?.stop().catch(() => {});
+    };
   }, []);
+
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 flex flex-col items-center justify-center p-4">
