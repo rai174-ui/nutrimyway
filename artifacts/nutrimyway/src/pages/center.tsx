@@ -34,7 +34,8 @@ interface CheckinLog {
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  const d = new Date(iso);
+  return isValid(d) ? d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "--:--";
 }
 
 function formatDuration(min: number) {

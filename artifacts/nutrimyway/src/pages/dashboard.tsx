@@ -526,7 +526,7 @@ function BroadcastCard({ broadcast, memberId, onDismiss }: {
       </button>
       <p className="text-sm text-amber-900 pr-6 leading-snug">{linkifyMessage(broadcast.message)}</p>
       <p className="text-[10px] text-amber-600 mt-1.5">
-        {new Date(broadcast.sent_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+        {safeFormat(broadcast.sent_at, "MMM d", "--")}
       </p>
     </div>
   );
