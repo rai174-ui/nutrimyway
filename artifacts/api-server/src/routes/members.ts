@@ -82,11 +82,11 @@ router.get("/members/:id/status", async (req, res) => {
   const memberId = Number(req.params.id);
   const { rows } = await pool.query(
     `SELECT m.valid_until,
-            (COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)) AS cycle_started_at,
+            m.cycle_started_at,
             (SELECT COUNT(*) FROM member_check_ins mci
              WHERE mci.member_id = m.id
                AND mci.cancelled = FALSE
-               AND mci.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
+               AND (m.cycle_started_at IS NULL OR mci.checked_in_at >= m.cycle_started_at)
             ) AS checkins_used,
             (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days') AS expiring_by_date,
             CASE WHEN m.valid_until IS NOT NULL
