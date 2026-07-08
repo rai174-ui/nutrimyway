@@ -237,22 +237,38 @@ function CheckInCard({ memberId, checkin, onRefresh }: {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [showWeightPrompt, setShowWeightPrompt] = useState(false);
 
+  const [checkinErr, setCheckinErr] = useState<string | null>(null);
+
   async function doCheckin(centerId: string) {
     setBusy(true);
+    setCheckinErr(null);
     try {
-      await apiFetch(`/members/${memberId}/checkin`, {
+      const res = await apiFetch(`/members/${memberId}/checkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ center_id: centerId }),
       });
-    } catch { /* ignore */ } finally { setBusy(false); }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setCheckinErr(data.error ?? `Check-in failed (${res.status})`);
+        return false;
+      }
+      return true;
+    } catch {
+      setCheckinErr("Network error — please try again.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
   }
 
   function handleQrScanned(centerId: string) {
     setScannerOpen(false);
-    void doCheckin(centerId).then(() => {
-      onRefresh();
-      setShowWeightPrompt(true);
+    void doCheckin(centerId).then((ok) => {
+      if (ok) {
+        onRefresh();
+        setShowWeightPrompt(true);
+      }
     });
   }
 
@@ -316,6 +332,12 @@ function CheckInCard({ memberId, checkin, onRefresh }: {
           Scan QR
         </button>
       </section>
+
+      {checkinErr && (
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-2.5 text-xs text-destructive font-medium">
+          ⚠️ {checkinErr}
+        </div>
+      )}
 
       {scannerOpen && (
         <QrScannerModal
