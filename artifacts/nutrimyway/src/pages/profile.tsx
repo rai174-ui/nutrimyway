@@ -115,7 +115,7 @@ export function Profile() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">{member?.name}</h1>
           <p className="text-muted-foreground text-sm flex items-center justify-center gap-1 mt-1">
-            Member #{member?.id} <span className="text-border">•</span> {member?.height_cm} cm
+            Member #{member?.membership_no ?? member?.id} <span className="text-border">•</span> {member?.height_cm ? `${member.height_cm} cm` : 'Height not set'}
           </p>
         </div>
       </header>

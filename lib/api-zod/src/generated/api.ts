@@ -66,6 +66,7 @@ export const GetMemberParams = zod.object({
 
 export const GetMemberResponse = zod.object({
   "id": zod.number(),
+  "membership_no": zod.string().nullish().describe('The human-readable membership number shown to the member'),
   "name": zod.string(),
   "date_of_joining": zod.string().nullish(),
   "height_cm": zod.number().nullish(),

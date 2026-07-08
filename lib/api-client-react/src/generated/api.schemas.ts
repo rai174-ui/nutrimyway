@@ -11,6 +11,11 @@ export interface HealthStatus {
 
 export interface Member {
   id: number;
+  /**
+     * The human-readable membership number shown to the member
+     * @nullable
+     */
+  membership_no?: string | null;
   name: string;
   /** @nullable */
   date_of_joining?: string | null;

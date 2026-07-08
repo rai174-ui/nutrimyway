@@ -340,6 +340,9 @@ components:
       properties:
         id:
           type: integer
+        membership_no:
+          type: ["string", "null"]
+          description: The human-readable membership number shown to the member
         name:
           type: string
         date_of_joining:
