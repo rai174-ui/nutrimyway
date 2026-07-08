@@ -303,11 +303,11 @@ export function Dashboard() {
   const { memberId: MEMBER_ID } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: member, isLoading: loadingMember } = useGetMember(MEMBER_ID!, {
+  const { data: member, isLoading: loadingMember, isError: memberError } = useGetMember(MEMBER_ID!, {
     query: { enabled: !!MEMBER_ID, queryKey: getGetMemberQueryKey(MEMBER_ID!) }
   });
 
-  const { data: summary, isLoading: loadingSummary } = useGetDailySummary(MEMBER_ID!, { date: TODAY }, {
+  const { data: summary, isLoading: loadingSummary, isError: summaryError } = useGetDailySummary(MEMBER_ID!, { date: TODAY }, {
     query: { enabled: !!MEMBER_ID, queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) }
   });
 
@@ -331,9 +331,14 @@ export function Dashboard() {
     queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) });
   }
 
-  if (loadingMember || loadingSummary) {
+  // Only show loading spinner on the very first fetch of BOTH queries.
+  // If either query errored (e.g. 401 due to stale token), skip the spinner
+  // so the user sees the dashboard with whatever data we have rather than
+  // being stuck on "Loading dashboard..." forever.
+  if ((loadingMember && !memberError) || (loadingSummary && !summaryError)) {
     return <div className="p-6 text-center text-muted-foreground mt-20">Loading dashboard...</div>;
   }
+
 
   const targetCal = summary?.target_calories || 2000;
   const consumedCal = summary?.total_calories || 0;

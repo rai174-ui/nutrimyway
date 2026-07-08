@@ -16,7 +16,23 @@ import { initApiBase } from "@/lib/api-base";
 
 initApiBase();
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Never retry on 4xx errors — they are not transient.
+      // Retrying a 401/403 just causes multi-second "Loading..." spinners.
+      // Network errors (TypeError) and 5xx errors still retry once.
+      retry: (failureCount, error) => {
+        if (error instanceof Error && 'status' in error) {
+          const status = (error as { status: number }).status;
+          if (status >= 400 && status < 500) return false;
+        }
+        return failureCount < 1;
+      },
+      staleTime: 30_000, // 30 s — prevents redundant refetches on tab switch
+    },
+  },
+});
 
 function ProtectedRouter() {
   const { isAuthenticated, needsTermsAcceptance, markTermsAccepted } = useAuth();
