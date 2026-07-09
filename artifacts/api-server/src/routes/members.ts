@@ -553,15 +553,17 @@ If you cannot identify food, return: {"error": "No food detected"}`;
     ]);
     text = result.response.text().trim().replace(/^```json\s*|```\s*$/g, "");
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("permission")) {
-      res.status(403).json({ error: "Your Gemini API key is not valid or has no quota. Go to aistudio.google.com/apikey to create a new one." });
-    } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
-      res.status(429).json({ error: "Gemini API quota exceeded. Try again later or create a new key." });
-    } else {
-      res.status(502).json({ error: "Gemini AI is not responding right now. Try again in a moment." });
-    }
-    req.log.error({ err: msg }, "Gemini API call failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("permission")) {
+        res.status(403).json({ error: "Your Gemini API key is not valid or has no quota. Go to aistudio.google.com/apikey to create a new one." });
+      } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
+        res.status(429).json({ error: "Gemini API quota exceeded. Try again later or create a new key." });
+      } else if (msg.includes("SAFETY") || msg.includes("safety") || msg.includes("blocked")) {
+        res.status(422).json({ error: "Image was blocked by AI safety filters. Please try a different photo." });
+      } else {
+        res.status(502).json({ error: `Gemini Error: ${msg}` });
+      }
+      req.log.error({ err: msg }, "Gemini API call failed");
     return;
   }
 
