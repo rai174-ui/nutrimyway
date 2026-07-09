@@ -870,7 +870,18 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
             COALESCE(
               cl.quantity_g,
               (SELECT SUM(mb.quantity) FROM menu_item_bom mb
-               WHERE mb.menu_item_id = cl.menu_item_id)
+               WHERE mb.menu_item_id = cl.menu_item_id),
+              (SELECT COALESCE(
+                 (SELECT mb2.quantity FROM menu_item_bom mb2
+                  JOIN visit_menu_selections vms ON vms.menu_item_id = mb2.menu_item_id
+                  WHERE vms.checkin_id = cl.checkin_id AND mb2.ingredient_id = vfs.ingredient_id LIMIT 1),
+                 i.serving_qty
+               )
+               FROM visit_flavour_selections vfs
+               JOIN ingredients i ON i.id = vfs.ingredient_id
+               WHERE vfs.checkin_id = cl.checkin_id
+                 AND cl.food_item LIKE (i.name || ' -%')
+               LIMIT 1)
             ) AS quantity_g,
             COALESCE(
               cl.calories_kcal,
