@@ -1036,6 +1036,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
     `SELECT
        m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
        m.dob, m.age_at_joining, m.valid_until, m.is_active, m.member_type, m.cycle_started_at,
+       m.daily_kcal,
        (
          SELECT COUNT(*) FROM member_check_ins mci3
          WHERE mci3.member_id = m.id AND mci3.cancelled = FALSE AND mci3.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
