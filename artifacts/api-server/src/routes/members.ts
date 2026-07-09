@@ -188,10 +188,10 @@ router.get("/members/:id/consumption", async (req, res) => {
 // POST /api/members/:id/consumption
 router.post("/members/:id/consumption", async (req, res) => {
   const memberId = Number(req.params.id);
-  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id, photo_url } = req.body as {
+  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, fiber_g, menu_item_id, photo_url } = req.body as {
     meal_slot: string; food_item: string;
     quantity_g?: number | null; calories_kcal?: number | null;
-    protein_g?: number | null; carbs_g?: number | null; fat_g?: number | null;
+    protein_g?: number | null; carbs_g?: number | null; fat_g?: number | null; fiber_g?: number | null;
     menu_item_id?: number | null;
     photo_url?: string | null;
   };
@@ -211,10 +211,10 @@ router.post("/members/:id/consumption", async (req, res) => {
 
   const { rows } = await pool.query(
     `INSERT INTO consumption_logs
-       (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, menu_item_id, photo_url, photo_uploaded_at)
-     VALUES ($1,NOW(),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+       (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, fiber_g, menu_item_id, photo_url, photo_uploaded_at)
+     VALUES ($1,NOW(),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
     [memberId, meal_slot, food_item, quantity_g ?? null, calories_kcal ?? null,
-     protein_g ?? null, carbs_g ?? null, fat_g ?? null, menu_item_id ?? null,
+     protein_g ?? null, carbs_g ?? null, fat_g ?? null, fiber_g ?? null, menu_item_id ?? null,
      photo_url ?? null, photo_url ? new Date().toISOString() : null]
   );
   res.status(201).json(rows[0]);
@@ -231,7 +231,7 @@ router.get("/members/:id/summary", async (req, res) => {
   const { rows: logs } = await pool.query(
     "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2 ORDER BY logged_at ASC",
     [memberId, date]
-  ) as { rows: Array<{ id: number; member_id: number; logged_at: string; meal_slot: string; food_item: string; quantity_g: number | null; calories_kcal: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null }> };
+  ) as { rows: Array<{ id: number; member_id: number; logged_at: string; meal_slot: string; food_item: string; quantity_g: number | null; calories_kcal: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null }> };
 
   const totals = logs.reduce(
     (acc, log) => {
@@ -239,9 +239,10 @@ router.get("/members/:id/summary", async (req, res) => {
       acc.total_protein += Number(log.protein_g ?? 0);
       acc.total_carbs += Number(log.carbs_g ?? 0);
       acc.total_fat += Number(log.fat_g ?? 0);
+      acc.total_fiber += Number(log.fiber_g ?? 0);
       return acc;
     },
-    { total_calories: 0, total_protein: 0, total_carbs: 0, total_fat: 0 }
+    { total_calories: 0, total_protein: 0, total_carbs: 0, total_fat: 0, total_fiber: 0 }
   );
 
   const logsBySlot: Record<string, typeof logs> = {};
@@ -322,11 +323,12 @@ router.get("/members/:id/center-menu", async (req, res) => {
   res.json(rows);
 });
 
-// POST /api/members/:id/checkin — self check-in (body: { center_id })
+// POST /api/members/:id/checkin — self check-in (body: { center_id, weight_kg })
 router.post("/members/:id/checkin", async (req, res) => {
   const memberId = Number(req.params.id);
-  const { center_id } = req.body as { center_id?: string };
+  const { center_id, weight_kg } = req.body as { center_id?: string; weight_kg?: number };
   if (!center_id) { res.status(400).json({ error: "center_id is required" }); return; }
+  if (!weight_kg || weight_kg <= 0) { res.status(400).json({ error: "weight_kg is required for check-in" }); return; }
 
   const { rows: membership } = await pool.query(
     `SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`,
@@ -356,9 +358,21 @@ router.post("/members/:id/checkin", async (req, res) => {
   }
 
   const { rows } = await pool.query(
-    `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
-    [memberId, center_id]
+    `INSERT INTO member_check_ins (member_id, center_id, weight_kg) VALUES ($1,$2,$3) RETURNING *`,
+    [memberId, center_id, weight_kg]
   );
+
+  // Also record it as a formal health record for the day
+  await pool.query(
+    `INSERT INTO health_records (member_id, center_id, recorded_date, weight_kg, recorded_by, checkin_id)
+     VALUES ($1, $2, CURRENT_DATE, $3, 'self', $4)
+     ON CONFLICT (member_id, recorded_date) DO UPDATE SET
+       weight_kg = EXCLUDED.weight_kg,
+       center_id = EXCLUDED.center_id,
+       checkin_id = EXCLUDED.checkin_id`,
+    [memberId, center_id, weight_kg, rows[0].id]
+  );
+
   res.status(201).json(rows[0]);
 });
 
@@ -384,158 +398,77 @@ router.post("/members/:id/checkout", async (req, res) => {
   res.json(rows[0]);
 });
 
-// GET /api/members/:id/checkin-options — menu items + direct-flavour items + current selections
-router.get("/members/:id/checkin-options", async (req, res) => {
+// GET /api/members/:id/checkin-menu
+router.get("/members/:id/checkin-menu", async (req, res) => {
   const memberId = Number(req.params.id);
-
-  const { rows: checkinRows } = await pool.query(
-    `SELECT mci.id, mci.center_id, c.name AS center_name, mci.checked_in_at
-     FROM member_check_ins mci
-     JOIN centers c ON c.id = mci.center_id
-     WHERE mci.member_id = $1 AND mci.checked_out_at IS NULL LIMIT 1`,
-    [memberId]
-  );
-  if (!checkinRows[0]) {
-    res.json({ checkin: null, menuItems: [], directFlavours: [], selections: [] });
-    return;
-  }
-  const checkin = checkinRows[0] as { id: number; center_id: string; center_name: string; checked_in_at: string };
-  const centerId = checkin.center_id;
-  const isTrialMember = await isTrialMemberType(memberId);
-
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const todayDay = dayNames[nowIst.getUTCDay()];
-
-  const { rows: menuItems } = await pool.query(
-    `SELECT mi.id, mi.name, mi.description, mi.flavours, mi.available_days,
-       COALESCE(
-         json_agg(
-           json_build_object('id', mib.id, 'ingredient', mib.ingredient, 'quantity', mib.quantity, 'unit', mib.unit, 'kcal', mib.kcal)
-           ORDER BY mib.id
-         ) FILTER (WHERE mib.id IS NOT NULL),
-         '[]'::json
-       ) AS bom
-     FROM menu_items mi
-     LEFT JOIN menu_item_bom mib ON mib.menu_item_id = mi.id
-     WHERE mi.center_id = $1
-       AND (
-         $3 = TRUE AND mi.trial_eligible = TRUE
-         OR $3 = FALSE AND (mi.available_days = 'all' OR mi.available_days LIKE $2)
-       )
-     GROUP BY mi.id, mi.name, mi.description, mi.flavours, mi.available_days, mi.created_at
-     ORDER BY mi.created_at`,
-    [centerId, `%${todayDay}%`, isTrialMember]
-  );
-
-  const { rows: directFlavours } = await pool.query(
-    `SELECT DISTINCT ON (i.id) i.id, i.name, i.flavour, i.pack_unit AS unit
-     FROM ingredients i
-     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
-     LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
-     WHERE i.flavour IS NOT NULL AND i.flavour != ''
-       AND ib.center_id = $1 AND ib.status = 'open'
-       AND (
-         $3 = TRUE AND i.trial_eligible = TRUE
-         OR $3 = FALSE AND (cf.id IS NULL OR cf.available_days = 'all' OR cf.available_days LIKE $2)
-       )
-     ORDER BY i.id, i.name`,
-    [centerId, `%${todayDay}%`, isTrialMember]
-  );
-
-  const { rows: menuSels } = await pool.query(
-    `SELECT vms.menu_item_id, mi.name, vms.selected_flavour
-     FROM visit_menu_selections vms
-     JOIN menu_items mi ON mi.id = vms.menu_item_id
-     WHERE vms.checkin_id = $1`,
-    [checkin.id]
-  );
-  const { rows: flavourSels } = await pool.query(
-    `SELECT vfs.ingredient_id, i.name, vfs.flavour
-     FROM visit_flavour_selections vfs
-     JOIN ingredients i ON i.id = vfs.ingredient_id
-     WHERE vfs.checkin_id = $1`,
-    [checkin.id]
-  );
-
-  const selections = [
-    ...menuSels.map(s => ({ type: "menu_item" as const, menu_item_id: s.menu_item_id as number, name: s.name as string, selected_flavour: s.selected_flavour as string | null })),
-    ...flavourSels.map(s => ({ type: "direct_flavour" as const, ingredient_id: s.ingredient_id as number, name: s.name as string, flavour: s.flavour as string })),
-  ];
-
-  res.json({ checkin: { id: checkin.id, center_id: centerId }, menuItems, directFlavours, selections });
-});
-
-// POST /api/members/:id/checkin/selections — save up to 3 item selections for current visit
-router.post("/members/:id/checkin/selections", async (req, res) => {
-  const memberId = Number(req.params.id);
-
+  
   const { rows: checkinRows } = await pool.query(
     `SELECT id, center_id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
     [memberId]
   );
   if (!checkinRows[0]) { res.status(409).json({ error: "No active check-in" }); return; }
-  const checkin = checkinRows[0] as { id: number; center_id: string };
+  const centerId = checkinRows[0].center_id;
+  const checkinId = checkinRows[0].id;
 
-  type RawItem =
-    | { type: "menu_item"; menu_item_id: number; selected_flavour?: string | null }
-    | { type: "direct_flavour"; ingredient_id: number; flavour: string };
-  const { items } = req.body as { items?: RawItem[] };
+  const { rows: categories } = await pool.query(
+    `SELECT * FROM checkin_categories WHERE center_id = $1 ORDER BY display_order ASC, id ASC`,
+    [centerId]
+  );
+  
+  const { rows: mappings } = await pool.query(
+    `SELECT ci.category_id, i.id as ingredient_id, i.name, i.flavour 
+     FROM checkin_category_ingredients ci
+     JOIN ingredients i ON i.id = ci.ingredient_id
+     JOIN checkin_categories c ON c.id = ci.category_id
+     WHERE c.center_id = $1`,
+    [centerId]
+  );
+  
+  const { rows: selections } = await pool.query(
+    `SELECT category_id, ingredient_id FROM visit_ingredient_selections WHERE checkin_id = $1`,
+    [checkinId]
+  );
 
+  const result = categories.map(cat => ({
+    ...cat,
+    ingredients: mappings.filter(m => m.category_id === cat.id)
+  }));
+  
+  res.json({ categories: result, selections });
+});
+
+// POST /api/members/:id/checkin/selections
+router.post("/members/:id/checkin/selections", async (req, res) => {
+  const memberId = Number(req.params.id);
+  
+  const { rows: checkinRows } = await pool.query(
+    `SELECT id, center_id FROM member_check_ins WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
+    [memberId]
+  );
+  if (!checkinRows[0]) { res.status(409).json({ error: "No active check-in" }); return; }
+  const checkinId = checkinRows[0].id;
+
+  const { items } = req.body as { items?: { category_id?: number; ingredient_id: number }[] };
+  
   if (!Array.isArray(items)) { res.status(400).json({ error: "items array required" }); return; }
-  if (items.length > 3) { res.status(400).json({ error: "Max 3 items allowed" }); return; }
 
-  // Only remove non-mandatory selections — mandatory (set-menu) items must be preserved
-  // so they get consumed/deducted at checkout. Deleting them all was the bug.
-  await pool.query(
-    `DELETE FROM visit_menu_selections
-     WHERE checkin_id = $1
-       AND menu_item_id IN (
-         SELECT id FROM menu_items WHERE is_mandatory = FALSE
-       )`,
-    [checkin.id]
-  );
-  await pool.query(`DELETE FROM visit_flavour_selections WHERE checkin_id = $1`, [checkin.id]);
-
-  for (const item of items) {
-    if (item.type === "menu_item") {
-      await pool.query(
-        `INSERT INTO visit_menu_selections (checkin_id, menu_item_id, selected_flavour) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-        [checkin.id, item.menu_item_id, item.selected_flavour ?? null]
-      );
-    } else if (item.type === "direct_flavour") {
-      await pool.query(
-        `INSERT INTO visit_flavour_selections (checkin_id, ingredient_id, flavour) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-        [checkin.id, item.ingredient_id, item.flavour]
-      );
+  await pool.query("BEGIN");
+  try {
+    await pool.query(`DELETE FROM visit_ingredient_selections WHERE checkin_id = $1`, [checkinId]);
+    for (const item of items) {
+      if (item.ingredient_id) {
+        await pool.query(
+          `INSERT INTO visit_ingredient_selections (checkin_id, category_id, ingredient_id) VALUES ($1, $2, $3)`,
+          [checkinId, item.category_id ?? null, item.ingredient_id]
+        );
+      }
     }
+    await pool.query("COMMIT");
+    res.json({ success: true, count: items.length });
+  } catch (e) {
+    await pool.query("ROLLBACK");
+    res.status(500).json({ error: "Failed to save selections" });
   }
-
-  // Re-ensure all mandatory items with available batches are present in visit_menu_selections
-  // (guards against the case where none existed yet, e.g. member self-checked in without admin).
-  const { rows: mandatoryItems } = await pool.query(
-    `SELECT mi.id FROM menu_items mi
-     WHERE mi.center_id = $1 AND mi.is_mandatory = TRUE
-       AND NOT EXISTS (
-         SELECT 1 FROM menu_item_bom mb
-         WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
-           AND NOT EXISTS (
-             SELECT 1 FROM ingredient_batches ib
-             WHERE ib.ingredient_id = mb.ingredient_id
-               AND ib.center_id = $1 AND ib.status = 'open'
-           )
-       )`,
-    [checkin.center_id]
-  );
-  for (const mi of mandatoryItems) {
-    await pool.query(
-      `INSERT INTO visit_menu_selections (checkin_id, menu_item_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-      [checkin.id, mi.id as number]
-    );
-  }
-
-  res.json({ saved: items.length });
 });
 
 // GET /api/members/:id/checkin-logs — member's own visit history (last 30 entries)
@@ -607,7 +540,8 @@ router.post("/members/:id/analyze-food-photo", async (req, res) => {
 {
   "food_item": "<name of the food>",
   "calories_kcal": <estimated kcal as a number or null>,
-  "protein_g": <estimated protein in grams as a number or null>
+  "protein_g": <estimated protein in grams as a number or null>,
+  "fiber_g": <estimated fiber in grams as a number or null>
 }
 If you cannot identify food, return: {"error": "No food detected"}`;
 

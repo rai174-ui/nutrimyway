@@ -26,38 +26,26 @@ const slots = [
   { id: "Dinner", icon: Moon },
 ];
 
-interface BomComponent {
-  id: number;
-  ingredient: string;
-  quantity: number;
-  unit: string;
-  kcal: number | null;
-}
-
-interface CenterMenuItem {
-  id: number;
+interface CategoryIngredient {
+  category_id: number;
+  ingredient_id: number;
   name: string;
-  description: string | null;
-  flavours?: string | null;
-  bom: BomComponent[];
+  flavour: string | null;
 }
 
-interface DirectFlavourItem {
+interface CheckinCategory {
   id: number;
+  center_id: string;
   name: string;
-  flavour: string;
-  unit: string;
+  is_mandatory: boolean;
+  display_order: number;
+  ingredients: CategoryIngredient[];
 }
 
-type SelectionItem =
-  | { type: "menu_item"; menu_item_id: number; name: string; selected_flavour?: string | null }
-  | { type: "direct_flavour"; ingredient_id: number; name: string; flavour: string };
-
-interface CheckinOptions {
-  checkin: { id: number; center_id: string; center_name: string; checked_in_at: string } | null;
-  menuItems: CenterMenuItem[];
-  directFlavours: DirectFlavourItem[];
-  selections: SelectionItem[];
+interface CheckinMenuResponse {
+  categories: CheckinCategory[];
+  selections: { category_id: number; ingredient_id: number }[];
+  error?: string;
 }
 
 // Wizard states
@@ -71,13 +59,12 @@ export function Log() {
   const [foodItem, setFoodItem] = useState("");
   const [customKcal, setCustomKcal] = useState("");
   const [customProtein, setCustomProtein] = useState("");
+  const [customFiber, setCustomFiber] = useState("");
   const [aiEstimated, setAiEstimated] = useState(false);
 
-  const [checkinOptions, setCheckinOptions] = useState<CheckinOptions | null>(null);
-  const [selections, setSelections] = useState<SelectionItem[]>([]);
-  const [pendingFlavourFor, setPendingFlavourFor] = useState<{ item: CenterMenuItem } | null>(null);
+  const [checkinMenu, setCheckinMenu] = useState<CheckinMenuResponse | null>(null);
+  const [selections, setSelections] = useState<{ category_id: number; ingredient_id: number }[]>([]);
   const [savingSelections, setSavingSelections] = useState(false);
-  const [flavourOnly, setFlavourOnly] = useState(false);
 
   // AI scan state
   const [hasGeminiKey, setHasGeminiKey] = useState(false);
@@ -86,20 +73,28 @@ export function Log() {
   const [wizardStep, setWizardStep] = useState<WizardStep>("permission");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [savingKey, setSavingKey] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const consentKey = "gemini_consent_v1";
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
-
-  const consentKey = `aiScanConsented_${MEMBER_ID}`;
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!MEMBER_ID) return;
-    apiFetch(`/members/${MEMBER_ID}/checkin-options`)
+    apiFetch(`/members/${MEMBER_ID}/checkin-menu`)
       .then(r => r.json())
-      .then((data: CheckinOptions) => {
-        setCheckinOptions(data);
+      .then((data: CheckinMenuResponse & { error?: string }) => {
+        if (data.error) {
+          setCheckinMenu({ categories: [], selections: [], error: data.error });
+          return;
+        }
+        setCheckinMenu(data);
         setSelections(data.selections ?? []);
       })
-      .catch(() => {});
+      .catch(() => {
+        setCheckinMenu({ categories: [], selections: [], error: "Failed to load check-in menu" });
+      });
 
     apiFetch(`/members/${MEMBER_ID}/gemini-key`)
       .then(r => r.json())
@@ -113,6 +108,7 @@ export function Log() {
     if (!foodItem.trim()) return;
     const kcal = customKcal !== "" ? Number(customKcal) : null;
     const protein = customProtein !== "" ? Number(customProtein) : null;
+    const fiber = customFiber !== "" ? Number(customFiber) : null;
     let photoUrl: string | null = null;
     if (pendingPhoto) {
       try {
@@ -140,6 +136,7 @@ export function Log() {
           food_item: foodItem,
           calories_kcal: kcal,
           protein_g: protein,
+          fiber_g: fiber,
           carbs_g: null,
           fat_g: null,
           photo_url: photoUrl,
@@ -152,6 +149,7 @@ export function Log() {
           setFoodItem("");
           setCustomKcal("");
           setCustomProtein("");
+          setCustomFiber("");
           setAiEstimated(false);
           setPendingPhoto(null);
         },
@@ -162,50 +160,22 @@ export function Log() {
     );
   };
 
-  function isMenuItemSelected(id: number) {
-    return selections.some(s => s.type === "menu_item" && s.menu_item_id === id);
-  }
-  function isDirectFlavourSelected(id: number) {
-    return selections.some(s => s.type === "direct_flavour" && s.ingredient_id === id);
+  function isIngredientSelected(categoryId: number, ingredientId: number) {
+    return selections.some(s => s.category_id === categoryId && s.ingredient_id === ingredientId);
   }
 
-  function handleMenuItemToggle(item: CenterMenuItem) {
-    if (isMenuItemSelected(item.id)) {
-      setSelections(prev => prev.filter(s => !(s.type === "menu_item" && s.menu_item_id === item.id)));
-      setPendingFlavourFor(null);
+  function handleIngredientSelect(categoryId: number, ingredientId: number, isMandatory: boolean) {
+    if (isIngredientSelected(categoryId, ingredientId)) {
+      if (!isMandatory) {
+        setSelections(prev => prev.filter(s => !(s.category_id === categoryId && s.ingredient_id === ingredientId)));
+      }
       return;
     }
-    if (selections.length >= 3) return;
-    const flavourList = (item.flavours ?? "").split(",").map(f => f.trim()).filter(Boolean);
-    if (flavourList.length > 0) {
-      setPendingFlavourFor({ item });
-    } else {
-      setSelections(prev => [...prev, { type: "menu_item", menu_item_id: item.id, name: item.name, selected_flavour: null }]);
-    }
-  }
-
-  function confirmMenuItemFlavour(flavour: string) {
-    if (!pendingFlavourFor) return;
-    const item = pendingFlavourFor.item;
-    setSelections(prev => [...prev, { type: "menu_item", menu_item_id: item.id, name: item.name, selected_flavour: flavour }]);
-    setPendingFlavourFor(null);
-  }
-
-  function handleDirectFlavourToggle(item: DirectFlavourItem) {
-    if (isDirectFlavourSelected(item.id)) {
-      setSelections(prev => prev.filter(s => !(s.type === "direct_flavour" && s.ingredient_id === item.id)));
-      return;
-    }
-    if (selections.length >= 3) return;
-    setSelections(prev => [...prev, { type: "direct_flavour", ingredient_id: item.id, name: item.name, flavour: item.flavour }]);
-  }
-
-  function removeSelection(sel: SelectionItem) {
-    if (sel.type === "menu_item") {
-      setSelections(prev => prev.filter(s => !(s.type === "menu_item" && s.menu_item_id === sel.menu_item_id)));
-    } else {
-      setSelections(prev => prev.filter(s => !(s.type === "direct_flavour" && s.ingredient_id === sel.ingredient_id)));
-    }
+    
+    setSelections(prev => {
+      const filtered = prev.filter(s => s.category_id !== categoryId);
+      return [...filtered, { category_id: categoryId, ingredient_id: ingredientId }];
+    });
   }
 
   async function saveSelections() {
@@ -218,9 +188,9 @@ export function Log() {
         body: JSON.stringify({ items: selections }),
       });
       if (!res.ok) throw new Error("Failed");
-      toast({ title: `${selections.length} item${selections.length !== 1 ? "s" : ""} saved for your visit` });
+      toast({ title: "Check-in menu updated" });
     } catch {
-      toast({ title: "Could not save selections", variant: "destructive" });
+      toast({ title: "Failed to update menu", variant: "destructive" });
     } finally {
       setSavingSelections(false);
     }
@@ -257,7 +227,7 @@ export function Log() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image_base64: base64, mime_type: "image/jpeg" }),
       });
-      const data = await res.json() as { food_item?: string; calories_kcal?: number | null; protein_g?: number | null; error?: string };
+      const data = await res.json() as { food_item?: string; calories_kcal?: number | null; protein_g?: number | null; fiber_g?: number | null; error?: string };
       if (!res.ok || data.error) {
         toast({ title: data.error ?? "Could not identify food", variant: "destructive", duration: 6000 });
         return;
@@ -265,6 +235,7 @@ export function Log() {
       setFoodItem(data.food_item ?? "");
       setCustomKcal(data.calories_kcal != null ? String(Math.round(data.calories_kcal)) : "");
       setCustomProtein(data.protein_g != null ? String(Math.round(data.protein_g)) : "");
+      setCustomFiber(data.fiber_g != null ? String(Math.round(data.fiber_g)) : "");
       setAiEstimated(true);
       toast({ title: "AI estimate ready — review and save!" });
     } catch {
@@ -288,7 +259,7 @@ export function Log() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image_base64: base64, mime_type: "image/jpeg" }),
       });
-      const data = await res.json() as { food_item?: string; calories_kcal?: number | null; protein_g?: number | null; error?: string };
+      const data = await res.json() as { food_item?: string; calories_kcal?: number | null; protein_g?: number | null; fiber_g?: number | null; error?: string };
       if (!res.ok || data.error) {
         setPendingPhoto(null);
         toast({ title: data.error ?? "Could not identify food", variant: "destructive", duration: 6000 });
@@ -297,6 +268,7 @@ export function Log() {
       setFoodItem(data.food_item ?? "");
       setCustomKcal(data.calories_kcal != null ? String(Math.round(data.calories_kcal)) : "");
       setCustomProtein(data.protein_g != null ? String(Math.round(data.protein_g)) : "");
+      setCustomFiber(data.fiber_g != null ? String(Math.round(data.fiber_g)) : "");
       setAiEstimated(true);
       toast({ title: "AI estimate ready — review and save!" });
     } catch {
@@ -353,171 +325,81 @@ export function Log() {
     }
   }
 
-  const checkin = checkinOptions?.checkin ?? null;
-  const allMenuItems = checkinOptions?.menuItems ?? [];
-  const directFlavours = checkinOptions?.directFlavours ?? [];
-  const visibleMenuItems = flavourOnly ? [] : allMenuItems;
-  const hasItems = allMenuItems.length + directFlavours.length > 0;
-  const hasFlavourItems = directFlavours.length > 0;
-  const totalCount = visibleMenuItems.length + directFlavours.length;
-
   return (
     <>
       <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="p-4 space-y-6">
         <header className="pt-4 pb-2">
           <h1 className="text-2xl font-bold text-foreground">Log Meal</h1>
-          {checkin && (
-            <p className="text-sm text-primary flex items-center gap-1 mt-1">
-              <MapPin className="w-3.5 h-3.5" />
-              Checked in at {checkin.center_name}
-            </p>
-          )}
         </header>
 
-        {/* Check-in item selection — shown only when checked in and items exist */}
-        {checkin && hasItems && (
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Choose Visit Items
-              </h2>
-              <div className="flex items-center gap-2">
-                {hasFlavourItems && (
-                  <button
-                    onClick={() => setFlavourOnly(v => !v)}
-                    className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${
-                      flavourOnly
-                        ? "bg-violet-600 text-white border-violet-600"
-                        : "bg-background text-muted-foreground border-border hover:border-violet-400 hover:text-violet-600"
-                    }`}
-                    title="Show only flavoured items from open batches"
-                  >
-                    <Flame className="w-3 h-3" />
-                    Flavour only
-                  </button>
-                )}
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${
-                  selections.length === 3
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  {selections.length} / 3
-                </span>
+        {/* Daily Club Check-in */}
+        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+          <div className="bg-card border border-border rounded-[12px] p-5 shadow-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <MapPin className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Center Check-in Menu</h3>
+                <p className="text-sm text-muted-foreground">Select what you're having today</p>
               </div>
             </div>
 
-            <div className="bg-card border border-border rounded-[12px] overflow-hidden">
-              {visibleMenuItems.map((item, i) => {
-                const selected = isMenuItemSelected(item.id);
-                const isPendingFlavour = pendingFlavourFor?.item.id === item.id;
-                const flavourList = (item.flavours ?? "").split(",").map(f => f.trim()).filter(Boolean);
-                const selEntry = selections.find(s => s.type === "menu_item" && s.menu_item_id === item.id) as (Extract<SelectionItem, { type: "menu_item" }>) | undefined;
-                const totalKcal = item.bom.reduce((s, b) => s + (b.kcal ?? 0), 0);
-                const hasKcal = item.bom.some(b => b.kcal != null);
-                const isLast = i === totalCount - 1 && directFlavours.length === 0;
-                return (
-                  <div key={item.id} className={!isLast ? "border-b border-border" : ""}>
-                    <button
-                      onClick={() => handleMenuItemToggle(item)}
-                      disabled={!selected && selections.length >= 3}
-                      className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors disabled:opacity-40 ${selected ? "bg-primary/5" : "hover:bg-muted/50"}`}
-                    >
-                      <span className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${selected ? "bg-primary border-primary" : "border-border"}`}>
-                        {selected && <Check className="w-3 h-3 text-primary-foreground" />}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm">{item.name}</p>
-                        {selEntry?.selected_flavour && (
-                          <p className="text-xs text-primary font-medium">{selEntry.selected_flavour}</p>
-                        )}
-                        {item.description && !selEntry && (
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.description}</p>
-                        )}
-                        {!selected && flavourList.length > 0 && (
-                          <p className="text-xs text-primary/70 mt-0.5">Tap to pick flavour</p>
-                        )}
-                      </div>
-                      {hasKcal && (
-                        <span className="text-xs font-semibold text-amber-600 flex-shrink-0">{Math.round(totalKcal)} kcal</span>
-                      )}
-                    </button>
-                    {isPendingFlavour && (
-                      <div className="px-4 pb-3 bg-primary/5 border-t border-primary/10">
-                        <p className="text-xs font-semibold text-primary mb-2 mt-2">Choose flavour:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {flavourList.map(f => (
-                            <button
-                              key={f}
-                              onClick={() => confirmMenuItemFlavour(f)}
-                              className="px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
-                            >
-                              {f}
-                            </button>
-                          ))}
+            {!checkinMenu ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Loading menu...</p>
+            ) : checkinMenu.error ? (
+              <p className="text-sm text-amber-600 font-medium py-4 text-center bg-amber-50 rounded-xl border border-amber-100">{checkinMenu.error}</p>
+            ) : checkinMenu.categories.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">No check-in categories available at this center.</p>
+            ) : (
+              <div className="space-y-6">
+                {checkinMenu.categories.map(cat => (
+                  <div key={cat.id}>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                      {cat.name}
+                      {cat.is_mandatory && <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">Required</span>}
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {cat.ingredients.map(ing => {
+                        const selected = isIngredientSelected(cat.id, ing.ingredient_id);
+                        return (
                           <button
-                            onClick={() => setPendingFlavourFor(null)}
-                            className="px-3 py-1.5 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground"
+                            key={ing.ingredient_id}
+                            onClick={() => handleIngredientSelect(cat.id, ing.ingredient_id, cat.is_mandatory)}
+                            className={`text-left p-3 rounded-[10px] border flex flex-col justify-between h-20 transition-all ${
+                              selected
+                                ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                : "bg-muted/30 border-border text-foreground hover:bg-muted"
+                            }`}
                           >
-                            Cancel
+                            <span className={`text-sm font-medium line-clamp-2 leading-tight ${selected ? 'text-primary-foreground' : ''}`}>{ing.name}</span>
+                            {ing.flavour && (
+                              <span className={`text-xs mt-1 truncate ${selected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                                {ing.flavour}
+                              </span>
+                            )}
                           </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {directFlavours.map((item, i) => {
-                const selected = isDirectFlavourSelected(item.id);
-                const isLast = visibleMenuItems.length + i === totalCount - 1;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleDirectFlavourToggle(item)}
-                    disabled={!selected && selections.length >= 3}
-                    className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors disabled:opacity-40 ${!isLast ? "border-b border-border" : ""} ${selected ? "bg-primary/5" : "hover:bg-muted/50"}`}
-                  >
-                    <span className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${selected ? "bg-primary border-primary" : "border-border"}`}>
-                      {selected && <Check className="w-3 h-3 text-primary-foreground" />}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{item.name}</p>
-                      <p className="text-xs text-violet-600 font-medium">{item.flavour}</p>
+                        );
+                      })}
+                      {cat.ingredients.length === 0 && (
+                        <div className="col-span-2 text-xs text-muted-foreground italic">No options available.</div>
+                      )}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {selections.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-1.5">
-                  {selections.map((s, idx) => {
-                    const label = s.type === "menu_item"
-                      ? `${s.name}${s.selected_flavour ? ` · ${s.selected_flavour}` : ""}`
-                      : `${s.name} · ${s.flavour}`;
-                    return (
-                      <span key={idx} className="inline-flex items-center gap-1.5 text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-2.5 py-1 font-medium">
-                        {label}
-                        <button onClick={() => removeSelection(s)} className="text-primary/50 hover:text-primary ml-0.5">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
+                  </div>
+                ))}
+                
                 <button
                   onClick={saveSelections}
                   disabled={savingSelections}
-                  className="w-full bg-primary text-primary-foreground font-medium py-2.5 rounded-lg text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full bg-primary text-primary-foreground font-semibold py-3.5 rounded-xl shadow-sm hover:bg-primary/90 flex items-center justify-center gap-2 transition-all disabled:opacity-50 mt-4"
                 >
-                  {savingSelections && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Save Selections
+                  {savingSelections ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                  Save Menu Selections
                 </button>
               </div>
             )}
-          </section>
-        )}
+          </div>
+        </motion.div>
 
         {/* Slot selector */}
         <div className="flex gap-2 p-1 bg-muted rounded-lg">
@@ -563,7 +445,7 @@ export function Log() {
               className="w-full bg-card border border-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="relative">
                 <input
                   type="number"
@@ -572,9 +454,9 @@ export function Log() {
                   value={customKcal}
                   onChange={(e) => setCustomKcal(e.target.value)}
                   placeholder="Calories"
-                  className="w-full bg-card border border-border rounded-lg px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">kcal</span>
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">kcal</span>
               </div>
               <div className="relative">
                 <input
@@ -584,7 +466,19 @@ export function Log() {
                   value={customProtein}
                   onChange={(e) => setCustomProtein(e.target.value)}
                   placeholder="Protein"
-                  className="w-full bg-card border border-border rounded-lg px-4 py-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">g</span>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={customFiber}
+                  onChange={(e) => setCustomFiber(e.target.value)}
+                  placeholder="Fiber"
+                  className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">g</span>
               </div>
@@ -625,15 +519,15 @@ export function Log() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-0"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
             onClick={(e) => { if (e.target === e.currentTarget) setShowWizard(false); }}
           >
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
               transition={{ type: "spring", damping: 28, stiffness: 300 }}
-              className="bg-card w-full max-w-lg rounded-t-[20px] p-6 space-y-5 shadow-xl"
+              className="bg-card w-full max-w-md rounded-2xl p-6 space-y-5 shadow-xl overflow-hidden"
             >
               {/* Permission step */}
               {wizardStep === "permission" && (

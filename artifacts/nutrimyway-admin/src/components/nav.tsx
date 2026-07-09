@@ -6,7 +6,7 @@ const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/members", label: "Members", icon: Users },
   { path: "/logs", label: "Logs", icon: ClipboardList },
-  { path: "/set-menu", label: "Set Menu", icon: UtensilsCrossed },
+  { path: "/set-menu", label: "Menu & Open Batches", icon: UtensilsCrossed },
   { path: "/consumption", label: "Consumption", icon: BarChart3 },
   { path: "/inventory", label: "Inventory", icon: Boxes },
   { path: "/settings", label: "Settings", icon: Settings },
@@ -25,7 +25,7 @@ export function Nav() {
     <header className="bg-teal-dark text-white shadow-lg">
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-6">
         <div className="flex items-center gap-2 mr-4">
-          <img src="/admin/logo.png" alt="NutriMyWay" className="w-7 h-7 rounded-lg bg-white p-0.5 object-contain" />
+          <img src="/admin/logo.png" alt="NutriMyWay" className="w-7 h-7 rounded-md object-contain" />
           <span className="font-bold text-sm tracking-tight leading-tight">
             NutriMyWay<br />
             <span className="font-normal text-teal-light text-xs">{center?.name ?? "Admin"}</span>
@@ -60,3 +60,4 @@ export function Nav() {
     </header>
   );
 }
+

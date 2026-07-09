@@ -186,7 +186,6 @@ router.post("/auth/request-otp", async (req, res) => {
   }
 
   const otp = generateOtp();
-  const expiresAt = new Date(Date.now() + OTP_TTL_MIN * 60_000);
   const otpToken = generateOtpToken();
 
   // Invalidate any previous unused OTPs for this member
@@ -196,9 +195,13 @@ router.post("/auth/request-otp", async (req, res) => {
   );
   // Store new OTP
   await pool.query(
-    "INSERT INTO otps (member_id, email, otp, otp_token, expires_at) VALUES ($1,$2,$3,$4,$5)",
-    [member.id, email, otp, otpToken, expiresAt],
+    `INSERT INTO otps (member_id, email, otp, otp_token, expires_at) VALUES ($1,$2,$3,$4, NOW() + INTERVAL '${OTP_TTL_MIN} minutes')`,
+    [member.id, email, otp, otpToken],
   );
+
+  if (process.env.NODE_ENV === "development") {
+    logger.info({ email, otp }, "DEV MODE: OTP generated");
+  }
 
   // If no email providers are configured, use Dev Mode fallback immediately
   if (!process.env.SMTP_HOST && !process.env.RESEND_API_KEY) {

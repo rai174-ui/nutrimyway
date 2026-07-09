@@ -327,17 +327,21 @@ export interface CenterFlavour {
   created_at: string;
 }
 
+export interface IngredientSku {
+  id?: number;
+  material_code: string;
+  pack_size: number;
+  pack_unit: string;
+}
+
 export interface Ingredient {
   id: number;
   name: string;
-  pack_size: number;
-  pack_unit: string;
-  material_code: string | null;
-  description: string | null;
-  flavour: string | null;
-  serving_qty: number;
-  kcal_per_serving: number | null;
-  trial_eligible: boolean;
+  skus: IngredientSku[];
+  flavour?: string | null;
+  serving_qty?: number;
+  kcal_per_serving?: number | null;
+  trial_eligible?: boolean;
   created_at: string;
 }
 
@@ -346,6 +350,7 @@ export type BatchStatus = "new" | "open" | "consumed";
 export interface IngredientBatch {
   id: number;
   ingredient_id: number;
+  sku_id?: number | null;
   ingredient_name: string;
   pack_size: number;
   pack_unit: string;
@@ -396,4 +401,23 @@ export interface DepletingBatch {
   consumed_qty: number;
   balance: number;
   balance_pct: number;
+}
+
+
+export interface CategoryIngredient {
+  category_id: number;
+  ingredient_id: number;
+  name: string;
+  flavour: string | null;
+  serving_qty: number;
+}
+
+export interface CheckinCategory {
+  id: number;
+  center_id: string;
+  name: string;
+  is_mandatory: boolean;
+  display_order: number;
+  created_at: string;
+  ingredients: CategoryIngredient[];
 }

@@ -688,13 +688,48 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables32();
   await migrateAdminTables33();
   await migrateAdminTables34();
-  await migrateAdminTables35();
-  await migrateAdminTables36();
-  await migrateAdminTables37();
-  await migrateAdminTables38();
-  await migrateAdminTables39();
-  await seedCenterPasswords();
-  await seedSuperAdmin();
+  try {
+    await migrateAdminTables35();
+    await migrateAdminTables36();
+    await migrateAdminTables37();
+    await migrateAdminTables38();
+    await migrateAdminTables39();
+    await migrateAdminTables40();
+    await migrateAdminTables41();
+    await migrateAdminTables42();
+    await seedCenterPasswords();
+    await seedSuperAdmin();
+  } catch (e) {
+    logger.error(e);
+  }
+}
+
+async function migrateAdminTables41(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ingredient_skus (
+      id SERIAL PRIMARY KEY,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      material_code TEXT NOT NULL,
+      pack_size REAL NOT NULL DEFAULT 1,
+      pack_unit TEXT NOT NULL DEFAULT 'g',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // Migrate existing data from ingredients table
+  await pool.query(`
+    INSERT INTO ingredient_skus (ingredient_id, material_code, pack_size, pack_unit)
+    SELECT id, COALESCE(material_code, 'UNKNOWN-' || id), pack_size, pack_unit 
+    FROM ingredients 
+    WHERE id NOT IN (SELECT ingredient_id FROM ingredient_skus)
+  `);
+  // Add sku_id to batches
+  await pool.query(`ALTER TABLE ingredient_batches ADD COLUMN IF NOT EXISTS sku_id INTEGER REFERENCES ingredient_skus(id) ON DELETE SET NULL`);
+  // Update existing batches
+  await pool.query(`
+    UPDATE ingredient_batches ib
+    SET sku_id = (SELECT id FROM ingredient_skus s WHERE s.ingredient_id = ib.ingredient_id LIMIT 1)
+    WHERE sku_id IS NULL
+  `);
 }
 
 async function migrateAdminTables20(): Promise<void> {
@@ -1078,4 +1113,63 @@ async function migrateAdminTables39(): Promise<void> {
     "ANALYZE ingredient_batches, visit_menu_selections, visit_flavour_selections, " +
     "menu_item_bom, consumption_logs, members, member_check_ins"
   );
+}
+
+async function migrateAdminTables40(): Promise<void> {
+  // Nutrition targets on members
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS protein_target_g REAL`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS fiber_target_g REAL`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS water_target_ml REAL`);
+
+  // Member self-logged nutrition — outside check-in
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_nutrition_logs (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      logged_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      protein_g REAL,
+      fiber_g REAL,
+      water_ml REAL,
+      notes TEXT,
+      logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(member_id, logged_date)
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS member_nutrition_logs_member_date_idx ON member_nutrition_logs(member_id, logged_date DESC)`);
+
+  // Center-initiated health measurement request
+  await pool.query(`ALTER TABLE member_check_ins ADD COLUMN IF NOT EXISTS health_log_requested BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE member_check_ins ADD COLUMN IF NOT EXISTS health_log_recorded BOOLEAN NOT NULL DEFAULT FALSE`);
+
+  // Link health records to check-in that triggered them
+  await pool.query(`ALTER TABLE health_records ADD COLUMN IF NOT EXISTS checkin_id INTEGER REFERENCES member_check_ins(id)`);
+
+  // Extend member_renewals to unified payment_history
+  await pool.query(`ALTER TABLE member_renewals ADD COLUMN IF NOT EXISTS payment_type TEXT NOT NULL DEFAULT 'renewal'`);
+  await pool.query(`ALTER TABLE member_renewals ADD COLUMN IF NOT EXISTS ingredient_id INTEGER REFERENCES ingredients(id)`);
+  await pool.query(`ALTER TABLE member_renewals ADD COLUMN IF NOT EXISTS batch_id INTEGER REFERENCES ingredient_batches(id)`);
+  await pool.query(`ALTER TABLE member_renewals ADD COLUMN IF NOT EXISTS quantity REAL`);
+  await pool.query(`ALTER TABLE member_renewals ADD COLUMN IF NOT EXISTS unit TEXT`);
+  await pool.query(`ALTER TABLE member_renewals ADD COLUMN IF NOT EXISTS notes TEXT`);
+}
+
+export async function migrateAdminTables42(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS checkin_categories (
+      id SERIAL PRIMARY KEY,
+      center_id TEXT NOT NULL REFERENCES centers(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      is_mandatory BOOLEAN NOT NULL DEFAULT FALSE,
+      display_order INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS checkin_category_ingredients (
+      id SERIAL PRIMARY KEY,
+      category_id INTEGER NOT NULL REFERENCES checkin_categories(id) ON DELETE CASCADE,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      UNIQUE(category_id, ingredient_id)
+    )
+  `);
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Loader2 } from "lucide-react";
 import { apiGet, apiPost, saveAuth, isAuthenticated, type Center } from "@/lib/api";
 
@@ -37,9 +37,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-teal-dark flex items-center justify-center shadow-lg mb-3 p-2.5">
-            <img src="/admin/logo.png" alt="NutriMyWay" className="w-full h-full object-contain" />
-          </div>
+          <img src="/admin/logo.png" alt="NutriMyWay" className="w-20 h-20 object-contain mb-4 rounded-2xl shadow-sm" />
           <h1 className="text-2xl font-bold text-foreground">Center Admin Panel</h1>
           <p className="text-muted-foreground text-sm mt-1">Sign in to manage your center</p>
         </div>
@@ -90,9 +88,9 @@ export default function LoginPage() {
           Nutrition My Way · Center Admin Panel
         </p>
         <p className="text-center text-xs mt-2">
-          <a href="/admin/super" className="text-muted-foreground/60 hover:text-muted-foreground transition-colors">
+          <Link href="/super" className="text-muted-foreground/60 hover:text-muted-foreground transition-colors">
             Super Admin →
-          </a>
+          </Link>
         </p>
         <p className="text-center text-[10px] text-muted-foreground/60 mt-2 pb-2">
           Powered by Zero Limit Automation

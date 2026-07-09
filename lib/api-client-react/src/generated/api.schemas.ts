@@ -113,6 +113,8 @@ export interface ConsumptionLog {
   /** @nullable */
   fat_g?: number | null;
   /** @nullable */
+  fiber_g?: number | null;
+  /** @nullable */
   photo_url?: string | null;
   /** @nullable */
   photo_uploaded_at?: string | null;
@@ -132,6 +134,8 @@ export interface ConsumptionLogInput {
   /** @nullable */
   fat_g?: number | null;
   /** @nullable */
+  fiber_g?: number | null;
+  /** @nullable */
   photo_url?: string | null;
 }
 
@@ -143,6 +147,7 @@ export interface DailySummary {
   total_protein: number;
   total_carbs: number;
   total_fat: number;
+  total_fiber?: number;
   target_calories?: number;
   logs_by_slot?: DailySummaryLogsBySlot;
 }

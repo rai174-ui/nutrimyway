@@ -3,7 +3,7 @@ import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2
 import * as XLSX from "xlsx";
 import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
-import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type CenterFlavour, type CenterMember, type CenterSettings, type BroadcastSettings, type BroadcastSchedule } from "@/lib/api";
+import { apiPost, apiGet, apiPut, apiPatch, apiDelete, getAdminCenter, type Ingredient, type IngredientSku, type CenterFlavour, type CenterMember, type CenterSettings, type BroadcastSettings, type BroadcastSchedule } from "@/lib/api";
 
 const UNITS = ["g", "kg", "ml", "L", "pcs", "oz", "lb"];
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -515,19 +515,16 @@ function ItemMaster() {
   const [error, setError] = useState<string | null>(null);
 
   const [newName, setNewName] = useState("");
-  const [newUnit, setNewUnit] = useState("g");
-  const [newMaterialCode, setNewMaterialCode] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [expanded, setExpanded] = useState(false);
+  const [newSkus, setNewSkus] = useState<Omit<IngredientSku, "id">[]>([{ material_code: "", pack_size: 1, pack_unit: "g" }]);
   const [newFlavour, setNewFlavour] = useState("");
   const [newServingQty, setNewServingQty] = useState("1");
   const [newKcalPerServing, setNewKcalPerServing] = useState("");
   const [newTrialEligible, setNewTrialEligible] = useState(false);
 
+  const [expanded, setExpanded] = useState(false);
+  
   const [editName, setEditName] = useState("");
-  const [editUnit, setEditUnit] = useState("");
-  const [editMaterialCode, setEditMaterialCode] = useState("");
-  const [editDescription, setEditDescription] = useState("");
+  const [editSkus, setEditSkus] = useState<Omit<IngredientSku, "id">[]>([]);
   const [editFlavour, setEditFlavour] = useState("");
   const [editServingQty, setEditServingQty] = useState("1");
   const [editKcalPerServing, setEditKcalPerServing] = useState("");
@@ -548,22 +545,22 @@ function ItemMaster() {
 
   async function addIngredient() {
     if (!newName.trim()) return;
-    if (!newMaterialCode.trim()) { setError("Material Code is required"); return; }
+    if (newSkus.some(s => !s.material_code.trim())) { setError("Material Code is required for all SKUs"); return; }
+    if (newSkus.length === 0) { setError("At least one SKU is required"); return; }
+    
     setSaving(true); setError(null);
     try {
       await apiPost<Ingredient>("/admin/ingredients", {
         name: newName.trim(),
-        pack_size: 1,
-        pack_unit: newUnit,
-        material_code: newMaterialCode.trim(),
-        description: newDescription.trim() || null,
+        skus: newSkus.map(s => ({ ...s, material_code: s.material_code.trim() })),
         flavour: newFlavour.trim() || null,
         serving_qty: Number(newServingQty) || 1,
         kcal_per_serving: newKcalPerServing.trim() ? Number(newKcalPerServing) : null,
         trial_eligible: newTrialEligible,
       });
-      setNewName(""); setNewUnit("g");
-      setNewMaterialCode(""); setNewDescription(""); setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing(""); setNewTrialEligible(false);
+      setNewName("");
+      setNewSkus([{ material_code: "", pack_size: 1, pack_unit: "g" }]);
+      setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing(""); setNewTrialEligible(false);
       setAdding(false);
       void load();
     } catch (e) { setError((e as Error).message); }
@@ -572,16 +569,14 @@ function ItemMaster() {
 
   async function saveEdit(id: number) {
     if (!editName.trim()) return;
-    if (!editMaterialCode.trim()) { setError("Material Code is required"); return; }
+    if (editSkus.some(s => !s.material_code.trim())) { setError("Material Code is required for all SKUs"); return; }
+    if (editSkus.length === 0) { setError("At least one SKU is required"); return; }
+
     setSaving(true); setError(null);
     try {
-      const cur = ingredients.find(i => i.id === id);
       await apiPut<Ingredient>(`/admin/ingredients/${id}`, {
         name: editName.trim(),
-        pack_size: cur?.pack_size ?? 1,
-        pack_unit: editUnit,
-        material_code: editMaterialCode.trim(),
-        description: editDescription.trim() || null,
+        skus: editSkus.map(s => ({ ...s, material_code: s.material_code.trim() })),
         flavour: editFlavour.trim() || null,
         serving_qty: Number(editServingQty) || 1,
         kcal_per_serving: editKcalPerServing.trim() ? Number(editKcalPerServing) : null,
@@ -604,9 +599,7 @@ function ItemMaster() {
   function startEdit(ing: Ingredient) {
     setEditId(ing.id);
     setEditName(ing.name);
-    setEditUnit(ing.pack_unit);
-    setEditMaterialCode(ing.material_code ?? "");
-    setEditDescription(ing.description ?? "");
+    setEditSkus((ing.skus || []).length > 0 ? [...ing.skus] : [{ material_code: "", pack_size: 1, pack_unit: "g" }]);
     setEditFlavour(ing.flavour ?? "");
     setEditServingQty(String(ing.serving_qty ?? 1));
     setEditKcalPerServing(ing.kcal_per_serving != null ? String(ing.kcal_per_serving) : "");
@@ -625,7 +618,7 @@ function ItemMaster() {
           </div>
           <div>
             <h2 className="font-semibold text-foreground leading-tight">Item Master</h2>
-            <p className="text-xs text-muted-foreground">Define items with material code, flavour and pack sizes used in BOM &amp; inventory</p>
+            <p className="text-xs text-muted-foreground">Define items with SKUs, flavours, and pack sizes used in BOM &amp; inventory</p>
           </div>
           <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
             {ingredients.length}
@@ -662,12 +655,6 @@ function ItemMaster() {
               onKeyDown={e => e.key === "Enter" && void addIngredient()}
               autoFocus
             />
-            <input
-              value={newMaterialCode}
-              onChange={e => setNewMaterialCode(e.target.value)}
-              className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="Material code *"
-            />
             <select
               value={newFlavour}
               onChange={e => setNewFlavour(e.target.value)}
@@ -677,26 +664,60 @@ function ItemMaster() {
               {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
             </select>
           </div>
-          <input
-            value={newDescription}
-            onChange={e => setNewDescription(e.target.value)}
-            className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder="Description (optional)"
-          />
-          <div className="flex items-center gap-3 flex-wrap">
-            <select
-              value={newUnit}
-              onChange={e => setNewUnit(e.target.value)}
-              className="w-24 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              {UNITS.map(u => <option key={u}>{u}</option>)}
-            </select>
+
+          <div className="space-y-2 border-l-2 border-primary/20 pl-3 ml-1">
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">SKUs (Pack Sizes)</label>
+            {newSkus.map((sku, idx) => (
+              <div key={idx} className="flex items-center gap-2 flex-wrap">
+                <input
+                  value={sku.material_code}
+                  onChange={e => {
+                    const arr = [...newSkus];
+                    arr[idx].material_code = e.target.value;
+                    setNewSkus(arr);
+                  }}
+                  className="w-40 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="Material Code *"
+                />
+                <input
+                  type="number" min="0" step="any"
+                  value={sku.pack_size}
+                  onChange={e => {
+                    const arr = [...newSkus];
+                    arr[idx].pack_size = Number(e.target.value) || 1;
+                    setNewSkus(arr);
+                  }}
+                  className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="Pack Size"
+                />
+                <select
+                  value={sku.pack_unit}
+                  onChange={e => {
+                    const arr = [...newSkus];
+                    arr[idx].pack_unit = e.target.value;
+                    setNewSkus(arr);
+                  }}
+                  className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  {UNITS.map(u => <option key={u}>{u}</option>)}
+                </select>
+                {newSkus.length > 1 && (
+                  <button onClick={() => setNewSkus(newSkus.filter((_, i) => i !== idx))} className="p-1 text-muted-foreground hover:text-destructive">
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button onClick={() => setNewSkus([...newSkus, { material_code: "", pack_size: 1, pack_unit: "g" }])} className="text-[11px] font-medium text-primary hover:underline">
+              + Add another SKU
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap pt-2">
             <div className="flex items-center gap-1.5">
               <label className="text-xs text-muted-foreground whitespace-nowrap">Serving qty</label>
               <input
-                type="number"
-                min="0.1"
-                step="0.1"
+                type="number" min="0.1" step="0.1"
                 value={newServingQty}
                 onChange={e => setNewServingQty(e.target.value)}
                 className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
@@ -705,9 +726,7 @@ function ItemMaster() {
             <div className="flex items-center gap-1.5">
               <label className="text-xs text-muted-foreground whitespace-nowrap">kcal/serve</label>
               <input
-                type="number"
-                min="0"
-                step="1"
+                type="number" min="0" step="1"
                 value={newKcalPerServing}
                 onChange={e => setNewKcalPerServing(e.target.value)}
                 placeholder="—"
@@ -715,12 +734,7 @@ function ItemMaster() {
               />
             </div>
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
-              <input
-                type="checkbox"
-                checked={newTrialEligible}
-                onChange={e => setNewTrialEligible(e.target.checked)}
-                className="w-3.5 h-3.5 accent-primary"
-              />
+              <input type="checkbox" checked={newTrialEligible} onChange={e => setNewTrialEligible(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
               Trial-eligible
             </label>
             <button
@@ -728,7 +742,7 @@ function ItemMaster() {
               disabled={!newName.trim() || saving}
               className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
             >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add Item"}
             </button>
             <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
               <X className="w-4 h-4" />
@@ -741,139 +755,183 @@ function ItemMaster() {
         <div className="flex justify-center py-8">
           <Loader2 className="w-5 h-5 animate-spin text-primary" />
         </div>
+      ) : ingredients.length === 0 ? (
+        <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+          No items yet. Add one above — BOM and inventory can only use items from this list.
+        </p>
       ) : (
-        <div className="divide-y divide-border">
-          {ingredients.length === 0 && (
-            <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-              No items yet. Add one above — BOM and inventory can only use items from this list.
-            </p>
-          )}
-          {ingredients.map(ing => (
-            <div key={ing.id} className="px-5 py-4 hover:bg-muted/20 transition-colors">
-              {editId === ing.id ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      className="flex-1 min-w-[200px] h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                      placeholder="Item name *"
-                    />
-                    <input
-                      value={editMaterialCode}
-                      onChange={e => setEditMaterialCode(e.target.value)}
-                      className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                      placeholder="Material code *"
-                    />
-                    <select
-                      value={editFlavour}
-                      onChange={e => setEditFlavour(e.target.value)}
-                      className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="">— Flavour —</option>
-                      {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
-                    </select>
-                  </div>
-                  <input
-                    value={editDescription}
-                    onChange={e => setEditDescription(e.target.value)}
-                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="Description"
-                  />
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <select
-                      value={editUnit}
-                      onChange={e => setEditUnit(e.target.value)}
-                      className="w-24 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      {UNITS.map(u => <option key={u}>{u}</option>)}
-                    </select>
-                    <div className="flex items-center gap-1.5">
-                      <label className="text-xs text-muted-foreground whitespace-nowrap">Serving qty</label>
-                      <input
-                        type="number"
-                        min="0.1"
-                        step="0.1"
-                        value={editServingQty}
-                        onChange={e => setEditServingQty(e.target.value)}
-                        className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border/60 bg-muted/40">
+              <th className="py-2 pl-5 pr-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Item Name</th>
+              <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Flavour</th>
+              <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">SKUs & Sizes</th>
+              <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Serving Info</th>
+              <th className="py-2 pl-3 pr-5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/40">
+            {ingredients.map(ing => (
+              <tr key={ing.id} className="hover:bg-muted/30 transition-colors">
+                {editId === ing.id ? (
+                  <td colSpan={5} className="px-5 py-4 bg-muted/10">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          className="flex-1 min-w-[200px] h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder="Item name *"
+                        />
+                        <select
+                          value={editFlavour}
+                          onChange={e => setEditFlavour(e.target.value)}
+                          className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          <option value="">— Flavour —</option>
+                          {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="space-y-2 border-l-2 border-primary/20 pl-3 ml-1">
+                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">SKUs (Pack Sizes)</label>
+                        {editSkus.map((sku, idx) => (
+                          <div key={idx} className="flex items-center gap-2 flex-wrap">
+                            <input
+                              value={sku.material_code}
+                              onChange={e => {
+                                const arr = [...editSkus];
+                                arr[idx].material_code = e.target.value;
+                                setEditSkus(arr);
+                              }}
+                              className="w-40 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                              placeholder="Material Code *"
+                            />
+                            <input
+                              type="number" min="0" step="any"
+                              value={sku.pack_size}
+                              onChange={e => {
+                                const arr = [...editSkus];
+                                arr[idx].pack_size = Number(e.target.value) || 1;
+                                setEditSkus(arr);
+                              }}
+                              className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                              placeholder="Pack Size"
+                            />
+                            <select
+                              value={sku.pack_unit}
+                              onChange={e => {
+                                const arr = [...editSkus];
+                                arr[idx].pack_unit = e.target.value;
+                                setEditSkus(arr);
+                              }}
+                              className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                            >
+                              {UNITS.map(u => <option key={u}>{u}</option>)}
+                            </select>
+                            {editSkus.length > 1 && (
+                              <button onClick={() => setEditSkus(editSkus.filter((_, i) => i !== idx))} className="p-1 text-muted-foreground hover:text-destructive">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button onClick={() => setEditSkus([...editSkus, { material_code: "", pack_size: 1, pack_unit: "g" }])} className="text-[11px] font-medium text-primary hover:underline">
+                          + Add another SKU
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-3 flex-wrap pt-2">
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap">Serving qty</label>
+                          <input
+                            type="number" min="0.1" step="0.1"
+                            value={editServingQty}
+                            onChange={e => setEditServingQty(e.target.value)}
+                            className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap">kcal/serve</label>
+                          <input
+                            type="number" min="0" step="1"
+                            value={editKcalPerServing}
+                            onChange={e => setEditKcalPerServing(e.target.value)}
+                            placeholder="—"
+                            className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+                          <input type="checkbox" checked={editTrialEligible} onChange={e => setEditTrialEligible(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
+                          Trial-eligible
+                        </label>
+                        <button onClick={() => void saveEdit(ing.id)} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
+                          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        </button>
+                        <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <label className="text-xs text-muted-foreground whitespace-nowrap">kcal/serve</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={editKcalPerServing}
-                        onChange={e => setEditKcalPerServing(e.target.value)}
-                        placeholder="—"
-                        className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editTrialEligible}
-                        onChange={e => setEditTrialEligible(e.target.checked)}
-                        className="w-3.5 h-3.5 accent-primary"
-                      />
-                      Trial-eligible
-                    </label>
-                    <button
-                      onClick={() => void saveEdit(ing.id)}
-                      disabled={saving}
-                      className="text-primary hover:text-primary/80 disabled:opacity-40"
-                    >
-                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                    </button>
-                    <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-foreground">{ing.name}</span>
-                      {ing.material_code && (
-                        <span className="text-xs font-mono bg-muted text-muted-foreground px-2 py-0.5 rounded">{ing.material_code}</span>
+                  </td>
+                ) : (
+                  <>
+                    <td className="py-3 pl-5 pr-3 font-semibold text-foreground align-top">
+                      {ing.name}
+                    </td>
+                    <td className="py-3 px-3 align-top">
+                      {ing.flavour ? (
+                        <span className="text-xs bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full inline-block">{ing.flavour}</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{ing.description || "No description"}</p>
-                    <div className="flex items-center gap-2 flex-wrap mt-2">
-                      {ing.flavour && (
-                        <span className="text-xs bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">{ing.flavour}</span>
-                      )}
-                      <span className="text-xs bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">{ing.serving_qty} {ing.pack_unit}/serve</span>
-                      {ing.kcal_per_serving != null && (
-                        <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">{ing.kcal_per_serving} kcal/serve</span>
-                      )}
-                      {ing.trial_eligible && (
-                        <span className="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">Trial-eligible</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => startEdit(ing)} className="text-muted-foreground hover:text-primary p-1">
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={() => void deleteIngredient(ing.id)} className="text-muted-foreground hover:text-destructive p-1">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+                    </td>
+                    <td className="py-3 px-3 align-top">
+                      <div className="flex flex-col gap-1.5">
+                        {(ing.skus || []).map(s => (
+                          <div key={s.id ?? s.material_code} className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded border">{s.material_code}</span>
+                            <span className="text-xs text-foreground font-medium">{s.pack_size} {s.pack_unit}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 align-top">
+                      <div className="flex flex-col gap-1.5 items-start">
+                        <span className="text-xs bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">{ing.serving_qty} /serve</span>
+                        {ing.kcal_per_serving != null && (
+                          <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">{ing.kcal_per_serving} kcal</span>
+                        )}
+                        {ing.trial_eligible && (
+                          <span className="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">Trial-eligible</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 pl-3 pr-5 align-top text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => startEdit(ing)} className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => void deleteIngredient(ing.id)} className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
       </>
       )}
     </div>
   );
 }
+
+
+
 
 // ── Center Settings (auto-checkout) ────────────────────────────────────────────
 

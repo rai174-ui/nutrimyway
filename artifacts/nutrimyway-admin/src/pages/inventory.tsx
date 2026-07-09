@@ -86,42 +86,33 @@ function QuickReceiptForm({
   );
   const [batchNumber, setBatchNumber] = useState("");
   const [openNow, setOpenNow] = useState(true);
-  const [assignMemberId, setAssignMemberId] = useState<string>("");
+  const [noOfPacks, setNoOfPacks] = useState<string>("1");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastReceived, setLastReceived] = useState<{ batch: string; member: string | null } | null>(null);
+  const [lastReceived, setLastReceived] = useState<{ batch: string; count: number } | null>(null);
 
   const selectedIngredient = ingredients.find(i => String(i.id) === ingredientId);
-  const receivedUnit = selectedIngredient?.pack_unit ?? "g";
-  const [receivedQty, setReceivedQty] = useState<string>("");
-
-  const isMemberPack = assignMemberId !== "";
-  const virtualMembers = members.filter(m => m.member_type === "virtual");
-  const selectedMember = virtualMembers.find(m => String(m.id) === assignMemberId);
+  const skuId = selectedIngredient?.skus?.[0]?.id;
+  const receivedUnit = selectedIngredient?.skus?.[0]?.pack_unit ?? "g";
 
   async function receive() {
-    if (!ingredientId || !batchNumber.trim()) return;
+    if (!skuId || !batchNumber.trim()) return;
     setSaving(true); setError(null); setLastReceived(null);
     try {
+      const count = Number(noOfPacks) || 1;
       const body: Record<string, unknown> = {
-        ingredient_id: Number(ingredientId),
+        sku_id: skuId,
         batch_number: batchNumber.trim(),
-        received_qty: receivedQty ? Number(receivedQty) : undefined,
-        received_unit: receivedUnit,
+        no_of_packs: count
       };
-      if (isMemberPack && selectedMember) {
-        body.assigned_member_id = selectedMember.id;
-        body.assigned_member_name = selectedMember.name;
-      }
       const batch = await apiPost<IngredientBatch>(
         `/admin/centers/${centerId}/ingredient-batches`,
         body
       );
-      // For center-stock packs, respect the "Open now?" toggle
-      if (!isMemberPack && openNow) {
+      if (openNow) {
         await apiPatch(`/admin/ingredient-batches/${batch.id}/open`);
       }
-      setLastReceived({ batch: batchNumber.trim(), member: selectedMember?.name ?? null });
+      setLastReceived({ batch: batchNumber.trim(), count });
       setBatchNumber("");
       onSuccess();
     } catch (e) { setError((e as Error).message); }
@@ -146,8 +137,7 @@ function QuickReceiptForm({
         )}
         {lastReceived && !error && (
           <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium">
-            ✓ Batch &ldquo;{lastReceived.batch}&rdquo; received
-            {lastReceived.member ? ` and assigned to ${lastReceived.member}` : (openNow ? " and opened for consumption" : " (sealed)")}.
+            ✓ Received {lastReceived.count} pack(s) of batch &ldquo;{lastReceived.batch}&rdquo; {openNow ? " (one opened for consumption)" : " (sealed)"}.
           </div>
         )}
 
@@ -184,67 +174,39 @@ function QuickReceiptForm({
 
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Received Qty
+              Number of packs
             </label>
-            <div className="flex items-center gap-1.5">
-              <input
-                value={receivedQty}
-                onChange={e => setReceivedQty(e.target.value)}
-                type="number" min="0" step="any"
-                className="w-24 h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="Qty"
-              />
-              <span className="h-9 px-2.5 flex items-center text-sm font-medium text-muted-foreground bg-muted rounded-lg border border-input min-w-[3rem]">
-                {receivedUnit}
-              </span>
-            </div>
+            <input
+              value={noOfPacks}
+              onChange={e => setNoOfPacks(e.target.value)}
+              type="number" min="1" step="1"
+              className="w-24 h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="e.g. 5"
+            />
           </div>
 
-          <div className="flex flex-col gap-1 min-w-[180px] flex-1">
+          <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Assign To
+              Open now?
             </label>
-            <select
-              value={assignMemberId}
-              onChange={e => setAssignMemberId(e.target.value)}
-              className="h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">— Center Stock —</option>
-              {virtualMembers.map(m => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-            {virtualMembers.length === 0 && (
-              <span className="text-[11px] text-muted-foreground">
-                No Virtual members at this center yet
-              </span>
-            )}
+            <label className="flex items-center gap-2 h-9 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={openNow}
+                onChange={e => setOpenNow(e.target.checked)}
+                className="w-4 h-4 rounded accent-primary"
+              />
+              <span className="text-sm text-foreground">Open one pack</span>
+            </label>
           </div>
-
-          {!isMemberPack && (
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Open now?
-              </label>
-              <label className="flex items-center gap-2 h-9 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={openNow}
-                  onChange={e => setOpenNow(e.target.checked)}
-                  className="w-4 h-4 rounded accent-primary"
-                />
-                <span className="text-sm text-foreground">Open for consumption</span>
-              </label>
-            </div>
-          )}
 
           <button
             onClick={() => void receive()}
-            disabled={!ingredientId || !batchNumber.trim() || saving}
+            disabled={!skuId || !batchNumber.trim() || saving}
             className="flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40 hover:bg-primary/90 transition-colors"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackagePlus className="w-4 h-4" />}
-            {isMemberPack ? "Assign to Member" : "Receive"}
+            Receive
           </button>
         </div>
       </div>
@@ -273,7 +235,7 @@ function AddBatchForm({
   const [error, setError] = useState<string | null>(null);
 
   const selectedIng = ingredients.find(i => String(i.id) === ingredientId);
-  const receivedUnit = selectedIng?.pack_unit ?? "g";
+  const receivedUnit = selectedIng?.skus?.[0]?.pack_unit ?? "g";
 
   async function add() {
     if (!ingredientId || !batchNumber.trim()) return;
@@ -789,116 +751,6 @@ function BatchInventory({
 
   return (
     <div className="space-y-4">
-      {/* ── Open Batches ──────────────────────────────────────────── */}
-      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <PackageOpen className="w-5 h-5 text-emerald-600" />
-            <h2 className="text-base font-semibold text-foreground">Open Batches</h2>
-            <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
-              {openGroups.length} in use
-            </span>
-          </div>
-          {activeBatches.length > 0 && (
-            <button
-              onClick={() => exportInventoryXlsx(activeBatches)}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 text-xs font-medium transition-colors"
-            >
-              <FileDown className="w-3.5 h-3.5" />
-              Export
-            </button>
-          )}
-        </div>
-
-        {openGroups.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-            No open packs — open a batch from New Batches to start tracking consumption.
-          </p>
-        ) : (
-          <div className="divide-y divide-border">
-            {openGroups.map(({ ingredient, openBatch, reserveCount }) => {
-              const req = requirements.find(r => r.ingredient_id === ingredient.id);
-              const cap = batchCapacity(openBatch);
-              const unit = batchUnit(openBatch);
-              const consumed = Number(openBatch.consumed_qty);
-              const remaining = Math.max(0, cap - consumed);
-              const minNeeded = req ? Number(req.min_serving_qty) : 0;
-              const isLow = minNeeded > 0 && remaining < minNeeded;
-              const pct = Math.min(100, cap > 0 ? (consumed / cap) * 100 : 0);
-              const isAdjusting = adjustingId === openBatch.id;
-              return (
-                <div key={ingredient.id}>
-                  <div className="px-5 py-3 flex items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                        <span className="font-medium text-sm text-foreground">{ingredient.name}</span>
-                        {ingredient.material_code && (
-                          <span className="text-[10px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{ingredient.material_code}</span>
-                        )}
-                        {reserveCount > 0 && (
-                          <span className="text-[10px] text-sky-700 bg-sky-100 border border-sky-200 px-1.5 py-0.5 rounded-full font-semibold">{reserveCount} in reserve</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${isLow ? "bg-red-500" : "bg-emerald-500"}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className={`text-xs font-semibold tabular-nums whitespace-nowrap ${isLow ? "text-red-600" : "text-emerald-700"}`}>
-                          {remaining} {unit} left
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => setAdjustingId(isAdjusting ? null : openBatch.id)}
-                        title="Adjust quantity"
-                        className={`flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border transition-colors ${
-                          isAdjusting
-                            ? "bg-amber-100 text-amber-700 border-amber-300"
-                            : "text-muted-foreground border-border hover:text-amber-700 hover:border-amber-300 hover:bg-amber-50"
-                        }`}
-                      >
-                        <SlidersHorizontal className="w-3 h-3" />
-                        Adjust
-                      </button>
-                      {isLow ? (
-                        <>
-                          <AlertTriangle className="w-4 h-4 text-red-500" />
-                          <button
-                            onClick={() => void openNewPack(openBatch.id, ingredient.id)}
-                            className="flex items-center gap-1 h-7 px-2.5 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
-                          >
-                            <PackagePlus className="w-3 h-3" />
-                            Open New Pack
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => void consumeBatch(openBatch.id)}
-                          title="Mark pack as fully consumed"
-                          className="text-muted-foreground hover:text-destructive transition-colors"
-                        >
-                          <MinusCircle className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {isAdjusting && (
-                    <AdjustBatchForm
-                      batch={openBatch}
-                      onDone={() => { onRefresh(); setAdjustingId(null); }}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
       {/* ── New Batches ──────────────────────────────────────────── */}
       <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">

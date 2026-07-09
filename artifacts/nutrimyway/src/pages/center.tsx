@@ -89,6 +89,7 @@ export function Center() {
   const queryClient = useQueryClient();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [chartMetric, setChartMetric] = useState<"weight" | "body_fat" | "muscle">("weight");
+  const [chartTab, setChartTab] = useState<'weight' | 'visceral'>('weight');
   const [form, setForm] = useState<VitalsForm>({
     recorded_at: todayStr(),
     center_id: "",
@@ -123,7 +124,9 @@ export function Center() {
     weight: r.weight_kg,
     body_fat: r.body_fat_pct,
     muscle: r.muscle_mass_kg,
+    visceral_fat: r.visceral_fat,
   }));
+  const hasVisceralData = chartData.some((d) => d.visceral_fat != null);
 
   const chartConfigs = {
     weight:   { dataKey: "weight",   label: "Weight (kg)",    color: "hsl(var(--primary))",        unit: "kg" },
@@ -231,7 +234,7 @@ export function Center() {
       </section>
       {/* Trend charts */}
       <section className="bg-card rounded-[12px] p-5 border border-border">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold uppercase tracking-wider">Trends</h2>
           <div className="flex gap-1 bg-muted rounded-full p-0.5">
             {(["weight", "body_fat", "muscle"] as const).map((m) => (
@@ -250,37 +253,91 @@ export function Center() {
           </div>
         </div>
 
-        {hasChartData ? (
-          <div className="h-52 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 4, bottom: 0, left: 0 }}>
-                <XAxis type="number" domain={["dataMin - 1", "dataMax + 1"]} hide />
-                <YAxis
-                  dataKey="date"
-                  type="category"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-                  width={42}
-                />
-                <Tooltip
-                  cursor={{ fill: "hsl(var(--muted) / 0.4)" }}
-                  contentStyle={{ borderRadius: "8px", border: "1px solid hsl(var(--border))", fontSize: 12 }}
-                  formatter={(v: number) => [`${v?.toFixed(1)} ${activeCfg.unit}`, activeCfg.label]}
-                />
-                <Bar
-                  dataKey={activeCfg.dataKey}
-                  fill={activeCfg.color}
-                  radius={[0, 4, 4, 0]}
-                  barSize={16}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="flex gap-1 mb-3">
+          <button
+            onClick={() => setChartTab('weight')}
+            className={`flex-1 h-8 rounded-xl text-xs font-semibold transition-all ${
+              chartTab === 'weight'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground'
+            }`}
+          >⚖️ Weight</button>
+          <button
+            onClick={() => setChartTab('visceral')}
+            className={`flex-1 h-8 rounded-xl text-xs font-semibold transition-all ${
+              chartTab === 'visceral'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground'
+            }`}
+          >🫀 Visceral Fat</button>
+        </div>
+
+        {chartTab === 'weight' ? (
+          hasChartData ? (
+            <div className="h-52 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 4, bottom: 0, left: 0 }}>
+                  <XAxis type="number" domain={["dataMin - 1", "dataMax + 1"]} hide />
+                  <YAxis
+                    dataKey="date"
+                    type="category"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    width={42}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "hsl(var(--muted) / 0.4)" }}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid hsl(var(--border))", fontSize: 12 }}
+                    formatter={(v: number) => [`${v?.toFixed(1)} ${activeCfg.unit}`, activeCfg.label]}
+                  />
+                  <Bar
+                    dataKey={activeCfg.dataKey}
+                    fill={activeCfg.color}
+                    radius={[0, 4, 4, 0]}
+                    barSize={16}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No {activeCfg.label.toLowerCase()} data yet.
+            </p>
+          )
         ) : (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            No {activeCfg.label.toLowerCase()} data yet.
-          </p>
+          hasVisceralData ? (
+            <div className="h-52 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 4, bottom: 0, left: 0 }}>
+                  <XAxis type="number" domain={["dataMin - 1", "dataMax + 1"]} hide />
+                  <YAxis
+                    dataKey="date"
+                    type="category"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    width={42}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "hsl(var(--muted) / 0.4)" }}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid hsl(var(--border))", fontSize: 12 }}
+                    formatter={(v: number) => [`${v?.toFixed(1)}`, 'Visceral Fat']}
+                  />
+                  <Bar
+                    dataKey="visceral_fat"
+                    fill="hsl(var(--destructive))"
+                    radius={[0, 4, 4, 0]}
+                    barSize={16}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No visceral fat data recorded yet.
+            </p>
+          )
         )}
       </section>
       {/* Visit history */}

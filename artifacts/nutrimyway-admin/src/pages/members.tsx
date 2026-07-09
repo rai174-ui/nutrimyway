@@ -11,7 +11,7 @@ import * as XLSX from "xlsx";
 import {
   apiGet, apiPost, apiPatch, apiDelete, getAdminCenter,
   type CenterMember, type CenterSettings, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord, type SelfLogEntry,
-  type MemberType, type MemberRenewal, type MemberRenewalReportRow, MEMBER_TYPE_LABELS, CHECKIN_CAP,
+  type MemberType, type MemberRenewal, type MemberRenewalReportRow, MEMBER_TYPE_LABELS, CHECKIN_CAP, type Ingredient,
 } from "@/lib/api";
 
 interface FlavourOption { id: number; name: string; flavour: string; unit: string; }
@@ -947,10 +947,15 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
   const [editAge, setEditAge]                 = useState("");
   const [editValidUntil, setEditValidUntil]   = useState("");
   const [editDailyKcal, setEditDailyKcal]     = useState("");
+  const [editProteinTarget, setEditProteinTarget] = useState("");
+  const [editFiberTarget, setEditFiberTarget]     = useState("");
+  const [editWaterTarget, setEditWaterTarget]     = useState("");
   const [editMemberType, setEditMemberType]   = useState<MemberType>("regular");
   const [editSaving, setEditSaving]           = useState(false);
   const [editError, setEditError]             = useState("");
   const [showRenewDialog, setShowRenewDialog] = useState(false);
+  const [showSellProductDialog, setShowSellProductDialog] = useState(false);
+  const [showReturnProductDialog, setShowReturnProductDialog] = useState(false);
   const [renewPaymentMethod, setRenewPaymentMethod] = useState<"cash" | "online">("cash");
   const [renewAmount, setRenewAmount]         = useState("");
   const [renewSaving, setRenewSaving]         = useState(false);
@@ -975,6 +980,9 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     setEditAge(member.age_at_joining != null ? String(member.age_at_joining) : "");
     setEditValidUntil(member.valid_until ? member.valid_until.slice(0, 10) : "");
     setEditDailyKcal(member.daily_kcal != null ? String(member.daily_kcal) : "");
+    setEditProteinTarget((member as any).protein_target_g != null ? String((member as any).protein_target_g) : "");
+    setEditFiberTarget((member as any).fiber_target_g != null ? String((member as any).fiber_target_g) : "");
+    setEditWaterTarget((member as any).water_target_ml != null ? String((member as any).water_target_ml) : "");
     setEditMemberType(member.member_type ?? "regular");
     setEditError("");
     setShowEditPanel(true);
@@ -995,6 +1003,9 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
         age_at_joining: editAge ? Number(editAge) : null,
         valid_until: editValidUntil || null,
         daily_kcal: editDailyKcal ? Number(editDailyKcal) : null,
+        protein_target_g: editProteinTarget ? Number(editProteinTarget) : null,
+        fiber_target_g: editFiberTarget ? Number(editFiberTarget) : null,
+        water_target_ml: editWaterTarget ? Number(editWaterTarget) : null,
         member_type: editMemberType,
       });
       setShowEditPanel(false);
@@ -1017,7 +1028,6 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     : null;
   const checkinsUsed = member.checkins_used ?? 0;
   const effectiveCheckinCap = member.effective_checkin_cap ?? CHECKIN_CAP;
-  const effectiveRenewalDays = member.effective_renewal_days ?? 40;
   const isTrial3Day = member.member_type === "trial_3day";
   const checkinCapReached = checkinsUsed >= effectiveCheckinCap;
   const showRenew = (renewDaysLeft !== null && renewDaysLeft <= 10) || checkinCapReached;
@@ -1091,11 +1101,29 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
             <p className="text-xs text-muted-foreground">ID #{member.id}</p>
+            {(member as any).current_otp && (
+              <p className="text-[10px] font-mono font-bold tracking-widest bg-violet-100 text-violet-800 px-2 py-0.5 rounded border border-violet-200">OTP: {(member as any).current_otp}</p>
+            )}
             {member.mobile && <p className="text-xs text-muted-foreground">{member.mobile}</p>}
             {member.membership_no && <p className="text-xs text-muted-foreground">{member.membership_no}</p>}
             {member.daily_kcal != null && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-2 py-0.5">
-                <Flame className="w-3 h-3" />{member.daily_kcal} kcal/day
+              <span className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-full px-2 py-0.5">
+                🔥 {member.daily_kcal} kcal
+              </span>
+            )}
+            {(member as any).protein_target_g != null && (
+              <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
+                🍗 {(member as any).protein_target_g}g protein
+              </span>
+            )}
+            {(member as any).fiber_target_g != null && (
+              <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 border border-green-100 rounded-full px-2 py-0.5">
+                🌾 {(member as any).fiber_target_g}g fiber
+              </span>
+            )}
+            {(member as any).water_target_ml != null && (
+              <span className="flex items-center gap-1 text-xs text-sky-600 bg-sky-50 border border-sky-100 rounded-full px-2 py-0.5">
+                💧 {(member as any).water_target_ml}ml water
               </span>
             )}
             {validityBadge(member.valid_until)}
@@ -1158,16 +1186,31 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               </button>
             </>
           )}
-          {showRenew && (
-            <button
-              onClick={openRenewDialog}
-              disabled={busy}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-colors border border-emerald-200"
-              title={`Renew Membership (+${effectiveRenewalDays} days, resets check-in cycle)`}
-            >
-              <RotateCcw className="w-3.5 h-3.5" />Renew Membership
-            </button>
-          )}
+          {showRenew && (() => {
+            const effectiveRenewalDays = isTrial3Day ? 5 : 30;
+            return (
+              <button
+                onClick={openRenewDialog}
+                disabled={busy}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-colors border border-emerald-200"
+                title={`Renew Membership (+${effectiveRenewalDays} days, resets check-in cycle)`}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />Renew Membership
+              </button>
+            );
+          })()}
+          <button
+            onClick={() => setShowSellProductDialog(true)}
+            className="h-8 px-3 text-xs font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          >
+            Sell Product
+          </button>
+          <button
+            onClick={() => setShowReturnProductDialog(true)}
+            className="h-8 px-3 text-xs font-semibold rounded-xl border border-amber-400 text-amber-700 hover:bg-amber-50 transition-colors"
+          >
+            Product Return
+          </button>
           <button
             onClick={toggleHistory}
             className={`p-1.5 rounded-lg transition-colors ${showHistory ? "text-emerald-600 bg-emerald-100" : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"}`}
@@ -1228,7 +1271,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
                 className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Member ID</label>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Registration Number</label>
               <input value={editMembershipNo} onChange={e => setEditMembershipNo(e.target.value)} placeholder="MEM-001"
                 className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
@@ -1272,6 +1315,14 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               <input type="number" min="500" max="5000" value={editDailyKcal} onChange={e => setEditDailyKcal(e.target.value)} placeholder="2000"
                 className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
+            <div className="sm:col-span-2">
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Protein Target (g/day)</label>
+              <input type="number" min="0" max="300" value={editProteinTarget} onChange={e => setEditProteinTarget(e.target.value)} placeholder="e.g. 80" className="w-full h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mb-3" />
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Fiber Target (g/day)</label>
+              <input type="number" min="0" max="100" value={editFiberTarget} onChange={e => setEditFiberTarget(e.target.value)} placeholder="e.g. 25" className="w-full h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mb-3" />
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Water Target (ml/day)</label>
+              <input type="number" min="0" max="5000" value={editWaterTarget} onChange={e => setEditWaterTarget(e.target.value)} placeholder="e.g. 2500" className="w-full h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mb-3" />
+            </div>
             <div>
               <label className="block text-[10px] font-medium text-muted-foreground mb-1">Member Type</label>
               <select value={editMemberType} onChange={e => setEditMemberType(e.target.value as MemberType)}
@@ -1308,7 +1359,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
       {showHistory && (
         <div className="border-t border-emerald-100 bg-emerald-50/40 px-5 py-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Renewal History</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Payment History</p>
             <button onClick={() => setShowHistory(false)} className="p-1 rounded text-muted-foreground hover:text-foreground">
               <X className="w-3.5 h-3.5" />
             </button>
@@ -1320,11 +1371,26 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
           ) : (
             <div className="space-y-1.5">
               {history.map(r => (
-                <div key={r.id} className="flex items-center justify-between text-xs bg-white border border-emerald-100 rounded-lg px-3 py-2">
-                  <span className="font-medium text-foreground">{fmtDateDMY(r.created_at)}</span>
-                  <span className="text-muted-foreground capitalize">{r.payment_method}</span>
-                  <span className="font-semibold text-emerald-700">₹{r.amount}</span>
-                  <span className="text-muted-foreground">→ {r.new_valid_until ? fmtDateDMY(r.new_valid_until) : "—"}</span>
+                <div key={r.id} className="bg-white border border-emerald-100 rounded-lg px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-foreground text-sm">
+                      {(r as any).payment_type === 'product_sale' ? 'Product Sale' :
+                       (r as any).payment_type === 'product_return' ? 'Product Return' :
+                       'Membership Renewed'}
+                    </p>
+                    <span className="font-medium text-emerald-700 text-sm">₹{r.amount}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5">
+                    <span>{fmtDateDMY(r.created_at)}</span>
+                    <span className="capitalize">• {r.payment_method}</span>
+                    {r.new_valid_until && <span>• Expires {fmtDateDMY(r.new_valid_until)}</span>}
+                  </div>
+                  {((r as any).ingredient_name || (r as any).notes) && (
+                    <div className="text-xs text-muted-foreground mt-1 space-y-0.5 bg-muted/30 p-2 rounded-lg">
+                      {(r as any).ingredient_name && <p><span className="font-medium text-foreground">Item:</span> {(r as any).ingredient_name}</p>}
+                      {(r as any).notes && <p><span className="font-medium text-foreground">Notes:</span> {(r as any).notes}</p>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1339,8 +1405,8 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               <button onClick={() => setShowRenewDialog(false)} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Extends validity by <span className="font-semibold text-foreground">+{effectiveRenewalDays} days</span> from {member.valid_until && new Date(member.valid_until) > new Date() ? "current expiry" : "today"} and resets the check-in cycle for {member.name}.
-              {isTrial3Day && " Trial 3-Day members always get a fixed 5-day renewal, regardless of this center's configured renewal period."}
+              Extends validity by <span className="font-semibold text-foreground">+{isTrial3Day ? 5 : 30} days</span> from {member.valid_until && new Date(member.valid_until) > new Date() ? "current expiry" : "today"} and resets the check-in cycle for {member.name}.
+              {isTrial3Day && " Trial members always get a fixed 5-day renewal."}
             </p>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Payment Method *</label>
@@ -1375,6 +1441,22 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
             </div>
           </div>
         </div>
+      )}
+      {showSellProductDialog && (
+        <SellProductDialog
+          centerId={centerId}
+          memberId={member.id}
+          onSuccess={() => { setShowSellProductDialog(false); void loadHistory(); onRefresh(); }}
+          onClose={() => setShowSellProductDialog(false)}
+        />
+      )}
+      {showReturnProductDialog && (
+        <ProductReturnDialog
+          centerId={centerId}
+          memberId={member.id}
+          onSuccess={() => { setShowReturnProductDialog(false); void loadHistory(); onRefresh(); }}
+          onClose={() => setShowReturnProductDialog(false)}
+        />
       )}
     </div>
   );
@@ -1875,7 +1957,271 @@ function RenewalHistoryModal({ centerId, onClose }: {
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+function SellProductDialog({ centerId, memberId, onSuccess, onClose }: { centerId: string; memberId: number; onSuccess: () => void; onClose: () => void; }) {
+  const [batches, setBatches] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [batchId, setBatchId] = useState("");
+    const [search, setSearch] = useState("");
+    const [open, setOpen] = useState(false);
+  const [qty, setQty] = useState("");
+  const [amount, setAmount] = useState("");
+  const [payMethod, setPayMethod] = useState("cash");
+  const [notes, setNotes] = useState("");
+  
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    apiGet<any[]>(`/admin/centers/${centerId}/ingredient-batches`).then((res: any[]) => {
+      setBatches(res.filter((b: any) => b.status === "new"));
+      setLoading(false);
+    }).catch(console.error);
+  }, [centerId]);
+
+  const selBatch = batches.find(b => b.id === Number(batchId));
+
+  async function handleSubmit() {
+    if (!batchId) { setError("Select product batch"); return; }
+    if (!qty || Number(qty) <= 0) { setError("Valid quantity required"); return; }
+    if (!amount || Number(amount) < 0) { setError("Valid amount required"); return; }
+    
+    setSaving(true);
+    setError("");
+    try {
+      await apiPost(`/admin/centers/${centerId}/members/${memberId}/payments`, {
+        payment_type: "product_sale",
+        amount: Number(amount),
+        payment_method: payMethod,
+        ingredient_id: selBatch.ingredient_id,
+        batch_id: selBatch.id,
+        quantity: Number(qty),
+        unit: selBatch.pack_unit || "unit",
+        notes: notes || null
+      });
+      onSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-background rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border border-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-slate-50/50">
+          <h2 className="text-sm font-bold text-foreground">Sell Product</h2>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted-foreground hover:bg-slate-200 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 flex flex-col gap-4">
+          {error && <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-100">{error}</div>}
+          
+                      <div className="relative">
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Product Batch</label>
+              <div 
+                className="w-full px-3 py-2 text-sm bg-background border border-input rounded-xl focus-within:ring-2 focus-within:ring-primary/40 flex items-center justify-between"
+              >
+                <input
+                  type="text"
+                  placeholder={batchId && !search ? (batches.find(b => b.id === Number(batchId))?.ingredient_name || "Select...") : "Search batches..."}
+                  className="bg-transparent outline-none w-full flex-1 disabled:opacity-50"
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setOpen(true); }}
+                  onFocus={() => setOpen(true)}
+                  disabled={loading}
+                />
+                <button type="button" className="text-muted-foreground px-1" onClick={(e) => { e.preventDefault(); setOpen(!open); }}>
+                  ?
+                </button>
+              </div>
+              
+              {open && (
+                <>
+                  <div className="fixed inset-0 z-[101]" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
+                  <div className="absolute z-[102] w-full mt-1 bg-background border border-border rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                    {batches.filter(b => b.ingredient_name.toLowerCase().includes(search.toLowerCase()) || b.batch_number.toLowerCase().includes(search.toLowerCase())).map(b => (
+                      <div 
+                        key={b.id} 
+                        className="px-3 py-2 hover:bg-slate-100 cursor-pointer text-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBatchId(String(b.id));
+                          setQty(String(b.pack_size || ""));
+                          setSearch("");
+                          setOpen(false);
+                        }}
+                      >
+                        {b.ingredient_name} (Batch: {b.batch_number}, Size: {b.pack_size} {b.pack_unit})
+                      </div>
+                    ))}
+                    {batches.filter(b => b.ingredient_name.toLowerCase().includes(search.toLowerCase()) || b.batch_number.toLowerCase().includes(search.toLowerCase())).length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No matches found</div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Quantity</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min="0" step="any" value={qty} disabled={true}
+                  className="w-full px-3 py-2 text-sm bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 opacity-70 cursor-not-allowed" />
+                <span className="text-xs text-muted-foreground">{selBatch?.pack_unit || "-"}</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Total Amount (₹)</label>
+              <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)} 
+                className="w-full px-3 py-2 text-sm bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Payment Method</label>
+            <div className="flex bg-muted/50 p-1 rounded-xl">
+              {(["cash", "online"] as const).map(m => (
+                <button key={m} onClick={() => setPayMethod(m)}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg capitalize transition-all ${payMethod === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Notes (Optional)</label>
+            <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="E.g. bought 2 boxes"
+              className="w-full px-3 py-2 text-sm bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          </div>
+          
+          <button onClick={handleSubmit} disabled={saving} className="w-full h-11 mt-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2">
+            {saving ? "Saving..." : "Record Sale"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductReturnDialog({ centerId, memberId, onSuccess, onClose }: { centerId: string; memberId: number; onSuccess: () => void; onClose: () => void; }) {
+  const [sales, setSales] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [saleId, setSaleId] = useState("");
+  const [qty, setQty] = useState("");
+  const [amount, setAmount] = useState("");
+  const [payMethod, setPayMethod] = useState("cash");
+  const [notes, setNotes] = useState("");
+  
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    apiGet<any[]>(`/admin/centers/${centerId}/members/${memberId}/renewals`).then((res: any[]) => {
+      setSales(res.filter((r: any) => r.payment_type === "product_sale" && r.ingredient_id));
+      setLoading(false);
+    }).catch(console.error);
+  }, [centerId, memberId]);
+
+  const selSale = sales.find(s => s.id === Number(saleId));
+
+  async function handleSubmit() {
+    if (!saleId) { setError("Select sold product"); return; }
+    if (!qty || Number(qty) <= 0) { setError("Valid quantity required"); return; }
+    if (Number(qty) > (selSale.quantity || 1)) { setError("Cannot return more than sold quantity"); return; }
+    
+    setSaving(true);
+    setError("");
+    try {
+      await apiPost(`/admin/centers/${centerId}/members/${memberId}/payments`, {
+        payment_type: "product_return",
+        amount: Number(amount) || 0,
+        payment_method: payMethod,
+        ingredient_id: selSale.ingredient_id,
+        quantity: Number(qty),
+        unit: selSale.unit || "unit",
+        notes: notes || null
+      });
+      onSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-background rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border border-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-slate-50/50">
+          <h2 className="text-sm font-bold text-foreground">Record Product Return</h2>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted-foreground hover:bg-slate-200 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 flex flex-col gap-4">
+          {error && <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-100">{error}</div>}
+          
+          <div>
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Sold Product to Return</label>
+            <select value={saleId} onChange={e => {
+                setSaleId(e.target.value);
+                const s = sales.find(x => x.id === Number(e.target.value));
+                if (s) setQty(String(s.quantity));
+              }} disabled={loading}
+              className="w-full px-3 py-2 text-sm bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40">
+              <option value="">Select sold product...</option>
+              {sales.map(s => <option key={s.id} value={s.id}>{s.ingredient_name} (Qty: {s.quantity} {s.unit}) - {new Date(s.created_at).toLocaleDateString()}</option>)}
+            </select>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Quantity Returned</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min="0" max={selSale?.quantity || ""} step="any" value={qty} onChange={e => setQty(e.target.value)} 
+                  className="w-full px-3 py-2 text-sm bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                <span className="text-xs text-muted-foreground">{selSale?.unit || "-"}</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Refund Amount (₹)</label>
+              <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0"
+                className="w-full px-3 py-2 text-sm bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Refund Method</label>
+            <div className="flex bg-muted/50 p-1 rounded-xl">
+              {(["cash", "online"] as const).map(m => (
+                <button key={m} onClick={() => setPayMethod(m)}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg capitalize transition-all ${payMethod === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">Notes (Optional)</label>
+            <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Reason for return"
+              className="w-full px-3 py-2 text-sm bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          </div>
+          
+          <button onClick={handleSubmit} disabled={saving} className="w-full h-11 mt-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2">
+            {saving ? "Saving..." : "Record Return"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function MembersPage() {
   const center = getAdminCenter();
@@ -2008,7 +2354,7 @@ export default function MembersPage() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, mobile, email or member ID…"
+              placeholder="Search by name, mobile, email or registration number…"
               className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-input bg-card text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
             />
             {search && (

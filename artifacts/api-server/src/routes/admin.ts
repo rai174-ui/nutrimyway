@@ -1036,7 +1036,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
     `SELECT
        m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
        m.dob, m.age_at_joining, m.valid_until, m.is_active, m.member_type, m.cycle_started_at,
-       m.daily_kcal,
+       m.daily_kcal, m.protein_target_g, m.fiber_target_g, m.water_target_ml,
        (
          SELECT COUNT(*) FROM member_check_ins mci3
          WHERE mci3.member_id = m.id AND mci3.cancelled = FALSE AND mci3.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz)
@@ -1123,11 +1123,12 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
   );
   if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
 
-  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until, daily_kcal, member_type } = req.body as {
+  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until, daily_kcal, member_type, protein_target_g, fiber_target_g, water_target_ml } = req.body as {
     name?: string; mobile?: string | null; email?: string | null; membership_no?: string | null;
     height_cm?: number | null; date_of_joining?: string | null;
     dob?: string | null; age_at_joining?: number | null; valid_until?: string | null; daily_kcal?: number | null;
     member_type?: string | null;
+    protein_target_g?: number | null; fiber_target_g?: number | null; water_target_ml?: number | null;
   };
   if (name !== undefined && !name?.trim()) { res.status(400).json({ error: "name cannot be blank" }); return; }
   if (age_at_joining != null && (age_at_joining <= 0 || age_at_joining > 100)) {
@@ -1149,8 +1150,11 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
        age_at_joining = $8,
        valid_until    = $9,
        daily_kcal     = $10,
-       member_type    = COALESCE($11, member_type)
-     WHERE id = $12 RETURNING *`,
+       member_type    = COALESCE($11, member_type),
+       protein_target_g = $12,
+       fiber_target_g = $13,
+       water_target_ml = $14
+     WHERE id = $15 RETURNING *`,
     [
       name?.trim() ?? null,
       mobile?.trim() || null,
@@ -1163,6 +1167,9 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
       valid_until ?? null,
       daily_kcal ?? null,
       member_type ?? null,
+      protein_target_g ?? null,
+      fiber_target_g ?? null,
+      water_target_ml ?? null,
       Number(memberId),
     ]
   );
@@ -1270,10 +1277,51 @@ router.get("/admin/centers/:centerId/members/:memberId/renewals", requireAdmin, 
   if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
 
   const { rows } = await pool.query(
-    `SELECT * FROM member_renewals WHERE member_id = $1 AND center_id = $2 ORDER BY created_at DESC`,
+    `SELECT mr.*, COALESCE(i.name, '') AS ingredient_name
+     FROM member_renewals mr
+     LEFT JOIN ingredients i ON i.id = mr.ingredient_id
+     WHERE mr.member_id = $1 AND mr.center_id = $2
+     ORDER BY mr.created_at DESC`,
     [Number(memberId), centerId]
   );
   res.json(rows);
+});
+
+// POST /api/admin/centers/:centerId/members/:memberId/payments
+router.post("/admin/centers/:centerId/members/:memberId/payments", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { rows: membership } = await pool.query(`SELECT 1 FROM member_center_mapping WHERE member_id = $1 AND center_id = $2`, [Number(memberId), centerId]);
+  if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
+  const { payment_type, amount, payment_method, ingredient_id, batch_id, quantity, unit, notes, new_valid_until } = req.body as {
+    payment_type: string; amount: number; payment_method: string;
+    ingredient_id?: number | null; batch_id?: number | null;
+    quantity?: number | null; unit?: string | null; notes?: string | null; new_valid_until?: string | null;
+  };
+  if (!['renewal', 'product_sale', 'product_return'].includes(payment_type)) { res.status(400).json({ error: "Invalid payment_type" }); return; }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (payment_type === 'product_sale' && batch_id && quantity) {
+      await client.query(`INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at) VALUES ($1,$2,$3,NOW())`, [batch_id, quantity, `Sale to member ${memberId}`]);
+    }
+    if (payment_type === 'product_return' && ingredient_id && quantity) {
+      const { rows: ingRows } = await client.query(`SELECT pack_unit FROM ingredients WHERE id = $1`, [ingredient_id]);
+      const packUnit = (ingRows[0] as { pack_unit?: string } | undefined)?.pack_unit ?? unit ?? 'unit';
+      await client.query(`INSERT INTO ingredient_batches (ingredient_id, center_id, total_qty, received_qty, received_unit, status, received_at) VALUES ($1,$2,$3,$3,$4,'open',NOW())`, [ingredient_id, centerId, quantity, packUnit]);
+    }
+    const { rows } = await client.query(
+      `INSERT INTO member_renewals (member_id, center_id, payment_method, amount, new_valid_until, recorded_by, payment_type, ingredient_id, batch_id, quantity, unit, notes, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) RETURNING *`,
+      [Number(memberId), centerId, payment_method, Number(amount), new_valid_until ?? null, 'admin', payment_type, ingredient_id ?? null, batch_id ?? null, quantity ?? null, unit ?? null, notes ?? null]
+    );
+    await client.query('COMMIT');
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Payment recording failed', detail: err instanceof Error ? err.message : String(err) });
+  } finally { client.release(); }
 });
 
 // GET /api/admin/centers/:centerId/renewals — renewal history report (all members, date range)
@@ -1622,39 +1670,90 @@ router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
   const { rows } = await pool.query(
     "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible, created_at FROM ingredients ORDER BY name"
   );
-  res.json(rows);
+  const { rows: skus } = await pool.query("SELECT * FROM ingredient_skus");
+  const result = rows.map((ing) => {
+    return {
+      ...ing,
+      skus: skus.filter(s => s.ingredient_id === ing.id)
+    };
+  });
+  res.json(result);
 });
 
 // POST /api/admin/ingredients
 router.post("/admin/ingredients", requireAdmin, async (req, res) => {
-  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible } = req.body as {
-    name?: string; pack_size?: number; pack_unit?: string;
-    material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean;
+  const { name, flavour, serving_qty, kcal_per_serving, trial_eligible, skus } = req.body as {
+    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean;
+    skus?: { material_code: string; pack_size: number; pack_unit: string }[];
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
-  if (!material_code?.trim()) { res.status(400).json({ error: "material_code is required" }); return; }
-  const { rows } = await pool.query(
-    "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code.trim(), description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false]
-  );
-  res.status(201).json(rows[0]);
+  if (!skus || skus.length === 0) { res.status(400).json({ error: "at least one SKU is required" }); return; }
+
+  const fallbackSku = skus[0];
+
+  try {
+    await pool.query("BEGIN");
+    const { rows } = await pool.query(
+      "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, flavour, serving_qty, kcal_per_serving, trial_eligible) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false]
+    );
+    const ingredientId = rows[0].id;
+    const insertedSkus = [];
+    for (const sku of skus) {
+      const { rows: skuRows } = await pool.query(
+        "INSERT INTO ingredient_skus (ingredient_id, material_code, pack_size, pack_unit) VALUES ($1, $2, $3, $4) RETURNING *",
+        [ingredientId, sku.material_code.trim(), sku.pack_size, sku.pack_unit.trim()]
+      );
+      insertedSkus.push(skuRows[0]);
+    }
+    await pool.query("COMMIT");
+    res.status(201).json({ ...rows[0], skus: insertedSkus });
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    res.status(500).json({ error: "Failed to create ingredient" });
+  }
 });
 
 // PUT /api/admin/ingredients/:ingredientId
 router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
   const { ingredientId } = req.params;
-  const { name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible } = req.body as {
-    name?: string; pack_size?: number; pack_unit?: string;
-    material_code?: string; description?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean;
+  const { name, flavour, serving_qty, kcal_per_serving, trial_eligible, skus } = req.body as {
+    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean;
+    skus?: { material_code: string; pack_size: number; pack_unit: string }[];
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
-  if (!material_code?.trim()) { res.status(400).json({ error: "material_code is required" }); return; }
-  const { rows } = await pool.query(
-    "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, description=$5, flavour=$6, serving_qty=$7, kcal_per_serving=$8, trial_eligible=$9 WHERE id=$10 RETURNING *",
-    [name.trim(), pack_size ?? 1, pack_unit?.trim() ?? "g", material_code.trim(), description?.trim() || null, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false, Number(ingredientId)]
-  );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(rows[0]);
+  if (!skus || skus.length === 0) { res.status(400).json({ error: "at least one SKU is required" }); return; }
+
+  const fallbackSku = skus[0];
+
+  try {
+    await pool.query("BEGIN");
+    const { rows } = await pool.query(
+      "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, flavour=$5, serving_qty=$6, kcal_per_serving=$7, trial_eligible=$8 WHERE id=$9 RETURNING *",
+      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false, Number(ingredientId)]
+    );
+    if (!rows[0]) {
+      await pool.query("ROLLBACK");
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    await pool.query("DELETE FROM ingredient_skus WHERE ingredient_id = $1", [Number(ingredientId)]);
+    const insertedSkus = [];
+    for (const sku of skus) {
+      const { rows: skuRows } = await pool.query(
+        "INSERT INTO ingredient_skus (ingredient_id, material_code, pack_size, pack_unit) VALUES ($1, $2, $3, $4) RETURNING *",
+        [Number(ingredientId), sku.material_code.trim(), sku.pack_size, sku.pack_unit.trim()]
+      );
+      insertedSkus.push(skuRows[0]);
+    }
+
+    await pool.query("COMMIT");
+    res.json({ ...rows[0], skus: insertedSkus });
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    res.status(500).json({ error: "Failed to update ingredient" });
+  }
 });
 
 // DELETE /api/admin/ingredients/:ingredientId
@@ -1756,44 +1855,36 @@ router.post("/admin/centers/:centerId/ingredient-batches", requireAdmin, async (
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { ingredient_id, batch_number, assigned_member_id, assigned_member_name, received_qty, received_unit } =
-    req.body as { ingredient_id?: number; batch_number?: string; assigned_member_id?: number; assigned_member_name?: string; received_qty?: number; received_unit?: string };
-  if (!ingredient_id) { res.status(400).json({ error: "ingredient_id is required" }); return; }
+  const { sku_id, batch_number, no_of_packs } = req.body as { sku_id?: number; batch_number?: string; no_of_packs?: number };
+  if (!sku_id) { res.status(400).json({ error: "sku_id is required" }); return; }
   if (!batch_number?.trim()) { res.status(400).json({ error: "batch_number is required" }); return; }
+  const count = no_of_packs && no_of_packs > 0 ? no_of_packs : 1;
 
-  // Member-assigned inventory issuance is only allowed for virtual members mapped to this center
-  if (assigned_member_id != null) {
-    const { rows: memberTypeRows } = await pool.query(
-      `SELECT m.member_type, EXISTS (
-         SELECT 1 FROM member_center_mapping mcm WHERE mcm.member_id = m.id AND mcm.center_id = $2
-       ) AS in_center
-       FROM members m WHERE m.id = $1`,
-      [assigned_member_id, centerId]
-    );
-    if (!memberTypeRows[0]) { res.status(404).json({ error: "Member not found" }); return; }
-    if (!memberTypeRows[0].in_center) { res.status(404).json({ error: "Member not found in this center" }); return; }
-    if (memberTypeRows[0].member_type !== "virtual") {
-      res.status(400).json({ error: "Inventory can only be issued directly to virtual members" });
-      return;
+  const { rows: skuRows } = await pool.query("SELECT ingredient_id, pack_size, pack_unit FROM ingredient_skus WHERE id = $1", [sku_id]);
+  if (!skuRows[0]) { res.status(404).json({ error: "SKU not found" }); return; }
+
+  const { ingredient_id, pack_size, pack_unit } = skuRows[0];
+
+  try {
+    await pool.query("BEGIN");
+    const inserted = [];
+    for (let i = 0; i < count; i++) {
+      const { rows } = await pool.query(
+        `INSERT INTO ingredient_batches (ingredient_id, sku_id, center_id, batch_number, status, opened_at, assigned_member_id, assigned_member_name, received_qty, received_unit)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [
+          ingredient_id, sku_id, centerId, batch_number.trim(),
+          "new", null, null, null, pack_size, pack_unit
+        ]
+      );
+      inserted.push(rows[0]);
     }
+    await pool.query("COMMIT");
+    res.status(201).json(inserted);
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    res.status(500).json({ error: "Failed to create ingredient batches" });
   }
-
-  // Member packs are immediately opened (they're "in use" by the member right away)
-  const isMemberPack = assigned_member_id != null;
-  const { rows } = await pool.query(
-    `INSERT INTO ingredient_batches (ingredient_id, center_id, batch_number, status, opened_at, assigned_member_id, assigned_member_name, received_qty, received_unit)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [
-      ingredient_id, centerId, batch_number.trim(),
-      isMemberPack ? "open" : "new",
-      isMemberPack ? new Date() : null,
-      assigned_member_id ?? null,
-      assigned_member_name?.trim() ?? null,
-      received_qty ?? null,
-      received_unit?.trim() ?? null,
-    ]
-  );
-  res.status(201).json(rows[0]);
 });
 
 // PATCH /api/admin/ingredient-batches/:batchId/open  — new → open
@@ -2760,4 +2851,145 @@ router.post("/admin/super/reset-transactional-data", requireSuperAdmin, async (r
   }
 });
 
+// POST /api/admin/centers/:centerId/checkins/:checkinId/request-health-log
+router.post("/admin/centers/:centerId/checkins/:checkinId/request-health-log", requireAdmin, async (req, res) => {
+  const { centerId, checkinId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const { rows } = await pool.query(`UPDATE member_check_ins SET health_log_requested = TRUE WHERE id = $1 AND center_id = $2 RETURNING *`, [Number(checkinId), centerId]);
+  if (!rows[0]) { res.status(404).json({ error: "Check-in not found" }); return; }
+  res.json(rows[0]);
+});
+
 export default router;
+
+
+  // --- Check-in Categories ---
+  router.get("/admin/centers/:centerId/checkin-categories", requireAdmin, async (req, res) => {
+    const { centerId } = req.params;
+    const adminReq = req as AdminRequest;
+    if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+    
+    const { rows } = await pool.query(
+      `SELECT * FROM checkin_categories WHERE center_id = $1 ORDER BY display_order ASC, id ASC`,
+      [centerId]
+    );
+    
+    const { rows: mappings } = await pool.query(
+      `SELECT ci.category_id, i.id as ingredient_id, i.name, i.flavour, i.serving_qty 
+       FROM checkin_category_ingredients ci
+       JOIN ingredients i ON i.id = ci.ingredient_id
+       JOIN checkin_categories c ON c.id = ci.category_id
+       WHERE c.center_id = $1`,
+      [centerId]
+    );
+
+    const result = rows.map(cat => ({
+      ...cat,
+      ingredients: mappings.filter(m => m.category_id === cat.id)
+    }));
+    
+    res.json(result);
+  });
+
+  router.post("/admin/centers/:centerId/checkin-categories", requireAdmin, async (req, res) => {
+    const { centerId } = req.params;
+    const adminReq = req as AdminRequest;
+    if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+    
+    const { name, is_mandatory, display_order, ingredients } = req.body as {
+      name: string; is_mandatory?: boolean; display_order?: number; ingredients?: number[];
+    };
+    if (!name?.trim()) { res.status(400).json({ error: "Name is required" }); return; }
+    
+    try {
+      await pool.query("BEGIN");
+      const { rows } = await pool.query(
+        `INSERT INTO checkin_categories (center_id, name, is_mandatory, display_order) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [centerId, name.trim(), is_mandatory ?? true, display_order ?? 0]
+      );
+      const catId = rows[0].id;
+      
+      const mappedIngredients = [];
+      if (Array.isArray(ingredients)) {
+        for (const ingId of ingredients) {
+          const { rows: ingRes } = await pool.query(
+            `INSERT INTO checkin_category_ingredients (category_id, ingredient_id) VALUES ($1, $2) RETURNING ingredient_id`,
+            [catId, ingId]
+          );
+          mappedIngredients.push(ingRes[0].ingredient_id);
+        }
+      }
+      
+      await pool.query("COMMIT");
+      res.status(201).json({ ...rows[0], ingredients: mappedIngredients });
+    } catch(e) {
+      await pool.query("ROLLBACK");
+      res.status(500).json({ error: "Failed to create category" });
+    }
+  });
+
+  router.put("/admin/centers/:centerId/checkin-categories/:categoryId", requireAdmin, async (req, res) => {
+    const { centerId, categoryId } = req.params;
+    const adminReq = req as AdminRequest;
+    if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+    
+    const { name, is_mandatory, display_order, ingredients } = req.body as {
+      name?: string; is_mandatory?: boolean; display_order?: number; ingredients?: number[];
+    };
+    
+    try {
+      await pool.query("BEGIN");
+      
+      const updates = [];
+      const values: any[] = [];
+      if (name !== undefined) { updates.push(`name = $${values.length + 1}`); values.push(name.trim()); }
+      if (is_mandatory !== undefined) { updates.push(`is_mandatory = $${values.length + 1}`); values.push(Boolean(is_mandatory)); }
+      if (display_order !== undefined) { updates.push(`display_order = $${values.length + 1}`); values.push(Number(display_order)); }
+      
+      let updatedCat = null;
+      if (updates.length > 0) {
+        values.push(categoryId);
+        values.push(centerId);
+        const { rows } = await pool.query(
+          `UPDATE checkin_categories SET ${updates.join(", ")} WHERE id = $${values.length - 1} AND center_id = $${values.length} RETURNING *`,
+          values
+        );
+        if (!rows[0]) {
+          await pool.query("ROLLBACK");
+          res.status(404).json({ error: "Category not found" }); return;
+        }
+        updatedCat = rows[0];
+      }
+      
+      if (Array.isArray(ingredients)) {
+        await pool.query(`DELETE FROM checkin_category_ingredients WHERE category_id = $1`, [categoryId]);
+        for (const ingId of ingredients) {
+          await pool.query(
+            `INSERT INTO checkin_category_ingredients (category_id, ingredient_id) VALUES ($1, $2)`,
+            [categoryId, ingId]
+          );
+        }
+      }
+      
+      await pool.query("COMMIT");
+      res.json(updatedCat || { id: categoryId, updated: true });
+    } catch(e) {
+      await pool.query("ROLLBACK");
+      res.status(500).json({ error: "Failed to update category" });
+    }
+  });
+
+  router.delete("/admin/centers/:centerId/checkin-categories/:categoryId", requireAdmin, async (req, res) => {
+    const { centerId, categoryId } = req.params;
+    const adminReq = req as AdminRequest;
+    if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+    
+    const { rows } = await pool.query(
+      `DELETE FROM checkin_categories WHERE id = $1 AND center_id = $2 RETURNING id`,
+      [categoryId, centerId]
+    );
+    if (!rows[0]) { res.status(404).json({ error: "Category not found" }); return; }
+    res.json({ success: true });
+  });
+
