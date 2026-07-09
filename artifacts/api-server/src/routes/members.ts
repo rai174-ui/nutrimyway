@@ -486,7 +486,16 @@ router.post("/members/:id/checkin/selections", async (req, res) => {
   if (!Array.isArray(items)) { res.status(400).json({ error: "items array required" }); return; }
   if (items.length > 3) { res.status(400).json({ error: "Max 3 items allowed" }); return; }
 
-  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id = $1`, [checkin.id]);
+  // Only remove non-mandatory selections — mandatory (set-menu) items must be preserved
+  // so they get consumed/deducted at checkout. Deleting them all was the bug.
+  await pool.query(
+    `DELETE FROM visit_menu_selections
+     WHERE checkin_id = $1
+       AND menu_item_id IN (
+         SELECT id FROM menu_items WHERE is_mandatory = FALSE
+       )`,
+    [checkin.id]
+  );
   await pool.query(`DELETE FROM visit_flavour_selections WHERE checkin_id = $1`, [checkin.id]);
 
   for (const item of items) {
@@ -501,6 +510,29 @@ router.post("/members/:id/checkin/selections", async (req, res) => {
         [checkin.id, item.ingredient_id, item.flavour]
       );
     }
+  }
+
+  // Re-ensure all mandatory items with available batches are present in visit_menu_selections
+  // (guards against the case where none existed yet, e.g. member self-checked in without admin).
+  const { rows: mandatoryItems } = await pool.query(
+    `SELECT mi.id FROM menu_items mi
+     WHERE mi.center_id = $1 AND mi.is_mandatory = TRUE
+       AND NOT EXISTS (
+         SELECT 1 FROM menu_item_bom mb
+         WHERE mb.menu_item_id = mi.id AND mb.ingredient_id IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM ingredient_batches ib
+             WHERE ib.ingredient_id = mb.ingredient_id
+               AND ib.center_id = $1 AND ib.status = 'open'
+           )
+       )`,
+    [checkin.center_id]
+  );
+  for (const mi of mandatoryItems) {
+    await pool.query(
+      `INSERT INTO visit_menu_selections (checkin_id, menu_item_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+      [checkin.id, mi.id as number]
+    );
   }
 
   res.json({ saved: items.length });
