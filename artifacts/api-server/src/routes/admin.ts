@@ -2719,4 +2719,44 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
   res.json(results);
 });
 
+// POST /api/admin/super/reset-transactional-data
+// ⚠️  Wipes ALL transactional data — check-ins, consumption logs, inventory batches,
+//     renewals, health records, issuances, OTPs — while keeping master data intact.
+//     Requires superadmin JWT AND body: { confirm: "RESET" } as a double-guard.
+router.post("/admin/super/reset-transactional-data", requireSuperAdmin, async (req, res) => {
+  const { confirm } = req.body as { confirm?: string };
+  if (confirm !== "RESET") {
+    res.status(400).json({ error: 'Body must include { "confirm": "RESET" } to proceed.' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    await client.query("DELETE FROM visit_flavour_selections");
+    await client.query("DELETE FROM visit_menu_selections");
+    await client.query("DELETE FROM member_check_ins");
+    await client.query("DELETE FROM consumption_logs");
+    await client.query("DELETE FROM batch_adjustments");
+    await client.query("DELETE FROM batch_consumption_logs");
+    await client.query("DELETE FROM ingredient_batches");
+    await client.query("DELETE FROM member_renewals");
+    await client.query("DELETE FROM health_records");
+    await client.query("DELETE FROM issuances");
+    await client.query("DELETE FROM otps");
+    await client.query("UPDATE members SET cycle_started_at = NULL");
+
+    await client.query("COMMIT");
+    logger.info("Super admin triggered transactional data reset — all transactional tables cleared.");
+    res.json({ success: true, message: "All transactional data cleared. Master data preserved." });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    logger.error({ err }, "Transactional data reset failed — rolled back.");
+    res.status(500).json({ error: "Reset failed and was rolled back.", detail: err instanceof Error ? err.message : String(err) });
+  } finally {
+    client.release();
+  }
+});
+
 export default router;
