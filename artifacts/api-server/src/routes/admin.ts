@@ -880,7 +880,7 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
                FROM visit_flavour_selections vfs
                JOIN ingredients i ON i.id = vfs.ingredient_id
                WHERE vfs.checkin_id = cl.checkin_id
-                 AND cl.food_item LIKE (i.name || ' -%')
+                 AND LOWER(TRIM(SPLIT_PART(cl.food_item, ' – ', 1))) = LOWER(i.name)
                LIMIT 1)
             ) AS quantity_g,
             COALESCE(

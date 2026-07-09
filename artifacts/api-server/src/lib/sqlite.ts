@@ -692,6 +692,7 @@ export async function initDb(): Promise<void> {
   await migrateAdminTables36();
   await migrateAdminTables37();
   await migrateAdminTables38();
+  await migrateAdminTables39();
   await seedCenterPasswords();
   await seedSuperAdmin();
 }
@@ -1012,4 +1013,69 @@ async function migrateAdminTables38(): Promise<void> {
     VALUES ('global', 5, 3)
     ON CONFLICT (id) DO NOTHING
   `);
+}
+
+async function migrateAdminTables39(): Promise<void> {
+  // Gap-fill indexes for tables added after migrateAdminTables34.
+  // All use IF NOT EXISTS so safe to re-run on every server start.
+
+  // ingredient_batches: open-batch lookup used on every check-in availability check + checkout
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS ingredient_batches_ingredient_center_status_idx " +
+    "ON ingredient_batches(ingredient_id, center_id, status)"
+  );
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS ingredient_batches_open_center_idx " +
+    "ON ingredient_batches(center_id, status) WHERE status = 'open'"
+  );
+
+  // visit_menu_selections: looked up by checkin_id on every checkout + mandatory re-upsert
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS visit_menu_selections_checkin_idx " +
+    "ON visit_menu_selections(checkin_id)"
+  );
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS visit_menu_selections_menu_item_idx " +
+    "ON visit_menu_selections(menu_item_id)"
+  );
+
+  // visit_flavour_selections: looked up by checkin_id on every checkout + qty fallback query
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS visit_flavour_selections_checkin_idx " +
+    "ON visit_flavour_selections(checkin_id)"
+  );
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS visit_flavour_selections_ingredient_idx " +
+    "ON visit_flavour_selections(ingredient_id)"
+  );
+
+  // menu_item_bom: ingredient_id join used in availability checks + serving_qty fallback
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS menu_item_bom_ingredient_idx " +
+    "ON menu_item_bom(ingredient_id) WHERE ingredient_id IS NOT NULL"
+  );
+
+  // consumption_logs: date-range scans for the consumption report
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS consumption_logs_logged_at_idx " +
+    "ON consumption_logs(logged_at DESC)"
+  );
+
+  // members: mobile number lookup used in OTP login flow
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS members_mobile_idx " +
+    "ON members(mobile)"
+  );
+
+  // member_check_ins: cancelled flag used in cycle-count queries
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS member_check_ins_member_cancelled_idx " +
+    "ON member_check_ins(member_id, cancelled, checked_in_at DESC)"
+  );
+
+  // Re-analyze newly indexed tables so query planner uses fresh statistics
+  await pool.query(
+    "ANALYZE ingredient_batches, visit_menu_selections, visit_flavour_selections, " +
+    "menu_item_bom, consumption_logs, members, member_check_ins"
+  );
 }
