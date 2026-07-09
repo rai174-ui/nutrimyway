@@ -119,9 +119,9 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
     const kcalPerServing = Number((kcalIngRows[0] as { kcal_per_serving: number | null })?.kcal_per_serving) || null;
 
     await pool.query(
-      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, calories_kcal, checkin_id, logged_at)
-       VALUES ($1, $4, $2, $3, $5, NOW())`,
-      [memberId, foodLabel, kcalPerServing, slotForNowIST(), checkinId]
+      `INSERT INTO consumption_logs (member_id, meal_slot, food_item, quantity_g, calories_kcal, checkin_id, logged_at)
+       VALUES ($1, $4, $2, $5, $3, $6, NOW())`,
+      [memberId, foodLabel, kcalPerServing, slotForNowIST(), batchRow.serving_qty, checkinId]
     );
 
     await pool.query(
