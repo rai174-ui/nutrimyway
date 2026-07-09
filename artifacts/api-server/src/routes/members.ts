@@ -582,6 +582,7 @@ If you cannot identify food, return: {"error": "No food detected"}`;
     food_item: String(parsed.food_item ?? ""),
     calories_kcal: parsed.calories_kcal != null ? Number(parsed.calories_kcal) : null,
     protein_g: parsed.protein_g != null ? Number(parsed.protein_g) : null,
+    fiber_g: parsed.fiber_g != null ? Number(parsed.fiber_g) : null,
   });
 });
 
