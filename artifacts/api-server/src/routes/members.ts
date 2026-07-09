@@ -534,7 +534,7 @@ router.post("/members/:id/analyze-food-photo", async (req, res) => {
 
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(rows[0].gemini_api_key as string);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   const prompt = `Analyse this food image and respond with ONLY a valid JSON object, no markdown, no explanation:
 {
