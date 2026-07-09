@@ -27,6 +27,20 @@ export default function SetMenuPage() {
 
   const centerId = getAdminCenter()?.id;
 
+  const assignedOtherIds = useMemo(() => {
+    const ids = new Set<number>();
+    categories.forEach(c => {
+      if (c.id !== editId) {
+        c.ingredients.forEach(i => ids.add(i.ingredient_id));
+      }
+    });
+    return ids;
+  }, [categories, editId]);
+
+  const availableIngredients = useMemo(() => {
+    return ingredients.filter(ing => !assignedOtherIds.has(ing.id));
+  }, [ingredients, assignedOtherIds]);
+
   async function load() {
     if (!centerId) return;
     try {
@@ -374,7 +388,12 @@ export default function SetMenuPage() {
               <div className="pt-2 border-t border-border">
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 ml-1">Select Ingredients</label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
-                  {ingredients.map(ing => (
+                  {availableIngredients.length === 0 && (
+                    <div className="col-span-full p-4 text-center text-sm text-muted-foreground italic">
+                      No available ingredients left to add.
+                    </div>
+                  )}
+                  {availableIngredients.map(ing => (
                     <label key={ing.id} className="flex items-center gap-3 p-3 border border-border rounded-xl hover:bg-slate-50 cursor-pointer transition-colors">
                       <input 
                         type="checkbox" 
