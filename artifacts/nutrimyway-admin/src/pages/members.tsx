@@ -14,7 +14,7 @@ import {
   type MemberType, type MemberRenewal, type MemberRenewalReportRow, MEMBER_TYPE_LABELS, CHECKIN_CAP, type Ingredient,
 } from "@/lib/api";
 
-interface FlavourOption { id: number; name: string; flavour: string; unit: string; }
+interface FlavourOption { id: number; name: string; flavour: string; unit: string; category_id: number | null; category_name: string | null; }
 interface FlavourSelection { id: number; checkin_id: number; ingredient_id: number; flavour: string; }
 
 function formatTime(iso: string) {
@@ -406,8 +406,35 @@ function VisitPanel({
         apiGet<FlavourOption[]>(`/admin/checkins/${checkinId}/flavour-options`),
         apiGet<FlavourSelection[]>(`/admin/checkins/${checkinId}/flavour-selections`),
       ]);
+
+      // Group by category (use category_name if available, fall back to ingredient name)
+      const grouped: Record<string, FlavourOption[]> = {};
+      for (const opt of fOpts) {
+        const key = opt.category_name ?? opt.name;
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(opt);
+      }
+
+      // Auto-select single-item groups not already selected
+      const alreadySelectedIds = new Set(fSels.map(f => f.ingredient_id));
+      const toAutoSelect = Object.values(grouped)
+        .filter(g => g.length === 1)
+        .map(g => g[0])
+        .filter(opt => !alreadySelectedIds.has(opt.id));
+
+      const newSels = [...fSels];
+      for (const opt of toAutoSelect) {
+        try {
+          const created = await apiPost<FlavourSelection>(`/admin/checkins/${checkinId}/flavour-selections`, {
+            ingredient_id: opt.id,
+            flavour: opt.flavour,
+          });
+          newSels.push(created);
+        } catch { /* non-fatal */ }
+      }
+
       setFlavourOptions(fOpts);
-      setFlavourSelections(fSels);
+      setFlavourSelections(newSels);
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }, [centerId, checkinId]);
@@ -494,38 +521,101 @@ function VisitPanel({
 
       {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">{error}</p>}
 
-      {/* Direct flavour items — new checkin_categories system */}
+      {/* Items grouped by category — single-item = auto-selected badge, multi-item = tappable buttons */}
       {flavourOptions.length === 0 ? (
         <p className="text-xs text-muted-foreground">No items configured for this center yet.</p>
-      ) : (
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-            Direct Items — tap to select
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {flavourOptions.map(opt => {
-              const selected = selectedFlavourIngredientIds.has(opt.id);
+      ) : (() => {
+        // Build groups
+        const grouped: Record<string, FlavourOption[]> = {};
+        for (const opt of flavourOptions) {
+          const key = opt.category_name ?? opt.name;
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(opt);
+        }
+
+        return (
+          <div className="space-y-3">
+            {Object.entries(grouped).map(([groupName, opts]) => {
+              const isSingle = opts.length === 1;
+              const selectedOpt = opts.find(o => selectedFlavourIngredientIds.has(o.id));
+
               return (
-                <button
-                  key={opt.id}
-                  onClick={() => void toggleFlavour(opt)}
-                  disabled={busy}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all disabled:cursor-not-allowed ${
-                    selected
-                      ? "bg-violet-100 text-violet-800 border-violet-300"
-                      : "bg-background text-foreground border-border hover:border-violet-400 hover:text-violet-700"
-                  }`}
-                >
-                  {selected
-                    ? <CheckCircle2 className="w-3.5 h-3.5" />
-                    : <XCircle className="w-3.5 h-3.5 opacity-40" />}
-                  {opt.flavour}
-                </button>
+                <div key={groupName} className="rounded-xl border border-border overflow-hidden">
+                  <div className="px-3 py-1.5 bg-muted/40 border-b border-border/50">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{groupName}</p>
+                  </div>
+                  <div className="p-3">
+                    {isSingle ? (
+                      // Auto-selected single item
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-foreground truncate">{opts[0].name}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{opts[0].flavour}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Auto</span>
+                          <button
+                            onClick={() => void toggleFlavour(opts[0])}
+                            disabled={busy}
+                            className="w-5 h-5 rounded-full bg-muted flex items-center justify-center hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                            title="Remove"
+                          >
+                            <XCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      // Multi-flavour: tappable pills
+                      <div className="space-y-2">
+                        {selectedOpt && (
+                          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-violet-50 border border-violet-200 mb-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-violet-600 flex-shrink-0" />
+                              <span className="text-xs font-medium text-violet-800 truncate">{selectedOpt.flavour}</span>
+                            </div>
+                            <button
+                              onClick={() => void toggleFlavour(selectedOpt)}
+                              disabled={busy}
+                              className="w-5 h-5 rounded-full bg-muted flex items-center justify-center hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                            >
+                              <XCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                            </button>
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {opts.map(opt => {
+                            const selected = selectedFlavourIngredientIds.has(opt.id);
+                            return (
+                              <button
+                                key={opt.id}
+                                onClick={() => void toggleFlavour(opt)}
+                                disabled={busy}
+                                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all disabled:cursor-not-allowed ${
+                                  selected
+                                    ? "bg-violet-100 text-violet-800 border-violet-300"
+                                    : "bg-background text-foreground border-border hover:border-violet-400 hover:text-violet-700"
+                                }`}
+                              >
+                                {selected && <CheckCircle2 className="w-3 h-3" />}
+                                {opt.flavour}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               );
             })}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Checkout footer */}
       <div className="pt-2 border-t border-border/50 space-y-2">
