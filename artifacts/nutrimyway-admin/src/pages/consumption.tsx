@@ -17,7 +17,7 @@ function formatDate(d: string) {
 
 // ── Excel helpers ─────────────────────────────────────────────────────────────
 
-function exportComponentsXlsx(data: ConsumptionReport) {
+function exportItemsXlsx(data: ConsumptionReport) {
   const rows = data.by_component.map(c => ({
     Ingredient: c.ingredient,
     Unit: c.unit,
@@ -27,11 +27,11 @@ function exportComponentsXlsx(data: ConsumptionReport) {
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "By Component");
-  XLSX.writeFile(wb, `consumption-by-component-${data.from}-to-${data.to}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, "By Item");
+  XLSX.writeFile(wb, `consumption-by-item-${data.from}-to-${data.to}.xlsx`);
 }
 
-function exportLogsXlsx(data: ConsumptionReport, logs: ConsumptionLog[]) {
+function exportMembersXlsx(data: ConsumptionReport, logs: ConsumptionLog[]) {
   const rows = logs.map(l => ({
     Member: l.member_name,
     "Menu Item": l.menu_item_name ?? "Self-logged",
@@ -43,8 +43,8 @@ function exportLogsXlsx(data: ConsumptionReport, logs: ConsumptionLog[]) {
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "All Logs");
-  XLSX.writeFile(wb, `consumption-logs-${data.from}-to-${data.to}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, "By Member");
+  XLSX.writeFile(wb, `consumption-by-member-${data.from}-to-${data.to}.xlsx`);
 }
 
 function exportConsumedBatchesXlsx(batches: IngredientBatch[]) {
@@ -73,7 +73,7 @@ export default function ConsumptionPage() {
   const [consumedBatches, setConsumedBatches] = useState<IngredientBatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [batchesLoading, setBatchesLoading] = useState(true);
-  const [tab, setTab] = useState<"components" | "logs" | "batches">("components");
+  const [tab, setTab] = useState<"items" | "members" | "batches">("items");
 
   const load = useCallback(async () => {
     if (!center) return;
@@ -147,7 +147,7 @@ export default function ConsumptionPage() {
               </div>
               <div>
                 <p className="text-xl font-bold">{data.by_component.length}</p>
-                <p className="text-xs text-muted-foreground">BOM Components Used</p>
+                <p className="text-xs text-muted-foreground">Items Consumed</p>
               </div>
             </div>
             <div className="bg-card rounded-2xl border border-border p-4 flex items-center gap-3">
@@ -174,12 +174,12 @@ export default function ConsumptionPage() {
         {/* Tab bar + Export button */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex gap-1 bg-muted rounded-xl p-1 w-fit">
-            {(["components", "logs", "batches"] as const).map(t => (
+            {(["items", "members", "batches"] as const).map(t => (
               <button key={t} onClick={() => setTab(t)}
                 className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
                   tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                 }`}>
-                {t === "components" ? "By Component" : t === "logs" ? "All Logs" : (
+                {t === "items" ? "Consumption by Items" : t === "members" ? "Consumption by Members" : (
                   <span className="flex items-center gap-1.5">
                     <Archive className="w-3.5 h-3.5" />
                     Consumed Batches
@@ -193,15 +193,15 @@ export default function ConsumptionPage() {
           </div>
 
           {/* Per-tab export button */}
-          {tab === "components" && data && data.by_component.length > 0 && (
-            <button onClick={() => exportComponentsXlsx(data)}
+          {tab === "items" && data && data.by_component.length > 0 && (
+            <button onClick={() => exportItemsXlsx(data)}
               className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 text-xs font-medium transition-colors">
               <FileDown className="w-3.5 h-3.5" />
               Export Excel
             </button>
           )}
-          {tab === "logs" && data && data.logs.length > 0 && (
-            <button onClick={() => exportLogsXlsx(data, data.logs)}
+          {tab === "members" && data && data.logs.length > 0 && (
+            <button onClick={() => exportMembersXlsx(data, data.logs)}
               className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 text-xs font-medium transition-colors">
               <FileDown className="w-3.5 h-3.5" />
               Export Excel
@@ -218,7 +218,7 @@ export default function ConsumptionPage() {
 
         {/* ── Tab content ── */}
 
-        {tab === "components" && (
+        {tab === "items" && (
           loading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => <div key={i} className="h-12 rounded-xl bg-card border border-border animate-pulse" />)}
@@ -257,7 +257,7 @@ export default function ConsumptionPage() {
           )
         )}
 
-        {tab === "logs" && (
+        {tab === "members" && (
           loading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => <div key={i} className="h-12 rounded-xl bg-card border border-border animate-pulse" />)}
