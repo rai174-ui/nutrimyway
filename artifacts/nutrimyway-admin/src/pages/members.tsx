@@ -546,29 +546,44 @@ function VisitPanel({
                   </div>
                   <div className="p-3">
                     {isSingle ? (
-                      // Auto-selected single item
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      // Single-item group: show as auto-selected if confirmed in state, tappable if not yet
+                      selectedFlavourIngredientIds.has(opts[0].id) ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-foreground truncate">{opts[0].name}</p>
+                              <p className="text-[10px] text-muted-foreground truncate">{opts[0].flavour}</p>
+                            </div>
                           </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Auto</span>
+                            <button
+                              onClick={() => void toggleFlavour(opts[0])}
+                              disabled={busy}
+                              className="w-5 h-5 rounded-full bg-muted flex items-center justify-center hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                              title="Remove"
+                            >
+                              <XCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        // Auto-select pending / failed — show as tappable
+                        <button
+                          onClick={() => void toggleFlavour(opts[0])}
+                          disabled={busy}
+                          className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border border-dashed border-border hover:border-emerald-400 hover:bg-emerald-50 transition-all disabled:opacity-50 text-left"
+                        >
+                          <XCircle className="w-3.5 h-3.5 opacity-40 flex-shrink-0" />
                           <div className="min-w-0">
                             <p className="text-xs font-medium text-foreground truncate">{opts[0].name}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{opts[0].flavour}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{opts[0].flavour} · Tap to select</p>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Auto</span>
-                          <button
-                            onClick={() => void toggleFlavour(opts[0])}
-                            disabled={busy}
-                            className="w-5 h-5 rounded-full bg-muted flex items-center justify-center hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                            title="Remove"
-                          >
-                            <XCircle className="w-3.5 h-3.5 text-muted-foreground" />
-                          </button>
-                        </div>
-                      </div>
+                        </button>
+                      )
                     ) : (
                       // Multi-flavour: tappable pills
                       <div className="space-y-2">

@@ -285,13 +285,23 @@ export function Log() {
           return;
         }
         setCheckinMenu(data);
-        // Seed selections from server, then auto-add any single-ingredient categories
+        // Seed selections from server
         const existing = data.selections ?? [];
-        const existingIds = new Set(existing.map(s => s.category_id));
+        const existingCatIds = new Set(existing.map(s => s.category_id));
+        // Auto-add single-ingredient categories that aren't already selected
         const autoAdded = (data.categories as CheckinCategory[])
-          .filter(cat => cat.ingredients.length === 1 && !existingIds.has(cat.id))
+          .filter(cat => cat.ingredients.length === 1 && !existingCatIds.has(cat.id))
           .map(cat => ({ category_id: cat.id, ingredient_id: cat.ingredients[0].ingredient_id }));
-        setSelections([...existing, ...autoAdded]);
+        const allSelections = [...existing, ...autoAdded];
+        setSelections(allSelections);
+        // Persist auto-added items immediately so checkout logs them correctly
+        if (autoAdded.length > 0) {
+          apiFetch(`/members/${MEMBER_ID}/checkin/selections`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items: allSelections }),
+          }).catch(() => { /* non-blocking, best-effort */ });
+        }
       })
       .catch(() => {
         setCheckinMenu({ categories: [], selections: [], error: "Failed to load check-in menu" });
