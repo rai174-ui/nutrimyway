@@ -12,7 +12,7 @@ import {
   Plus, X, Loader2, Trash2, FileDown,
   PackageOpen, PackageCheck,
   ClipboardList, MinusCircle, AlertTriangle, PackagePlus,
-  SlidersHorizontal, Users,
+  SlidersHorizontal, Users, Search,
 } from "lucide-react";
 
 function batchCapacity(b: IngredientBatch): number {
@@ -699,6 +699,7 @@ function BatchInventory({
   const [addingBatch, setAddingBatch] = useState(false);
   const [pendingIngredientId, setPendingIngredientId] = useState<number | undefined>();
   const [adjustingId, setAdjustingId] = useState<number | null>(null);
+  const [batchSearch, setBatchSearch] = useState("");
 
   const activeBatches = useMemo(() => batches.filter(b => b.status !== "consumed"), [batches]);
 
@@ -729,6 +730,16 @@ function BatchInventory({
     [activeBatches, ingredients]
   );
 
+  // Filtered by search query
+  const filteredNewBatches = useMemo(() => {
+    const q = batchSearch.trim().toLowerCase();
+    if (!q) return newBatches;
+    return newBatches.filter(b =>
+      b.ingredient_name?.toLowerCase().includes(q) ||
+      b.batch_number?.toLowerCase().includes(q)
+    );
+  }, [newBatches, batchSearch]);
+
   // Member-assigned packs (open or new, shown in their own section)
   const memberBatches = useMemo(() =>
     activeBatches
@@ -753,23 +764,46 @@ function BatchInventory({
     <div className="space-y-4">
       {/* ── New Batches ──────────────────────────────────────────── */}
       <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <PackageCheck className="w-5 h-5 text-sky-600" />
-            <h2 className="text-base font-semibold text-foreground">New Batches</h2>
-            <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
-              {newBatches.length} sealed
-            </span>
+        {/* Header row: title + search + Add Batch button */}
+        <div className="px-5 py-4 border-b border-border space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <PackageCheck className="w-5 h-5 text-sky-600" />
+              <h2 className="text-base font-semibold text-foreground">New Batches</h2>
+              <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+                {batchSearch.trim() ? `${filteredNewBatches.length} of ${newBatches.length}` : `${newBatches.length} sealed`}
+              </span>
+            </div>
+            <button
+              onClick={() => { setAddingBatch(v => !v); setPendingIngredientId(undefined); }}
+              disabled={ingredients.length === 0}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+              title={ingredients.length === 0 ? "Add items in Item Master first" : undefined}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Batch
+            </button>
           </div>
-          <button
-            onClick={() => { setAddingBatch(v => !v); setPendingIngredientId(undefined); }}
-            disabled={ingredients.length === 0}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-            title={ingredients.length === 0 ? "Add items in Item Master first" : undefined}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Batch
-          </button>
+
+          {/* Search bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={batchSearch}
+              onChange={e => setBatchSearch(e.target.value)}
+              placeholder="Search by ingredient or batch #…"
+              className="w-full pl-8 pr-8 py-2 text-sm bg-muted/50 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background transition-colors"
+            />
+            {batchSearch && (
+              <button
+                onClick={() => setBatchSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {addingBatch && (
@@ -786,6 +820,10 @@ function BatchInventory({
           <p className="px-5 py-8 text-center text-sm text-muted-foreground">
             No sealed batches. Use "Add Batch" to register a received pack.
           </p>
+        ) : filteredNewBatches.length === 0 && batchSearch.trim() ? (
+          <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+            No batches match <span className="font-semibold text-foreground">"{batchSearch}"</span>.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -799,7 +837,7 @@ function BatchInventory({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
-                {newBatches.map(b => (
+                {filteredNewBatches.map(b => (
                   <tr key={b.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-2.5 pl-5 pr-3 font-medium text-foreground">{b.ingredient_name}</td>
                     <td className="py-2.5 px-3 text-muted-foreground font-mono text-xs">{b.batch_number}</td>
