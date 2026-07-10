@@ -586,6 +586,7 @@ export function Log() {
             ) : checkinMenu.categories.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">No check-in categories available at this center.</p>
             ) : (
+              <>
               <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/60">
                 {checkinMenu.categories.map(cat => {
                   const isSingle = cat.ingredients.length === 1;
@@ -659,7 +660,9 @@ export function Log() {
                 {savingSelections ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 Confirm Selection
               </button>
+              </>
             )}
+
           </div>
 
         {/* Slot selector */}

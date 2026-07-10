@@ -64,10 +64,10 @@ export function Profile() {
           <h1 className="text-2xl font-bold text-foreground">{member?.name}</h1>
           <p className="text-muted-foreground text-sm flex items-center justify-center gap-1 mt-1">
             Member #{member?.membership_no ?? member?.id}
-            {member?.gender && (
+            {(member as any)?.gender && (
               <>
                 <span className="text-border">•</span>
-                <span className="capitalize">{member.gender}</span>
+                <span className="capitalize">{(member as any).gender}</span>
               </>
             )}
             <span className="text-border">•</span>
