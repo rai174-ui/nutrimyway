@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, Sparkles, Flame } from "lucide-react";
+import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, Sparkles, Search, CalendarDays, UtensilsCrossed, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCreateConsumptionLog, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { native, snapPhoto } from "@/lib/capacitor";
 import { apiFetch } from "@/lib/api-base";
+import { format, parseISO, isValid } from "date-fns";
 
 function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
 
@@ -51,10 +52,202 @@ interface CheckinMenuResponse {
 // Wizard states
 type WizardStep = "permission" | "setup-1" | "setup-2" | "setup-3";
 
+interface MealLog {
+  id: number;
+  meal_slot: string;
+  food_item: string;
+  calories_kcal: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  logged_at: string;
+  checkin_id: number | null;
+  selected_flavour: string | null;
+  photo_url: string | null;
+}
+
+function safeFormat(val: string | null | undefined, fmt: string, fallback = "--"): string {
+  if (!val) return fallback;
+  try { const d = parseISO(val); return isValid(d) ? format(d, fmt) : fallback; } catch { return fallback; }
+}
+
+// ── Meal History Tab ──────────────────────────────────────────────────────────
+function MealHistory({ memberId }: { memberId: number }) {
+  const [selectedDate, setSelectedDate] = useState(todayLocal());
+  const [search, setSearch] = useState("");
+  const [logs, setLogs] = useState<MealLog[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchLogs = useCallback(async (date: string) => {
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/members/${memberId}/consumption?date=${date}`);
+      const data = await res.json() as MealLog[];
+      setLogs(Array.isArray(data) ? data : []);
+    } catch {
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [memberId]);
+
+  useEffect(() => { void fetchLogs(selectedDate); }, [selectedDate, fetchLogs]);
+
+  function shiftDate(delta: number) {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + delta);
+    setSelectedDate(d.toLocaleDateString("en-CA"));
+  }
+
+  // Filter: exclude center check-in logs (they have a checkin_id), only show outside/custom meals
+  const outsideLogs = logs.filter(l => l.checkin_id === null);
+
+  const filtered = outsideLogs.filter(l =>
+    !search.trim() ||
+    l.food_item.toLowerCase().includes(search.trim().toLowerCase()) ||
+    (l.meal_slot ?? "").toLowerCase().includes(search.trim().toLowerCase())
+  );
+
+  const grouped: Record<string, MealLog[]> = {};
+  for (const log of filtered) {
+    const slot = log.meal_slot ?? "Other";
+    if (!grouped[slot]) grouped[slot] = [];
+    grouped[slot].push(log);
+  }
+
+  const slotOrder = ["Breakfast", "Lunch", "Snack", "Dinner", "Other"];
+  const sortedSlots = Object.keys(grouped).sort(
+    (a, b) => slotOrder.indexOf(a) - slotOrder.indexOf(b)
+  );
+
+  const totalKcal = filtered.reduce((sum, l) => sum + (l.calories_kcal ?? 0), 0);
+  const totalProtein = filtered.reduce((sum, l) => sum + (l.protein_g ?? 0), 0);
+
+  const isToday = selectedDate === todayLocal();
+
+  return (
+    <div className="space-y-4">
+      {/* Date Navigator */}
+      <div className="bg-card border border-border rounded-xl p-3">
+        <div className="flex items-center gap-2 mb-3">
+          <button
+            onClick={() => shiftDate(-1)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-muted hover:bg-muted/80 transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="flex-1">
+            <input
+              type="date"
+              value={selectedDate}
+              max={todayLocal()}
+              onChange={e => setSelectedDate(e.target.value)}
+              className="w-full bg-muted border border-border rounded-lg px-3 py-1.5 text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <button
+            onClick={() => shiftDate(1)}
+            disabled={isToday}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-muted hover:bg-muted/80 transition-colors disabled:opacity-30"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search meals..."
+            className="w-full bg-muted border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2">
+              <X className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Summary strip */}
+      {filtered.length > 0 && (
+        <div className="flex gap-2">
+          <div className="flex-1 bg-orange-50 border border-orange-100 rounded-lg p-2.5 text-center">
+            <p className="text-[10px] text-orange-500 font-bold uppercase">Calories</p>
+            <p className="text-sm font-bold text-orange-700">{Math.round(totalKcal)} <span className="text-[10px] font-normal">kcal</span></p>
+          </div>
+          <div className="flex-1 bg-blue-50 border border-blue-100 rounded-lg p-2.5 text-center">
+            <p className="text-[10px] text-blue-500 font-bold uppercase">Protein</p>
+            <p className="text-sm font-bold text-blue-700">{totalProtein.toFixed(1)} <span className="text-[10px] font-normal">g</span></p>
+          </div>
+          <div className="flex-1 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5 text-center">
+            <p className="text-[10px] text-emerald-500 font-bold uppercase">Items</p>
+            <p className="text-sm font-bold text-emerald-700">{filtered.length}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Meal List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+          <UtensilsCrossed className="w-10 h-10 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">
+            {outsideLogs.length === 0
+              ? "No outside meals logged for this date"
+              : "No meals match your search"}
+          </p>
+          {outsideLogs.length === 0 && isToday && (
+            <p className="text-xs text-muted-foreground/60">Use the Log tab to add a meal</p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {sortedSlots.map(slot => (
+            <div key={slot} className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-3 py-2 bg-muted/40 border-b border-border/60">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{slot}</h3>
+              </div>
+              <div className="divide-y divide-border/40">
+                {grouped[slot].map(log => (
+                  <div key={log.id} className="px-3 py-2.5 flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{log.food_item}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {safeFormat(log.logged_at, "h:mm a")}
+                        {log.selected_flavour && <span className="ml-1 text-primary/70">· {log.selected_flavour}</span>}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      {log.calories_kcal != null && (
+                        <p className="text-xs font-semibold text-foreground">{Math.round(log.calories_kcal)} kcal</p>
+                      )}
+                      {log.protein_g != null && (
+                        <p className="text-[10px] text-muted-foreground">{log.protein_g.toFixed(1)}g protein</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Log() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { memberId: MEMBER_ID } = useAuth();
+  const [activeTab, setActiveTab] = useState<"log" | "history">("log");
   const [activeSlot, setActiveSlot] = useState(autoSlot);
   const [foodItem, setFoodItem] = useState("");
   const [customKcal, setCustomKcal] = useState("");
@@ -328,7 +521,29 @@ export function Log() {
           <h1 className="text-2xl font-bold text-foreground">Log Meal</h1>
         </header>
 
-        {/* Daily Club Check-in */}
+        {/* Tab switcher */}
+        <div className="flex gap-1 p-1 bg-muted rounded-lg">
+          <button
+            onClick={() => setActiveTab("log")}
+            className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all ${
+              activeTab === "log" ? "bg-card shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Log Meal
+          </button>
+          <button
+            onClick={() => setActiveTab("history")}
+            className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all ${
+              activeTab === "history" ? "bg-card shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            History
+          </button>
+        </div>
+
+        {activeTab === "history" ? (
+          MEMBER_ID ? <MealHistory memberId={MEMBER_ID} /> : null
+        ) : (
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
           <div className="bg-card border border-border rounded-[12px] p-5 shadow-sm">
             <div className="flex items-center gap-3 mb-4">
@@ -416,105 +631,105 @@ export function Log() {
           })}
         </div>
 
-        {/* Custom entry */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Custom Entry</h2>
-            <button
-              onClick={handleCameraClick}
-              disabled={aiLoading}
-              className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-full px-3 py-1.5 transition-colors disabled:opacity-50"
-            >
-              {aiLoading
-                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analysing…</>
-                : <><Camera className="w-3.5 h-3.5" /> Snap &amp; Analyse</>
-              }
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            <input
-              type="text"
-              value={foodItem}
-              onChange={(e) => { setFoodItem(e.target.value); setAiEstimated(false); }}
-              placeholder="What did you eat?"
-              className="w-full bg-card border border-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-            />
-
-            <div className="grid grid-cols-3 gap-3">
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={customKcal}
-                  onChange={(e) => setCustomKcal(e.target.value)}
-                  placeholder="Calories"
-                  className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">kcal</span>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={customProtein}
-                  onChange={(e) => setCustomProtein(e.target.value)}
-                  placeholder="Protein"
-                  className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">g</span>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={customFiber}
-                  onChange={(e) => setCustomFiber(e.target.value)}
-                  placeholder="Fiber"
-                  className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">g</span>
-              </div>
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Custom Entry</h2>
+              <button
+                onClick={handleCameraClick}
+                disabled={aiLoading}
+                className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-full px-3 py-1.5 transition-colors disabled:opacity-50"
+              >
+                {aiLoading
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analysing…</>
+                  : <><Camera className="w-3.5 h-3.5" /> Snap &amp; Analyse</>
+                }
+              </button>
             </div>
 
-            {/* Photo thumbnail preview */}
-            {photoPreviewUrl && (
-              <div className="relative w-full rounded-xl overflow-hidden border border-border shadow-sm">
-                <img src={photoPreviewUrl} alt="Food photo" className="w-full max-h-48 object-cover" />
-                {aiLoading && (
-                  <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
-                    <Loader2 className="w-7 h-7 animate-spin text-white" />
-                    <span className="text-xs text-white font-medium">Analysing…</span>
-                  </div>
-                )}
-                <button
-                  onClick={() => { setPendingPhoto(null); URL.revokeObjectURL(photoPreviewUrl); setPhotoPreviewUrl(null); }}
-                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center"
-                >
-                  <X className="w-4 h-4 text-white" />
-                </button>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={foodItem}
+                onChange={(e) => { setFoodItem(e.target.value); setAiEstimated(false); }}
+                placeholder="What did you eat?"
+                className="w-full bg-card border border-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              />
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={customKcal}
+                    onChange={(e) => setCustomKcal(e.target.value)}
+                    placeholder="Calories"
+                    className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">kcal</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={customProtein}
+                    onChange={(e) => setCustomProtein(e.target.value)}
+                    placeholder="Protein"
+                    className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">g</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={customFiber}
+                    onChange={(e) => setCustomFiber(e.target.value)}
+                    placeholder="Fiber"
+                    className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">g</span>
+                </div>
               </div>
-            )}
 
-            {aiEstimated && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-primary" />
-                AI estimate — tap any field to adjust
-              </p>
-            )}
+              {/* Photo thumbnail preview */}
+              {photoPreviewUrl && (
+                <div className="relative w-full rounded-xl overflow-hidden border border-border shadow-sm">
+                  <img src={photoPreviewUrl} alt="Food photo" className="w-full max-h-48 object-cover" />
+                  {aiLoading && (
+                    <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="w-7 h-7 animate-spin text-white" />
+                      <span className="text-xs text-white font-medium">Analysing…</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => { setPendingPhoto(null); URL.revokeObjectURL(photoPreviewUrl); setPhotoPreviewUrl(null); }}
+                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center"
+                  >
+                    <X className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              )}
 
-            <button
-              onClick={handleSave}
-              disabled={!foodItem.trim() || createLog.isPending}
-              className="w-full bg-primary text-primary-foreground font-medium py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {createLog.isPending ? "Saving..." : "Save Meal"}
-            </button>
-          </div>
-        </section>
+              {aiEstimated && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  AI estimate — tap any field to adjust
+                </p>
+              )}
+
+              <button
+                onClick={handleSave}
+                disabled={!foodItem.trim() || createLog.isPending}
+                className="w-full bg-primary text-primary-foreground font-medium py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {createLog.isPending ? "Saving..." : "Save Meal"}
+              </button>
+            </div>
+          </section>
+        )}
       </motion.div>
 
     </>
