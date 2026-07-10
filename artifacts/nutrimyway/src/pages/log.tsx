@@ -586,92 +586,79 @@ export function Log() {
             ) : checkinMenu.categories.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">No check-in categories available at this center.</p>
             ) : (
-              <div className="space-y-3">
+              <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/60">
                 {checkinMenu.categories.map(cat => {
                   const isSingle = cat.ingredients.length === 1;
                   const sel = selections.find(s => s.category_id === cat.id);
                   const selectedIng = sel ? cat.ingredients.find(i => i.ingredient_id === sel.ingredient_id) : null;
 
                   return (
-                    <div key={cat.id} className="rounded-xl border border-border overflow-hidden">
-                      {/* Category header */}
-                      <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{cat.name}</span>
-                        {cat.is_mandatory && <span className="text-[9px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">Required</span>}
+                    <div key={cat.id} className="flex items-center gap-2 px-3 py-2 min-h-[40px]">
+                      {/* Category label */}
+                      <div className="w-20 shrink-0">
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 leading-tight line-clamp-2">{cat.name}</span>
+                        {cat.is_mandatory && <span className="block text-[8px] text-amber-600 font-semibold">Required</span>}
                       </div>
 
-                      <div className="p-3">
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
                         {isSingle ? (
-                          // ── Single item: auto-selected badge ─────────────────
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-foreground truncate">{cat.ingredients[0].name}</p>
-                                {cat.ingredients[0].flavour && (
-                                  <p className="text-xs text-muted-foreground truncate">{cat.ingredients[0].flavour}</p>
-                                )}
-                              </div>
-                            </div>
-                            <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">Auto-selected</span>
-                          </div>
-                        ) : (
-                          // ── Multiple flavours: show tappable grid ─────────────
-                          <div className="space-y-2">
-                            {selectedIng && (
-                              <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-primary/5 border border-primary/20 mb-2">
-                                <div className="flex items-center gap-1.5">
-                                  <Check className="w-3.5 h-3.5 text-primary" />
-                                  <span className="text-xs font-medium text-primary">
-                                    {selectedIng.name}{selectedIng.flavour ? ` · ${selectedIng.flavour}` : ""}
-                                  </span>
-                                </div>
-                                <button
-                                  onClick={() => handleIngredientSelect(cat.id, selectedIng.ingredient_id, cat.is_mandatory)}
-                                  className="w-5 h-5 rounded-full bg-muted flex items-center justify-center hover:bg-destructive/10 transition-colors"
-                                  title="Remove selection"
-                                >
-                                  <X className="w-3 h-3 text-muted-foreground" />
-                                </button>
-                              </div>
+                          <span className="text-xs font-medium text-foreground">
+                            {cat.ingredients[0].name}
+                            {cat.ingredients[0].flavour && cat.ingredients[0].flavour !== cat.ingredients[0].name && (
+                              <span className="text-muted-foreground font-normal"> · {cat.ingredients[0].flavour}</span>
                             )}
-                            <div className="flex flex-wrap gap-2">
-                              {cat.ingredients.map(ing => {
-                                const isSelected = isIngredientSelected(cat.id, ing.ingredient_id);
-                                return (
-                                  <button
-                                    key={ing.ingredient_id}
-                                    onClick={() => handleIngredientSelect(cat.id, ing.ingredient_id, cat.is_mandatory)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                                      isSelected
-                                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                                        : "bg-muted/40 border-border text-foreground hover:bg-muted hover:border-primary/40"
-                                    }`}
-                                  >
-                                    {isSelected && <Check className="w-3 h-3" />}
-                                    {ing.flavour ?? ing.name}
-                                  </button>
-                                );
-                              })}
-                            </div>
+                          </span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {cat.ingredients.map(ing => {
+                              const isSelected = isIngredientSelected(cat.id, ing.ingredient_id);
+                              return (
+                                <button
+                                  key={ing.ingredient_id}
+                                  onClick={() => handleIngredientSelect(cat.id, ing.ingredient_id, cat.is_mandatory)}
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all ${
+                                    isSelected
+                                      ? "bg-primary text-primary-foreground border-primary"
+                                      : "bg-muted/50 text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+                                  }`}
+                                >
+                                  {ing.flavour ?? ing.name}
+                                </button>
+                              );
+                            })}
                           </div>
+                        )}
+                      </div>
+
+                      {/* Right badge / action */}
+                      <div className="shrink-0 flex items-center gap-1.5">
+                        {isSingle && (
+                          <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Auto</span>
+                        )}
+                        {!isSingle && selectedIng && (
+                          <button
+                            onClick={() => handleIngredientSelect(cat.id, selectedIng.ingredient_id, cat.is_mandatory)}
+                            className="w-4 h-4 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive transition-colors"
+                            title="Remove"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
                         )}
                       </div>
                     </div>
                   );
                 })}
-
-                <button
-                  onClick={saveSelections}
-                  disabled={savingSelections}
-                  className="w-full bg-primary text-primary-foreground font-semibold py-3.5 rounded-xl shadow-sm hover:bg-primary/90 flex items-center justify-center gap-2 transition-all disabled:opacity-50 mt-2"
-                >
-                  {savingSelections ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-                  Save Menu Selections
-                </button>
               </div>
+
+              <button
+                onClick={saveSelections}
+                disabled={savingSelections}
+                className="w-full bg-primary text-primary-foreground font-semibold py-3 rounded-xl shadow-sm hover:bg-primary/90 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              >
+                {savingSelections ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Confirm Selection
+              </button>
             )}
           </div>
 
