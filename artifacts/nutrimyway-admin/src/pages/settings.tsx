@@ -19,6 +19,8 @@ function formatDays(days: Day[]): string {
 }
 
 function DayPicker({ value, onChange }: { value: Day[]; onChange: (v: Day[]) => void }) {
+  const allSelected = value.length === ALL_DAYS.length;
+
   function toggle(day: Day) {
     onChange(
       value.includes(day)
@@ -26,8 +28,29 @@ function DayPicker({ value, onChange }: { value: Day[]; onChange: (v: Day[]) => 
         : [...value, day].sort((a, b) => ALL_DAYS.indexOf(a) - ALL_DAYS.indexOf(b))
     );
   }
+
+  function toggleAll() {
+    onChange(allSelected ? [] : [...ALL_DAYS]);
+  }
+
   return (
     <div className="flex gap-1 flex-wrap">
+      {/* All toggle */}
+      <button
+        type="button"
+        onClick={toggleAll}
+        className={`text-xs font-semibold px-2.5 py-1 rounded transition-colors border ${
+          allSelected
+            ? "bg-violet-600 text-white border-violet-600"
+            : "bg-muted text-muted-foreground border-border hover:bg-violet-100 hover:text-violet-600 hover:border-violet-300"
+        }`}
+      >
+        All
+      </button>
+
+      {/* Divider */}
+      <span className="w-px bg-border self-stretch mx-0.5" />
+
       {ALL_DAYS.map(day => (
         <button
           key={day}
@@ -45,6 +68,7 @@ function DayPicker({ value, onChange }: { value: Day[]; onChange: (v: Day[]) => 
     </div>
   );
 }
+
 
 function BroadcastSettingsCard() {
   const center = getAdminCenter();
