@@ -391,43 +391,35 @@ export function Dashboard() {
   const ringOffset = ringCircumference - (progress * ringCircumference);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-4 space-y-6">
-      <header className="pt-4 pb-2">
-        <h1 className="text-2xl font-bold text-foreground">Hi, {member?.name?.split(' ')[0] || 'Member'}</h1>
-        <p className="text-muted-foreground">{format(new Date(), "EEEE, MMM do")}</p>
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-3 space-y-3 pb-6">
+      {/* Compact header */}
+      <header className="pt-2 pb-1">
+        <h1 className="text-xl font-bold text-foreground">Hi, {member?.name?.split(' ')[0] || 'Member'}</h1>
+        <p className="text-xs text-muted-foreground">{format(new Date(), "EEEE, MMM do")}</p>
       </header>
 
       {/* Expiry / check-in cap warning */}
       {status?.is_expiring_soon && (
         <Link
           href="/profile"
-          className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-[12px] p-3.5"
+          className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl p-2.5"
         >
-          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-amber-900">Membership renewal needed soon</p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              {status.checkins_remaining} of {status.checkin_cap} check-ins left
-              {status.days_until_expiry != null && (
-                <> &middot; expires in {status.days_until_expiry} day{status.days_until_expiry === 1 ? "" : "s"}</>
-              )}
-              . Renew at your center to keep going.
+            <p className="text-xs font-semibold text-amber-900">Membership renewal needed soon</p>
+            <p className="text-[10px] text-amber-700">
+              {status.checkins_remaining} check-ins left
+              {status.days_until_expiry != null && <> · {status.days_until_expiry}d left</>}
             </p>
           </div>
-          <ChevronRight className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+          <ChevronRight className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         </Link>
       )}
 
       {/* Broadcasts */}
       {broadcasts.filter(b => !b.is_read).length > 0 && (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold flex items-center gap-1.5">
-              <Megaphone className="w-3.5 h-3.5 text-amber-600" />
-              Messages from your center
-            </h2>
-          </div>
-          {broadcasts.filter(b => !b.is_read).slice(0, 3).map(b => (
+        <section className="space-y-1.5">
+          {broadcasts.filter(b => !b.is_read).slice(0, 2).map(b => (
             <BroadcastCard key={b.id} broadcast={b} memberId={MEMBER_ID!} onDismiss={() => {
               setBroadcasts(prev => prev.map(p => p.id === b.id ? { ...p, is_read: true } : p));
             }} />
@@ -435,55 +427,59 @@ export function Dashboard() {
         </section>
       )}
 
-      {/* Progress Ring Card */}
-      <section className="bg-card rounded-[12px] p-4 border border-border flex items-center justify-between">
-        <div className="relative w-24 h-24 flex items-center justify-center">
-          <svg className="w-full h-full transform -rotate-90">
-            <circle cx="48" cy="48" r="38" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-secondary" />
-            <circle cx="48" cy="48" r="38" stroke="currentColor" strokeWidth="6" fill="transparent"
-              strokeDasharray={2 * Math.PI * 38} strokeDashoffset={2 * Math.PI * 38 * (1 - (consumedCal / (targetCal || 1)))} className="text-primary transition-all duration-1000 ease-out" />
+      {/* Progress Ring + Macros — compact row */}
+      <section className="bg-card rounded-xl p-3 border border-border flex items-center gap-3">
+        {/* Ring */}
+        <div className="relative w-[76px] h-[76px] shrink-0 flex items-center justify-center">
+          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 76 76">
+            <circle cx="38" cy="38" r="30" stroke="currentColor" strokeWidth="5" fill="transparent" className="text-secondary" />
+            <circle cx="38" cy="38" r="30" stroke="currentColor" strokeWidth="5" fill="transparent"
+              strokeDasharray={2 * Math.PI * 30}
+              strokeDashoffset={2 * Math.PI * 30 * (1 - (consumedCal / (targetCal || 1)))}
+              className="text-primary transition-all duration-1000 ease-out" />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-lg font-bold text-foreground leading-none">{consumedCal.toFixed(0)}</span>
-            <span className="text-[9px] text-muted-foreground uppercase tracking-wider mt-0.5">/ {targetCal}</span>
+            <span className="text-base font-bold text-foreground leading-none">{consumedCal.toFixed(0)}</span>
+            <span className="text-[8px] text-muted-foreground uppercase tracking-wide mt-0.5">/ {targetCal} kcal</span>
           </div>
         </div>
-        
-        <div className="flex-1 ml-5 space-y-2">
-          <div className="flex justify-between items-end">
-            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Protein</span>
-            <span className="text-sm font-semibold">{summary?.total_protein.toFixed(1) || 0}g</span>
+
+        {/* Macro stats — 3 rows */}
+        <div className="flex-1 space-y-1.5">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Protein</span>
+            <span className="text-xs font-bold">{summary?.total_protein?.toFixed(1) || "0.0"}g</span>
           </div>
-          <div className="flex justify-between items-end">
-            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Carbs</span>
-            <span className="text-sm font-semibold">{summary?.total_carbs.toFixed(1) || 0}g</span>
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Carbs</span>
+            <span className="text-xs font-bold">{summary?.total_carbs?.toFixed(1) || "0.0"}g</span>
           </div>
-          <div className="flex justify-between items-end">
-            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Fiber</span>
-            <span className="text-sm font-semibold">{summary?.total_fiber?.toFixed(1) || 0}g</span>
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Fiber</span>
+            <span className="text-xs font-bold">{summary?.total_fiber?.toFixed(1) || "0.0"}g</span>
           </div>
         </div>
       </section>
 
-      {/* Protein / Fiber / Water summary cards */}
+      {/* Target mini-pills (only if targets are set) */}
       {((summary as any)?.protein_target_g || (summary as any)?.fiber_target_g || (summary as any)?.water_target_ml) && (
-        <div className="flex gap-2 px-2 mt-2 mb-2">
+        <div className="flex gap-1.5">
           {(summary as any)?.protein_target_g && (
-            <div className="flex-1 bg-blue-50 border border-blue-100 rounded-xl p-1.5 text-center">
-              <p className="text-[9px] text-blue-500 font-semibold uppercase tracking-wide">Protein</p>
-              <p className="text-xs font-bold text-blue-700 mt-0.5">{Math.round(summary?.total_protein ?? 0)}<span className="text-[9px]">/{Math.round((summary as any).protein_target_g)}g</span></p>
+            <div className="flex-1 bg-blue-50 border border-blue-100 rounded-lg p-1 text-center">
+              <p className="text-[8px] text-blue-500 font-bold uppercase">Protein</p>
+              <p className="text-[10px] font-bold text-blue-700">{Math.round(summary?.total_protein ?? 0)}<span className="text-[8px] font-normal">/{Math.round((summary as any).protein_target_g)}g</span></p>
             </div>
           )}
           {(summary as any)?.fiber_target_g && (
-            <div className="flex-1 bg-green-50 border border-green-100 rounded-xl p-1.5 text-center">
-              <p className="text-[9px] text-green-500 font-semibold uppercase tracking-wide">Fiber</p>
-              <p className="text-xs font-bold text-green-700 mt-0.5">--<span className="text-[9px]">/{Math.round((summary as any).fiber_target_g)}g</span></p>
+            <div className="flex-1 bg-green-50 border border-green-100 rounded-lg p-1 text-center">
+              <p className="text-[8px] text-green-500 font-bold uppercase">Fiber</p>
+              <p className="text-[10px] font-bold text-green-700">{Math.round(summary?.total_fiber ?? 0)}<span className="text-[8px] font-normal">/{Math.round((summary as any).fiber_target_g)}g</span></p>
             </div>
           )}
           {(summary as any)?.water_target_ml && (
-            <div className="flex-1 bg-sky-50 border border-sky-100 rounded-xl p-1.5 text-center">
-              <p className="text-[9px] text-sky-500 font-semibold uppercase tracking-wide">Water</p>
-              <p className="text-xs font-bold text-sky-700 mt-0.5">--<span className="text-[9px]">/{Math.round((summary as any).water_target_ml)}ml</span></p>
+            <div className="flex-1 bg-sky-50 border border-sky-100 rounded-lg p-1 text-center">
+              <p className="text-[8px] text-sky-500 font-bold uppercase">Water</p>
+              <p className="text-[10px] font-bold text-sky-700">--<span className="text-[8px] font-normal">/{Math.round((summary as any).water_target_ml)}ml</span></p>
             </div>
           )}
         </div>
@@ -499,44 +495,45 @@ export function Dashboard() {
       )}
 
       {checkin && checkin.health_log_requested === true && !checkin.health_log_recorded && (
-        <div className="mx-4 mt-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
-          <span className="text-xl">📏</span>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-amber-900">Measurements Requested</p>
-            <p className="text-xs text-amber-700 mt-0.5">Your center has requested body measurements for today.</p>
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2.5">
+          <span className="text-base">📏</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-amber-900">Measurements Requested</p>
+            <p className="text-[10px] text-amber-700">Your center requested body measurements for today.</p>
           </div>
-          <a href="/center" className="text-xs font-semibold text-white bg-amber-500 rounded-lg px-3 py-1.5 whitespace-nowrap no-underline">Record</a>
+          <a href="/center" className="text-[10px] font-semibold text-white bg-amber-500 rounded-lg px-2.5 py-1 whitespace-nowrap no-underline">Record</a>
         </div>
       )}
 
-      {/* Logs section */}
-      <section className="bg-card rounded-[12px] p-4 border border-border">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold flex items-center gap-1.5"><Utensils className="w-4 h-4 text-primary" /> Today's Meals</h2>
+      {/* Today's Meals — compact */}
+      <section className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
+          <h2 className="text-xs font-bold flex items-center gap-1.5 uppercase tracking-wide text-foreground">
+            <Utensils className="w-3.5 h-3.5 text-primary" /> Today's Meals
+          </h2>
           <Link href="/log" className="text-primary hover:text-primary/80 transition-colors">
-            <Plus className="w-5 h-5" />
+            <Plus className="w-4 h-4" />
           </Link>
         </div>
-
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-border/50">
           {["Breakfast", "Lunch", "Snack", "Dinner"].map((slot) => {
             const logs = summary?.logs_by_slot?.[slot] || [];
             if (logs.length === 0) {
               return (
-                <div key={slot} className="py-2.5 flex justify-between items-center opacity-60">
-                  <span className="text-xs font-semibold">{slot}</span>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Empty</span>
+                <div key={slot} className="px-3 py-2 flex justify-between items-center">
+                  <span className="text-[11px] font-semibold text-muted-foreground">{slot}</span>
+                  <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">Nothing logged</span>
                 </div>
               );
             }
             return (
-              <div key={slot} className="py-3">
-                <h4 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wider mb-2">{slot}</h4>
-                <div className="space-y-1.5">
+              <div key={slot} className="px-3 py-2">
+                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider mb-1">{slot}</p>
+                <div className="space-y-1">
                   {logs.map((log) => (
-                    <div key={log.id} className="flex justify-between items-center text-sm">
-                      <span className="text-foreground">{log.food_item}</span>
-                      <span className="text-muted-foreground text-xs">{log.calories_kcal?.toFixed(0)} kcal</span>
+                    <div key={log.id} className="flex justify-between items-center">
+                      <span className="text-xs text-foreground truncate mr-2">{log.food_item}</span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">{log.calories_kcal?.toFixed(0)} kcal</span>
                     </div>
                   ))}
                 </div>
@@ -545,13 +542,6 @@ export function Dashboard() {
           })}
         </div>
       </section>
-
-      <div className="pt-2">
-        <Link href="/log" className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-3 rounded-md font-medium text-sm">
-          <Plus className="w-4 h-4" />
-          Log a Meal
-        </Link>
-      </div>
     </motion.div>
   );
 }
