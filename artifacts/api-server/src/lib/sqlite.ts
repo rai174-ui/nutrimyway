@@ -698,6 +698,7 @@ export async function initDb(): Promise<void> {
     await migrateAdminTables41();
     await migrateAdminTables42();
     await migrateAdminTables43();
+    await migrateAdminTables44();
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
@@ -1178,4 +1179,17 @@ export async function migrateAdminTables42(): Promise<void> {
 async function migrateAdminTables43(): Promise<void> {
   // Gender field for members: 'male' | 'female' | 'other'
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS gender TEXT`);
+}
+
+async function migrateAdminTables44(): Promise<void> {
+  // Member flavor/ingredient selections for each check-in visit
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS visit_ingredient_selections (
+      id SERIAL PRIMARY KEY,
+      checkin_id INTEGER NOT NULL REFERENCES member_check_ins(id) ON DELETE CASCADE,
+      category_id INTEGER REFERENCES checkin_categories(id) ON DELETE SET NULL,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      UNIQUE(checkin_id, category_id, ingredient_id)
+    )
+  `);
 }

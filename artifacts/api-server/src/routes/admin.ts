@@ -1494,7 +1494,7 @@ router.post("/admin/centers/:centerId/members/:memberId/cancel-checkin", require
   const checkinId = (rows[0] as { id: number }).id;
 
   // Remove all pending menu selections so nothing is consumed
-  await pool.query(`DELETE FROM visit_menu_selections WHERE checkin_id = $1`, [checkinId]);
+  await pool.query(`DELETE FROM visit_ingredient_selections WHERE checkin_id = $1`, [checkinId]);
   // Mark as checked out and cancelled — no consumption logs created
   await pool.query(
     `UPDATE member_check_ins SET checked_out_at = NOW(), cancelled = TRUE WHERE id = $1`,
