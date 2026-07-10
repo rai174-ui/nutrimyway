@@ -794,81 +794,94 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
   const from = typeof req.query.from === "string" ? req.query.from : today;
   const to   = typeof req.query.to   === "string" ? req.query.to   : today;
 
-  // ── By Items: aggregate consumption from visit_ingredient_selections (completed checkouts in date range)
+  // ── Unified selections CTE: covers both admin-panel (visit_flavour_selections)
+  //    and member-app (visit_ingredient_selections) checkin records.
   const { rows: byComponent } = await pool.query(
-    `SELECT
+    `WITH all_selections AS (
+       -- Admin panel flavour selections
+       SELECT vfs.checkin_id, vfs.ingredient_id
+       FROM visit_flavour_selections vfs
+       JOIN member_check_ins mci ON mci.id = vfs.checkin_id
+       WHERE mci.center_id = $1
+         AND mci.checked_out_at IS NOT NULL
+         AND mci.cancelled = FALSE
+         AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+
+       UNION ALL
+
+       -- Member app ingredient selections
+       SELECT vis.checkin_id, vis.ingredient_id
+       FROM visit_ingredient_selections vis
+       JOIN member_check_ins mci ON mci.id = vis.checkin_id
+       WHERE mci.center_id = $1
+         AND mci.checked_out_at IS NOT NULL
+         AND mci.cancelled = FALSE
+         AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     )
+     SELECT
        i.name          AS ingredient,
        i.pack_unit     AS unit,
-       SUM(COALESCE(i.serving_qty, 1))            AS total_quantity,
-       COUNT(DISTINCT mci.member_id)              AS member_count,
-       COUNT(DISTINCT vis.checkin_id)             AS log_count
-     FROM visit_ingredient_selections vis
-     JOIN member_check_ins mci ON mci.id = vis.checkin_id
-     JOIN ingredients i ON i.id = vis.ingredient_id
-     WHERE mci.center_id = $1
-       AND mci.checked_out_at IS NOT NULL
-       AND mci.cancelled = FALSE
-       AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+       SUM(COALESCE(i.serving_qty, 1))       AS total_quantity,
+       COUNT(DISTINCT mci.member_id)         AS member_count,
+       COUNT(DISTINCT s.checkin_id)          AS log_count
+     FROM all_selections s
+     JOIN member_check_ins mci ON mci.id = s.checkin_id
+     JOIN ingredients i ON i.id = s.ingredient_id
      GROUP BY i.name, i.pack_unit
      ORDER BY total_quantity DESC`,
     [centerId, from, to]
   );
 
-  // ── By Members: one row per member per checkin, with item list
+  // ── By Members: one row per completed checkin, items aggregated
   const { rows: logsRaw } = await pool.query(
-    `SELECT
-       mci.id          AS checkin_id,
+    `WITH all_selections AS (
+       SELECT vfs.checkin_id, vfs.ingredient_id
+       FROM visit_flavour_selections vfs
+       JOIN member_check_ins mci ON mci.id = vfs.checkin_id
+       WHERE mci.center_id = $1
+         AND mci.checked_out_at IS NOT NULL
+         AND mci.cancelled = FALSE
+         AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+
+       UNION ALL
+
+       SELECT vis.checkin_id, vis.ingredient_id
+       FROM visit_ingredient_selections vis
+       JOIN member_check_ins mci ON mci.id = vis.checkin_id
+       WHERE mci.center_id = $1
+         AND mci.checked_out_at IS NOT NULL
+         AND mci.cancelled = FALSE
+         AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     )
+     SELECT
+       mci.id                                        AS checkin_id,
        mci.member_id,
-       m.name          AS member_name,
-       mci.checked_out_at AS logged_at,
+       m.name                                        AS member_name,
+       mci.checked_out_at                            AS logged_at,
        STRING_AGG(
          CASE WHEN i.flavour IS NOT NULL AND i.flavour != ''
               THEN i.name || ' (' || i.flavour || ')'
               ELSE i.name
          END,
          ', ' ORDER BY i.name
-       )               AS food_item,
-       SUM(COALESCE(i.kcal_per_serving, 0))       AS calories_kcal,
-       SUM(COALESCE(i.serving_qty, 1))            AS quantity_g,
-       NULL::int        AS menu_item_id,
-       NULL::text       AS menu_item_name,
-       NULL::text       AS meal_slot
-     FROM member_check_ins mci
+       )                                             AS food_item,
+       SUM(COALESCE(i.kcal_per_serving, 0))          AS calories_kcal,
+       SUM(COALESCE(i.serving_qty, 1))               AS quantity_g,
+       NULL::int                                     AS menu_item_id,
+       NULL::text                                    AS menu_item_name,
+       NULL::text                                    AS meal_slot
+     FROM (SELECT DISTINCT checkin_id, ingredient_id FROM all_selections) s
+     JOIN member_check_ins mci ON mci.id = s.checkin_id
      JOIN members m ON m.id = mci.member_id
-     JOIN visit_ingredient_selections vis ON vis.checkin_id = mci.id
-     JOIN ingredients i ON i.id = vis.ingredient_id
-     WHERE mci.center_id = $1
-       AND mci.checked_out_at IS NOT NULL
-       AND mci.cancelled = FALSE
-       AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     JOIN ingredients i ON i.id = s.ingredient_id
      GROUP BY mci.id, mci.member_id, m.name, mci.checked_out_at
      ORDER BY mci.checked_out_at DESC`,
     [centerId, from, to]
   );
 
-  // Also include any manually written consumption_logs with checkin_id for this center+period
-  const { rows: clLogs } = await pool.query(
-    `SELECT cl.id AS checkin_id, cl.member_id, m.name AS member_name,
-            cl.logged_at, cl.meal_slot, cl.food_item,
-            cl.quantity_g, cl.calories_kcal,
-            NULL::int AS menu_item_id, NULL::text AS menu_item_name
-     FROM consumption_logs cl
-     JOIN members m ON m.id = cl.member_id
-     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-     WHERE mcm.center_id = $1
-       AND cl.checkin_id IS NOT NULL
-       AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
-       AND NOT EXISTS (
-         SELECT 1 FROM visit_ingredient_selections vis
-         JOIN member_check_ins mci2 ON mci2.id = vis.checkin_id
-         WHERE mci2.id = cl.checkin_id
-       )
-     ORDER BY cl.logged_at DESC`,
-    [centerId, from, to]
-  );
-
-  res.json({ from, to, by_component: byComponent, logs: [...logsRaw, ...clLogs] });
+  res.json({ from, to, by_component: byComponent, logs: logsRaw });
 });
+
 
 
 
