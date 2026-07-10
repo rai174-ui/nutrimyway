@@ -364,13 +364,8 @@ router.post("/members/:id/checkin", async (req, res) => {
 
   // Also record it as a formal health record for the day
   await pool.query(
-    `INSERT INTO health_records (member_id, center_id, recorded_date, weight_kg, recorded_by, checkin_id)
-     VALUES ($1, $2, CURRENT_DATE, $3, 'self', $4)
-     ON CONFLICT (member_id, recorded_date) DO UPDATE SET
-       weight_kg = EXCLUDED.weight_kg,
-       center_id = EXCLUDED.center_id,
-       checkin_id = EXCLUDED.checkin_id`,
-    [memberId, center_id, weight_kg, rows[0].id]
+    `INSERT INTO health_records (member_id, center_id, weight_kg, recorded_at) VALUES ($1,$2,$3,NOW())`,
+    [memberId, center_id, weight_kg]
   );
 
   res.status(201).json(rows[0]);
