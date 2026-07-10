@@ -10,7 +10,7 @@ import { Nav } from "@/components/nav";
 import * as XLSX from "xlsx";
 import {
   apiGet, apiPost, apiPatch, apiDelete, getAdminCenter,
-  type CenterMember, type CenterSettings, type MemberLookup, type MenuItem, type VisitMenuSelection, type HealthRecord, type SelfLogEntry,
+  type CenterMember, type CenterSettings, type MemberLookup, type HealthRecord, type SelfLogEntry,
   type MemberType, type MemberRenewal, type MemberRenewalReportRow, MEMBER_TYPE_LABELS, CHECKIN_CAP, type Ingredient,
 } from "@/lib/api";
 
@@ -385,8 +385,6 @@ function VisitPanel({
   onCheckout: () => void;
 }) {
   const checkinId = member.checkin_id!;
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [selections, setSelections] = useState<VisitMenuSelection[]>([]);
   const [flavourOptions, setFlavourOptions] = useState<FlavourOption[]>([]);
   const [flavourSelections, setFlavourSelections] = useState<FlavourSelection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -404,63 +402,19 @@ function VisitPanel({
 
   const loadData = useCallback(async () => {
     try {
-      const [items, sels, fOpts, fSels] = await Promise.all([
-        apiGet<MenuItem[]>(`/admin/centers/${centerId}/menu-items?memberId=${member.id}`),
-        apiGet<VisitMenuSelection[]>(`/admin/checkins/${checkinId}/menu-selections`),
+      const [fOpts, fSels] = await Promise.all([
         apiGet<FlavourOption[]>(`/admin/checkins/${checkinId}/flavour-options`),
         apiGet<FlavourSelection[]>(`/admin/checkins/${checkinId}/flavour-selections`),
       ]);
-      setMenuItems(items);
-      setSelections(sels);
       setFlavourOptions(fOpts);
       setFlavourSelections(fSels);
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
-  }, [centerId, checkinId, member.id]);
+  }, [centerId, checkinId]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
-  const selectedIds = new Set(selections.map(s => s.menu_item_id));
-  const selectedFlavourIngredientIds = new Set(flavourSelections.map(f => f.ingredient_id));
-
   async function toggleFlavour(opt: FlavourOption) {
-    setBusy(true); setError(null);
-    try {
-      const existing = flavourSelections.find(f => f.ingredient_id === opt.id);
-      if (existing) {
-        await apiDelete(`/admin/flavour-selections/${existing.id}`);
-        setFlavourSelections(prev => prev.filter(f => f.id !== existing.id));
-      } else {
-        const created = await apiPost<FlavourSelection>(`/admin/checkins/${checkinId}/flavour-selections`, {
-          ingredient_id: opt.id,
-          flavour: opt.flavour,
-        });
-        setFlavourSelections(prev => [...prev, created]);
-      }
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
-  }
-
-  async function toggleItem(item: MenuItem) {
-    if (item.is_mandatory) return; // mandatory items cannot be deselected
-    if (!item.is_available && !selectedIds.has(item.id)) return; // unavailable cannot be selected
-    setBusy(true); setError(null);
-    try {
-      if (selectedIds.has(item.id)) {
-        const sel = selections.find(s => s.menu_item_id === item.id);
-        if (sel) {
-          await apiDelete(`/admin/checkin-selections/${sel.id}`);
-          setSelections(prev => prev.filter(s => s.id !== sel.id));
-        }
-      } else {
-        const created = await apiPost<VisitMenuSelection>(`/admin/checkins/${checkinId}/menu-selections`, {
-          menu_item_id: item.id,
-        });
-        setSelections(prev => [...prev, created]);
-      }
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
-  }
 
   async function handleCheckout() {
     setCheckingOut(true); setError(null);
@@ -482,9 +436,9 @@ function VisitPanel({
 
   const mins = minutesSince(member.checked_in_at!);
   const remaining = autoCheckoutMin - mins;
-  const mandatory = menuItems.filter(m => m.is_mandatory);
-  const optional = menuItems.filter(m => !m.is_mandatory);
-  const selectionCount = selections.length + flavourSelections.length;
+
+  const selectedFlavourIngredientIds = new Set(flavourSelections.map(f => f.ingredient_id));
+  const selectionCount = flavourSelections.length;
 
   if (loading) {
     return (
@@ -501,7 +455,7 @@ function VisitPanel({
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
           <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-amber-800">
-            <span className="font-semibold">Repeat visit today.</span> Mandatory items were not auto-added — consumption for this member's set menu has already been recorded. You can still select any additional items below if applicable.
+            <span className="font-semibold">Repeat visit today.</span> This member has already visited today — items can still be selected and logged below.
           </p>
         </div>
       )}
@@ -524,98 +478,10 @@ function VisitPanel({
 
       {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">{error}</p>}
 
-      {menuItems.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No menu items defined for this center yet.</p>
+      {/* Direct flavour items — new checkin_categories system */}
+      {flavourOptions.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No items configured for this center yet.</p>
       ) : (
-        <div className="space-y-3">
-          {/* No batches open — show prominent warning */}
-          {mandatory.every(m => !m.is_available) && mandatory.length > 0 && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
-              <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-red-800">
-                <span className="font-semibold">No set meals can be served.</span>{" "}
-                Open a batch in Inventory before checking in members for a meal visit.
-              </p>
-            </div>
-          )}
-
-          {/* Mandatory items */}
-          {mandatory.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-                Set Menu (Mandatory)
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {mandatory.map(item => {
-                  const unavailable = !item.is_available;
-                  return (
-                    <div key={item.id}
-                      title={unavailable ? "No open batch — open one in Inventory to serve this item" : "Included in this visit"}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                        unavailable
-                          ? "bg-muted/40 text-muted-foreground border-border/40 opacity-60"
-                          : "bg-teal-100 text-teal-800 border-teal-200"
-                      }`}
-                    >
-                      {unavailable
-                        ? <XCircle className="w-3 h-3" />
-                        : <Lock className="w-3 h-3" />}
-                      <span className={unavailable ? "line-through" : ""}>{item.name}</span>
-                      {!unavailable && <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />}
-                    </div>
-                  );
-                })}
-              </div>
-              {mandatory.some(m => !m.is_available) && !mandatory.every(m => !m.is_available) && (
-                <p className="text-[11px] text-amber-700 mt-1.5 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" />
-                  Crossed-out items have no open batch and will not be served or logged.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Optional items */}
-          {optional.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-                Optional — tap to select
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {optional.map(item => {
-                  const selected = selectedIds.has(item.id);
-                  const canSelect = item.is_available || selected;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => void toggleItem(item)}
-                      disabled={busy || (!canSelect)}
-                      title={!item.is_available ? "No open batch — open one in Inventory to serve this item" : undefined}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all disabled:cursor-not-allowed ${
-                        selected
-                          ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                          : canSelect
-                          ? "bg-background text-foreground border-border hover:border-primary hover:text-primary"
-                          : "bg-muted/50 text-muted-foreground border-border/50 opacity-40"
-                      }`}
-                    >
-                      {selected
-                        ? <CheckCircle2 className="w-3.5 h-3.5" />
-                        : canSelect
-                        ? <XCircle className="w-3.5 h-3.5 opacity-40" />
-                        : <XCircle className="w-3.5 h-3.5" />}
-                      <span className={!canSelect ? "line-through" : ""}>{item.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Direct flavour items */}
-      {flavourOptions.length > 0 && (
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
             Direct Items — tap to select
