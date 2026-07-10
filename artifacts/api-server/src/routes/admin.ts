@@ -953,7 +953,7 @@ router.get("/admin/members/lookup", requireAdmin, async (req, res) => {
   const { mobile, email, membership_no } = req.query as { mobile?: string; email?: string; membership_no?: string };
   if (!mobile && !email && !membership_no) { res.status(400).json({ error: "mobile, email or membership_no is required" }); return; }
 
-  const cols = "id, name, mobile, email, membership_no, height_cm, date_of_joining";
+  const cols = "id, name, mobile, email, membership_no, height_cm, gender, date_of_joining";
   let row: Record<string, unknown> | undefined;
   if (mobile) {
     const { rows } = await pool.query(`SELECT ${cols} FROM members WHERE mobile = $1 LIMIT 1`, [mobile.trim()]);
@@ -1034,7 +1034,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
 
   const { rows } = await pool.query(
     `SELECT
-       m.id, m.name, m.date_of_joining, m.height_cm, m.mobile, m.email, m.membership_no,
+       m.id, m.name, m.date_of_joining, m.height_cm, m.gender, m.mobile, m.email, m.membership_no,
        m.dob, m.age_at_joining, m.valid_until, m.is_active, m.member_type, m.cycle_started_at,
        m.daily_kcal, m.protein_target_g, m.fiber_target_g, m.water_target_ml,
        (
@@ -1083,8 +1083,8 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type } = req.body as {
-    name?: string; height_cm?: number | null; date_of_joining?: string | null;
+  const { name, height_cm, gender, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type } = req.body as {
+    name?: string; height_cm?: number | null; gender?: string | null; date_of_joining?: string | null;
     mobile?: string | null; email?: string | null; membership_no?: string | null;
     dob?: string | null; age_at_joining?: number | null; valid_until?: string | null;
     member_type?: string | null;
@@ -1099,9 +1099,9 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
   }
 
   const { rows: memberRows } = await pool.query(
-    `INSERT INTO members (name, height_cm, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type, cycle_started_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) RETURNING *`,
-    [name.trim(), height_cm ?? null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null, member_type ?? "regular"]
+    `INSERT INTO members (name, height_cm, gender, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type, cycle_started_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()) RETURNING *`,
+    [name.trim(), height_cm ?? null, gender?.trim() || null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null, member_type ?? "regular"]
   );
   const member = memberRows[0];
   await pool.query(
@@ -1123,9 +1123,9 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
   );
   if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
 
-  const { name, mobile, email, membership_no, height_cm, date_of_joining, dob, age_at_joining, valid_until, daily_kcal, member_type, protein_target_g, fiber_target_g, water_target_ml } = req.body as {
+  const { name, mobile, email, membership_no, height_cm, gender, date_of_joining, dob, age_at_joining, valid_until, daily_kcal, member_type, protein_target_g, fiber_target_g, water_target_ml } = req.body as {
     name?: string; mobile?: string | null; email?: string | null; membership_no?: string | null;
-    height_cm?: number | null; date_of_joining?: string | null;
+    height_cm?: number | null; gender?: string | null; date_of_joining?: string | null;
     dob?: string | null; age_at_joining?: number | null; valid_until?: string | null; daily_kcal?: number | null;
     member_type?: string | null;
     protein_target_g?: number | null; fiber_target_g?: number | null; water_target_ml?: number | null;
@@ -1145,22 +1145,24 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
        email          = $3,
        membership_no  = $4,
        height_cm      = $5,
-       date_of_joining= $6,
-       dob            = $7,
-       age_at_joining = $8,
-       valid_until    = $9,
-       daily_kcal     = $10,
-       member_type    = COALESCE($11, member_type),
-       protein_target_g = $12,
-       fiber_target_g = $13,
-       water_target_ml = $14
-     WHERE id = $15 RETURNING *`,
+       gender         = $6,
+       date_of_joining= $7,
+       dob            = $8,
+       age_at_joining = $9,
+       valid_until    = $10,
+       daily_kcal     = $11,
+       member_type    = COALESCE($12, member_type),
+       protein_target_g = $13,
+       fiber_target_g = $14,
+       water_target_ml = $15
+     WHERE id = $16 RETURNING *`,
     [
       name?.trim() ?? null,
       mobile?.trim() || null,
       email?.trim() || null,
       membership_no?.trim() || null,
       height_cm ?? null,
+      gender?.trim() || null,
       date_of_joining ?? null,
       dob?.trim() || null,
       age_at_joining ?? null,

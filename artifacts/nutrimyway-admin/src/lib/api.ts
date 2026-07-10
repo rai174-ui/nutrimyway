@@ -196,6 +196,7 @@ export interface MemberLookup {
   email: string | null;
   membership_no: string | null;
   height_cm: number | null;
+  gender: string | null;
   date_of_joining: string | null;
 }
 
@@ -215,6 +216,7 @@ export interface CenterMember {
   name: string;
   date_of_joining: string | null;
   height_cm: number | null;
+  gender: string | null;
   mobile: string | null;
   email: string | null;
   membership_no: string | null;

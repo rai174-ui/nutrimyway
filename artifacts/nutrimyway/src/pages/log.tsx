@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, ChevronRight, ExternalLink, Sparkles, Flame } from "lucide-react";
+import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, Sparkles, Flame } from "lucide-react";
 import { useCreateConsumptionLog, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -67,13 +67,8 @@ export function Log() {
   const [savingSelections, setSavingSelections] = useState(false);
 
   // AI scan state
-  const [hasGeminiKey, setHasGeminiKey] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
-  const [showWizard, setShowWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState<WizardStep>("permission");
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [savingKey, setSavingKey] = useState(false);
-  const consentKey = "gemini_consent_v1";
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -95,11 +90,6 @@ export function Log() {
       .catch(() => {
         setCheckinMenu({ categories: [], selections: [], error: "Failed to load check-in menu" });
       });
-
-    apiFetch(`/members/${MEMBER_ID}/gemini-key`)
-      .then(r => r.json())
-      .then((d: { has_key: boolean }) => setHasGeminiKey(d.has_key))
-      .catch(() => {});
   }, [MEMBER_ID]);
 
   const createLog = useCreateConsumptionLog();
@@ -152,9 +142,11 @@ export function Log() {
           setCustomFiber("");
           setAiEstimated(false);
           setPendingPhoto(null);
+          if (photoPreviewUrl) { URL.revokeObjectURL(photoPreviewUrl); setPhotoPreviewUrl(null); }
         },
         onError: () => {
           setPendingPhoto(null);
+          if (photoPreviewUrl) { URL.revokeObjectURL(photoPreviewUrl); setPhotoPreviewUrl(null); }
         }
       }
     );
@@ -197,19 +189,12 @@ export function Log() {
   }
 
   function handleCameraClick() {
-    const consented = localStorage.getItem(consentKey);
-    if (hasGeminiKey) {
-      if (native()) {
-        handleNativeCamera();
-      } else {
-        fileInputRef.current?.click();
-      }
-    } else if (consented === "yes") {
-      setWizardStep("setup-1");
-      setShowWizard(true);
+    // Camera opens immediately — no wizard, no key check required.
+    // Server uses its own GEMINI_API_KEY; member key is an optional override.
+    if (native()) {
+      void handleNativeCamera();
     } else {
-      setWizardStep("permission");
-      setShowWizard(true);
+      fileInputRef.current?.click();
     }
   }
 
@@ -218,10 +203,17 @@ export function Log() {
     setAiLoading(true);
     try {
       const base64 = await snapPhoto();
-      if (!base64) {
-        setAiLoading(false);
-        return;
-      }
+      if (!base64) { setAiLoading(false); return; }
+
+      // Photo-first: create a Blob/File from base64 so we can show a thumbnail
+      // and attach it to the meal log even if AI fails.
+      const byteChars = atob(base64);
+      const byteArr = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+      const photoFile = new File([byteArr], `scan_${Date.now()}.jpg`, { type: "image/jpeg" });
+      setPendingPhoto(photoFile);
+      setPhotoPreviewUrl(URL.createObjectURL(photoFile));
+
       const res = await apiFetch(`/members/${MEMBER_ID}/analyze-food-photo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -229,8 +221,8 @@ export function Log() {
       });
       const data = await res.json() as { food_item?: string; calories_kcal?: number | null; protein_g?: number | null; fiber_g?: number | null; error?: string };
       if (!res.ok || data.error) {
-        toast({ title: data.error ?? "Could not identify food", variant: "destructive", duration: 6000 });
-        return;
+        toast({ title: data.error ?? "Could not identify food — photo saved, fill in estimates", variant: "destructive", duration: 6000 });
+        return; // photo stays in form
       }
       setFoodItem(data.food_item ?? "");
       setCustomKcal(data.calories_kcal != null ? String(Math.round(data.calories_kcal)) : "");
@@ -239,7 +231,7 @@ export function Log() {
       setAiEstimated(true);
       toast({ title: "AI estimate ready — review and save!" });
     } catch {
-      toast({ title: "Photo analysis failed. Try again.", variant: "destructive" });
+      toast({ title: "Photo analysis failed — photo saved, fill in estimates manually.", variant: "destructive" });
     } finally {
       setAiLoading(false);
     }
@@ -249,7 +241,12 @@ export function Log() {
     const file = e.target.files?.[0];
     if (!file || !MEMBER_ID) return;
     e.target.value = "";
+
+    // Photo-first: set photo immediately so the thumbnail appears and it
+    // gets attached to the meal log even if AI analysis fails.
     setPendingPhoto(file);
+    if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    setPhotoPreviewUrl(URL.createObjectURL(file));
 
     setAiLoading(true);
     try {
@@ -261,8 +258,8 @@ export function Log() {
       });
       const data = await res.json() as { food_item?: string; calories_kcal?: number | null; protein_g?: number | null; fiber_g?: number | null; error?: string };
       if (!res.ok || data.error) {
-        setPendingPhoto(null);
-        toast({ title: data.error ?? "Could not identify food", variant: "destructive", duration: 6000 });
+        // Photo stays in the form — member can still save with manual estimates
+        toast({ title: data.error ?? "Could not identify food — photo saved, fill in estimates", variant: "destructive", duration: 6000 });
         return;
       }
       setFoodItem(data.food_item ?? "");
@@ -272,8 +269,7 @@ export function Log() {
       setAiEstimated(true);
       toast({ title: "AI estimate ready — review and save!" });
     } catch {
-      setPendingPhoto(null);
-      toast({ title: "Photo analysis failed. Try again.", variant: "destructive" });
+      toast({ title: "Photo analysis failed — photo saved, fill in estimates manually.", variant: "destructive" });
     } finally {
       setAiLoading(false);
     }
@@ -484,6 +480,25 @@ export function Log() {
               </div>
             </div>
 
+            {/* Photo thumbnail preview */}
+            {photoPreviewUrl && (
+              <div className="relative w-full rounded-xl overflow-hidden border border-border shadow-sm">
+                <img src={photoPreviewUrl} alt="Food photo" className="w-full max-h-48 object-cover" />
+                {aiLoading && (
+                  <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
+                    <Loader2 className="w-7 h-7 animate-spin text-white" />
+                    <span className="text-xs text-white font-medium">Analysing…</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => { setPendingPhoto(null); URL.revokeObjectURL(photoPreviewUrl); setPhotoPreviewUrl(null); }}
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center"
+                >
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+            )}
+
             {aiEstimated && (
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-primary" />
@@ -502,176 +517,10 @@ export function Log() {
         </section>
       </motion.div>
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-
-      {/* AI Setup Wizard Modal */}
-      <AnimatePresence>
-        {showWizard && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
-            onClick={(e) => { if (e.target === e.currentTarget) setShowWizard(false); }}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ type: "spring", damping: 28, stiffness: 300 }}
-              className="bg-card w-full max-w-md rounded-2xl p-6 space-y-5 shadow-xl overflow-hidden"
-            >
-              {/* Permission step */}
-              {wizardStep === "permission" && (
-                <>
-                  <div className="text-center space-y-3 pt-2">
-                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-                      <Camera className="w-7 h-7 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold">Enable AI Food Scan?</h3>
-                      <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                        NutriMyWay can analyse photos of your meals to instantly estimate calories and protein. Uses Google's free Gemini AI — your photos are never stored.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-2.5">
-                    <button
-                      onClick={() => {
-                        localStorage.setItem(consentKey, "yes");
-                        setWizardStep("setup-1");
-                      }}
-                      className="w-full bg-primary text-primary-foreground font-semibold py-3.5 rounded-xl"
-                    >
-                      Enable — Set Up Free Key
-                    </button>
-                    <button
-                      onClick={() => setShowWizard(false)}
-                      className="w-full py-3 text-sm text-muted-foreground font-medium"
-                    >
-                      Not now
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {/* Setup step 1 */}
-              {wizardStep === "setup-1" && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-base">Set Up AI Food Scan</h3>
-                    <button onClick={() => setShowWizard(false)}><X className="w-5 h-5 text-muted-foreground" /></button>
-                  </div>
-                  <div className="bg-muted/50 rounded-xl p-4 space-y-4">
-                    <StepRow n={1} active>
-                      <p className="text-sm font-medium">Open Google AI Studio</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Sign in with your Google account (it's free)</p>
-                    </StepRow>
-                    <StepRow n={2} onClick={() => setWizardStep("setup-2")}>
-                      <p className="text-sm font-medium text-muted-foreground">Click "Get API Key"</p>
-                    </StepRow>
-                    <StepRow n={3} onClick={() => setWizardStep("setup-3")}>
-                      <p className="text-sm font-medium text-muted-foreground">Paste your key here</p>
-                    </StepRow>
-                  </div>
-                  <a
-                    href="https://aistudio.google.com/apikey"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full bg-primary text-primary-foreground font-semibold py-3.5 rounded-xl"
-                  >
-                    Open Google AI Studio <ExternalLink className="w-4 h-4" />
-                  </a>
-                  <button
-                    onClick={() => setWizardStep("setup-2")}
-                    className="w-full flex items-center justify-center gap-1 text-sm text-primary font-medium py-1"
-                  >
-                    I'm signed in — next <ChevronRight className="w-4 h-4" />
-                  </button>
-                </>
-              )}
-
-              {/* Setup step 2 */}
-              {wizardStep === "setup-2" && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-base">Get Your API Key</h3>
-                    <button onClick={() => setShowWizard(false)}><X className="w-5 h-5 text-muted-foreground" /></button>
-                  </div>
-                  <div className="bg-muted/50 rounded-xl p-4 space-y-4">
-                    <StepRow n={1} done>
-                      <p className="text-sm font-medium text-muted-foreground">Open Google AI Studio ✓</p>
-                    </StepRow>
-                    <StepRow n={2} active>
-                      <p className="text-sm font-medium">Click <span className="font-bold">"Get API Key"</span></p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Choose "Create API key in new project" when prompted</p>
-                    </StepRow>
-                    <StepRow n={3} onClick={() => setWizardStep("setup-3")}>
-                      <p className="text-sm font-medium text-muted-foreground">Paste your key here</p>
-                    </StepRow>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setWizardStep("setup-1")} className="flex-1 border border-border rounded-xl py-3 text-sm font-medium">Back</button>
-                    <button
-                      onClick={() => setWizardStep("setup-3")}
-                      className="flex-1 bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold"
-                    >
-                      I have my key →
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {/* Setup step 3 — paste key */}
-              {wizardStep === "setup-3" && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-base">Paste Your Key</h3>
-                    <button onClick={() => setShowWizard(false)}><X className="w-5 h-5 text-muted-foreground" /></button>
-                  </div>
-                  <div className="bg-muted/50 rounded-xl p-4 space-y-4">
-                    <StepRow n={1} done><p className="text-sm text-muted-foreground">Open Google AI Studio ✓</p></StepRow>
-                    <StepRow n={2} done><p className="text-sm text-muted-foreground">Get API key ✓</p></StepRow>
-                    <StepRow n={3} active>
-                      <p className="text-sm font-medium">Paste your key below</p>
-                    </StepRow>
-                  </div>
-                  <input
-                    type="password"
-                    value={apiKeyInput}
-                    onChange={e => setApiKeyInput(e.target.value)}
-                    placeholder="AIza…"
-                    className="w-full bg-card border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <button onClick={() => setWizardStep("setup-2")} className="flex-1 border border-border rounded-xl py-3 text-sm font-medium">Back</button>
-                    <button
-                      onClick={saveApiKey}
-                      disabled={!apiKeyInput.trim() || savingKey}
-                      className="flex-1 bg-primary text-primary-foreground rounded-xl py-3 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {savingKey && <Loader2 className="w-4 h-4 animate-spin" />}
-                      Save &amp; Activate
-                    </button>
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </>
   );
 }
+
 
 function StepRow({ n, active, done, onClick, children }: { n: number; active?: boolean; done?: boolean; onClick?: () => void; children: React.ReactNode }) {
   return (

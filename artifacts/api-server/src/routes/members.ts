@@ -512,7 +512,24 @@ router.put("/members/:id/gemini-key", async (req, res) => {
   res.json({ has_key: !!normalized });
 });
 
-// POST /api/members/:id/analyze-food-photo — AI calorie estimation via member's own Gemini key
+// ── AI Food Photo Analysis ────────────────────────────────────────────────
+
+// In-memory sliding-window rate limiter — max 15 requests/min globally.
+// No DB required; resets on server restart (acceptable for this use case).
+const rateWindow: number[] = [];
+const RATE_LIMIT_RPM = 15;
+
+function checkRateLimit(): boolean {
+  const now = Date.now();
+  const oneMinuteAgo = now - 60_000;
+  while (rateWindow.length && rateWindow[0] < oneMinuteAgo) rateWindow.shift();
+  if (rateWindow.length >= RATE_LIMIT_RPM) return false;
+  rateWindow.push(now);
+  return true;
+}
+
+// POST /api/members/:id/analyze-food-photo
+// Key priority: 1) member's own key (DB)  2) server GEMINI_API_KEY env  3) 402
 router.post("/members/:id/analyze-food-photo", async (req, res) => {
   const memberId = Number(req.params.id);
   const { image_base64, mime_type } = req.body as { image_base64?: string; mime_type?: string };
@@ -522,19 +539,32 @@ router.post("/members/:id/analyze-food-photo", async (req, res) => {
     return;
   }
 
+  if (!checkRateLimit()) {
+    res.status(429).json({ error: "AI is busy right now — try again in a moment. Your photo is saved." });
+    return;
+  }
+
   const { rows } = await pool.query(
     "SELECT gemini_api_key FROM members WHERE id = $1",
     [memberId]
   );
   if (!rows[0]) { res.status(404).json({ error: "Member not found" }); return; }
-  if (!rows[0].gemini_api_key) {
-    res.status(402).json({ error: "No Gemini API key set. Add your key in Profile → AI Food Scan." });
+
+  // Resolve which API key to use: member's own key → server key → error
+  const memberKey = rows[0].gemini_api_key as string | null;
+  const serverKey = process.env.GEMINI_API_KEY ?? null;
+  const apiKey = memberKey || serverKey;
+
+  if (!apiKey) {
+    res.status(402).json({
+      error: "AI Food Scan is not configured. Please ask your wellness center to set up the Gemini API key.",
+    });
     return;
   }
 
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
-  const genAI = new GoogleGenerativeAI(rows[0].gemini_api_key as string);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `Analyse this food image and respond with ONLY a valid JSON object, no markdown, no explanation:
 {
@@ -555,13 +585,13 @@ If you cannot identify food, return: {"error": "No food detected"}`;
   } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("permission")) {
-        res.status(403).json({ error: "Your Gemini API key is not valid or has no quota. Go to aistudio.google.com/apikey to create a new one." });
+        res.status(403).json({ error: "Gemini API key is not valid. Please contact your wellness center." });
       } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
-        res.status(429).json({ error: "Gemini API quota exceeded. Try again later or create a new key." });
+        res.status(429).json({ error: "AI quota reached for now — your photo is saved, please fill in estimates manually." });
       } else if (msg.includes("SAFETY") || msg.includes("safety") || msg.includes("blocked")) {
         res.status(422).json({ error: "Image was blocked by AI safety filters. Please try a different photo." });
       } else {
-        res.status(502).json({ error: `Gemini Error: ${msg}` });
+        res.status(502).json({ error: `AI analysis failed: ${msg}` });
       }
       req.log.error({ err: msg }, "Gemini API call failed");
     return;

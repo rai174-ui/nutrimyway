@@ -48,6 +48,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
   const [height, setHeight] = useState("");
+  const [gender, setGender] = useState("");
   const [doj, setDoj] = useState("");
   const [membershipNo, setMembershipNo] = useState("");
   const [dobDay, setDobDay] = useState("");
@@ -72,7 +73,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 
   function reset() {
     setStep("search"); setQuery(""); setFound(null); setError("");
-    setName(""); setEmail(""); setMobile(""); setHeight(""); setDoj(""); setMembershipNo("");
+    setName(""); setEmail(""); setMobile(""); setHeight(""); setGender(""); setDoj(""); setMembershipNo("");
     setDobDay(""); setDobMonth(""); setAgeAtJoining(""); setValidUntil(""); setMemberType("regular");
     setLinkedMemberId(null);
     setHrDate(new Date().toISOString().slice(0, 10));
@@ -119,7 +120,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
     try {
       const member = await apiPost<{ id: number }>(`/admin/centers/${centerId}/members`, {
         name: name.trim(), mobile: mobile.trim() || null, email: email.trim() || null,
-        height_cm: height ? Number(height) : null, date_of_joining: doj || null,
+        height_cm: height ? Number(height) : null, gender: gender || null, date_of_joining: doj || null,
         membership_no: membershipNo.trim() || null,
         dob: dobDay && dobMonth ? `${dobDay} ${dobMonth}` : null,
         age_at_joining: ageAtJoining ? Number(ageAtJoining) : null,
@@ -252,6 +253,15 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Member ID</label>
               <input value={membershipNo} onChange={e => setMembershipNo(e.target.value)} placeholder="MEM-001" className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Gender</label>
+              <select value={gender} onChange={e => setGender(e.target.value)} className={inputCls}>
+                <option value="">Select gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Height (cm)</label>
@@ -941,6 +951,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
   const [editEmail, setEditEmail]             = useState("");
   const [editMembershipNo, setEditMembershipNo] = useState("");
   const [editHeight, setEditHeight]           = useState("");
+  const [editGender, setEditGender]           = useState("");
   const [editDoj, setEditDoj]                 = useState("");
   const [editDobDay, setEditDobDay]           = useState("");
   const [editDobMonth, setEditDobMonth]       = useState("");
@@ -974,6 +985,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     setEditEmail(member.email ?? "");
     setEditMembershipNo(member.membership_no ?? "");
     setEditHeight(member.height_cm != null ? String(member.height_cm) : "");
+    setEditGender(member.gender ?? "");
     setEditDoj(member.date_of_joining ? member.date_of_joining.slice(0, 10) : "");
     setEditDobDay(dobDay);
     setEditDobMonth(dobMonth);
@@ -998,6 +1010,7 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
         email: editEmail.trim() || null,
         membership_no: editMembershipNo.trim() || null,
         height_cm: editHeight ? Number(editHeight) : null,
+        gender: editGender || null,
         date_of_joining: editDoj || null,
         dob: editDobDay && editDobMonth ? `${editDobDay} ${editDobMonth}` : null,
         age_at_joining: editAge ? Number(editAge) : null,
@@ -1274,6 +1287,16 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               <label className="block text-[10px] font-medium text-muted-foreground mb-1">Registration Number</label>
               <input value={editMembershipNo} onChange={e => setEditMembershipNo(e.target.value)} placeholder="MEM-001"
                 className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Gender</label>
+              <select value={editGender} onChange={e => setEditGender(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                <option value="">Select gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
             </div>
             <div>
               <label className="block text-[10px] font-medium text-muted-foreground mb-1">Height (cm)</label>

@@ -143,6 +143,14 @@ pnpm run build:mobile
 
 If your production domain ever changes, update the `build:mobile` script in `package.json` accordingly before rebuilding.
 
+**On Windows (PowerShell)** — the `package.json` script uses Linux-style `VAR=value` syntax which doesn't work on Windows directly. Use this instead:
+
+```powershell
+cd artifacts/nutrimyway
+$env:PORT='23159'; $env:BASE_PATH='/'; $env:VITE_API_BASE='https://nutrimyway-production.up.railway.app/api'; $env:VITE_API_BASE_FALLBACK='https://nutrimyway-production.up.railway.app/api'; pnpm exec vite build --config vite.config.ts
+pnpm exec cap sync android
+```
+
 Then re-open the `android` folder in Android Studio and rebuild.
 
 ---
@@ -153,7 +161,7 @@ Then re-open the `android` folder in Android Studio and rebuild.
 |---|---|
 | Package name | `com.zerolimitautomation.nutrimyway` |
 | App name | `NutriMyWay` |
-| Version | `1.0.2` (versionCode 3) |
+| Version | `1.0.3` (versionCode 4) |
 | Min SDK | 22 (Android 5.1) |
 | Target SDK | 35 (Android 15) |
 

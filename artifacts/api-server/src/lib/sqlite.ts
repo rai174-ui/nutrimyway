@@ -697,6 +697,7 @@ export async function initDb(): Promise<void> {
     await migrateAdminTables40();
     await migrateAdminTables41();
     await migrateAdminTables42();
+    await migrateAdminTables43();
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
@@ -1172,4 +1173,9 @@ export async function migrateAdminTables42(): Promise<void> {
       UNIQUE(category_id, ingredient_id)
     )
   `);
+}
+
+async function migrateAdminTables43(): Promise<void> {
+  // Gender field for members: 'male' | 'female' | 'other'
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS gender TEXT`);
 }
