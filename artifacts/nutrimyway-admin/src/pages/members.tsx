@@ -415,6 +415,22 @@ function VisitPanel({
   useEffect(() => { void loadData(); }, [loadData]);
 
   async function toggleFlavour(opt: FlavourOption) {
+    setBusy(true); setError(null);
+    try {
+      const existing = flavourSelections.find(f => f.ingredient_id === opt.id);
+      if (existing) {
+        await apiDelete(`/admin/flavour-selections/${existing.id}`);
+        setFlavourSelections(prev => prev.filter(f => f.id !== existing.id));
+      } else {
+        const created = await apiPost<FlavourSelection>(`/admin/checkins/${checkinId}/flavour-selections`, {
+          ingredient_id: opt.id,
+          flavour: opt.flavour,
+        });
+        setFlavourSelections(prev => [...prev, created]);
+      }
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
 
   async function handleCheckout() {
     setCheckingOut(true); setError(null);
