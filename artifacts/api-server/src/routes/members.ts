@@ -602,18 +602,28 @@ If you cannot identify food, return: {"error": "No food detected"}`;
   }
 
   if (text === null) {
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      const data = await resp.json();
+      const availableModels = (data.models || []).map((m: any) => m.name).join(", ");
+      res.status(502).json({ error: `Failed to find model. Available models: ${availableModels}` });
+      return;
+    } catch (e) {
+      // Ignore fetch error
+    }
+
     const err = lastError;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("permission")) {
-        res.status(403).json({ error: "Gemini API key is not valid. Please contact your wellness center." });
-      } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
-        res.status(429).json({ error: "AI quota reached for now — your photo is saved, please fill in estimates manually." });
-      } else if (msg.includes("SAFETY") || msg.includes("safety") || msg.includes("blocked")) {
-        res.status(422).json({ error: "Image was blocked by AI safety filters. Please try a different photo." });
-      } else {
-        res.status(502).json({ error: `AI analysis failed: ${msg}` });
-      }
-      req.log.error({ err: msg }, "Gemini API call failed");
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("permission")) {
+      res.status(403).json({ error: "Gemini API key is not valid. Please contact your wellness center." });
+    } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
+      res.status(429).json({ error: "AI quota reached for now — your photo is saved, please fill in estimates manually." });
+    } else if (msg.includes("SAFETY") || msg.includes("safety") || msg.includes("blocked")) {
+      res.status(422).json({ error: "Image was blocked by AI safety filters. Please try a different photo." });
+    } else {
+      res.status(502).json({ error: `AI analysis failed: ${msg}` });
+    }
+    req.log.error({ err: msg }, "Gemini API call failed");
     return;
   }
 
