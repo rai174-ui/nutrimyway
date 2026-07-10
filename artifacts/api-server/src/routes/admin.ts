@@ -794,128 +794,84 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
   const from = typeof req.query.from === "string" ? req.query.from : today;
   const to   = typeof req.query.to   === "string" ? req.query.to   : today;
 
-  // Resolve each log to a menu_item_id that belongs to THIS center.
-  // Only center-issued logs (checkin_id IS NOT NULL) are included.
+  // ── By Items: aggregate consumption from visit_ingredient_selections (completed checkouts in date range)
   const { rows: byComponent } = await pool.query(
-    `WITH resolved_menu AS (
-       SELECT
-         cl.id,
-         cl.member_id,
-         cl.checkin_id,
-         COALESCE(
-           (SELECT mi.id FROM menu_items mi
-            WHERE mi.id = cl.menu_item_id AND mi.center_id = $1
-            LIMIT 1),
-           (SELECT mi2.id FROM menu_items mi2
-            WHERE mi2.center_id = $1
-              AND LOWER(mi2.name) = LOWER(cl.food_item)
-            LIMIT 1)
-         ) AS menu_item_id
-       FROM consumption_logs cl
-       JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-       WHERE mcm.center_id = $1
-         AND cl.checkin_id IS NOT NULL
-         AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
-     ),
-     components AS (
-       SELECT
-         mb.ingredient,
-         mb.unit,
-         mb.quantity AS qty,
-         rm.member_id,
-         rm.id AS log_id
-       FROM resolved_menu rm
-       JOIN menu_item_bom mb ON mb.menu_item_id = rm.menu_item_id
-       WHERE rm.menu_item_id IS NOT NULL
-
-       UNION ALL
-
-       SELECT
-         i.name AS ingredient,
-         i.pack_unit AS unit,
-         COALESCE(
-           (SELECT mb.quantity FROM menu_item_bom mb
-            JOIN visit_menu_selections vms ON vms.menu_item_id = mb.menu_item_id
-            WHERE vms.checkin_id = vfs.checkin_id AND mb.ingredient_id = i.id LIMIT 1),
-           i.serving_qty,
-           1
-         ) AS qty,
-         mci.member_id,
-         vfs.id AS log_id
-       FROM visit_flavour_selections vfs
-       JOIN member_check_ins mci ON mci.id = vfs.checkin_id
-       JOIN ingredients i ON i.id = vfs.ingredient_id
-       WHERE mci.center_id = $1
-         AND mci.checked_out_at IS NOT NULL
-         AND mci.cancelled = FALSE
-         AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
-     )
-     SELECT
-       ingredient,
-       unit,
-       SUM(qty) AS total_quantity,
-       COUNT(DISTINCT member_id) AS member_count,
-       COUNT(DISTINCT log_id) AS log_count
-     FROM components
-     GROUP BY ingredient, unit
+    `SELECT
+       i.name          AS ingredient,
+       i.pack_unit     AS unit,
+       SUM(COALESCE(i.serving_qty, 1))            AS total_quantity,
+       COUNT(DISTINCT mci.member_id)              AS member_count,
+       COUNT(DISTINCT vis.checkin_id)             AS log_count
+     FROM visit_ingredient_selections vis
+     JOIN member_check_ins mci ON mci.id = vis.checkin_id
+     JOIN ingredients i ON i.id = vis.ingredient_id
+     WHERE mci.center_id = $1
+       AND mci.checked_out_at IS NOT NULL
+       AND mci.cancelled = FALSE
+       AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     GROUP BY i.name, i.pack_unit
      ORDER BY total_quantity DESC`,
     [centerId, from, to]
   );
 
-  // Logs breakdown: center-issued logs only (checkin_id IS NOT NULL).
-  // qty and kcal fall back to BOM totals when the stored value is NULL (BOM-based check-in logs).
+  // ── By Members: one row per member per checkin, with item list
   const { rows: logsRaw } = await pool.query(
-    `SELECT cl.id, cl.member_id, m.name AS member_name, cl.logged_at, cl.meal_slot,
-            cl.food_item, cl.checkin_id,
-            COALESCE(
-              cl.quantity_g,
-              (SELECT SUM(mb.quantity) FROM menu_item_bom mb
-               WHERE mb.menu_item_id = cl.menu_item_id),
-              (SELECT COALESCE(
-                 (SELECT mb2.quantity FROM menu_item_bom mb2
-                  JOIN visit_menu_selections vms ON vms.menu_item_id = mb2.menu_item_id
-                  WHERE vms.checkin_id = cl.checkin_id AND mb2.ingredient_id = vfs.ingredient_id LIMIT 1),
-                 i.serving_qty
-               )
-               FROM visit_flavour_selections vfs
-               JOIN ingredients i ON i.id = vfs.ingredient_id
-               WHERE vfs.checkin_id = cl.checkin_id
-                 AND LOWER(TRIM(SPLIT_PART(cl.food_item, ' – ', 1))) = LOWER(i.name)
-               LIMIT 1)
-            ) AS quantity_g,
-            COALESCE(
-              cl.calories_kcal,
-              (SELECT SUM(mb.kcal) FROM menu_item_bom mb
-               WHERE mb.menu_item_id = cl.menu_item_id AND mb.kcal IS NOT NULL)
-            ) AS calories_kcal,
-            COALESCE(
-              (SELECT mi.id FROM menu_items mi
-               WHERE mi.id = cl.menu_item_id AND mi.center_id = $1 LIMIT 1),
-              (SELECT mi2.id FROM menu_items mi2
-               WHERE mi2.center_id = $1
-                 AND LOWER(mi2.name) = LOWER(cl.food_item)
-               LIMIT 1)
-            ) AS menu_item_id,
-            COALESCE(
-              (SELECT mi.name FROM menu_items mi
-               WHERE mi.id = cl.menu_item_id AND mi.center_id = $1 LIMIT 1),
-              (SELECT mi2.name FROM menu_items mi2
-               WHERE mi2.center_id = $1
-                 AND LOWER(mi2.name) = LOWER(cl.food_item)
-               LIMIT 1)
-            ) AS menu_item_name
+    `SELECT
+       mci.id          AS checkin_id,
+       mci.member_id,
+       m.name          AS member_name,
+       mci.checked_out_at AS logged_at,
+       STRING_AGG(
+         CASE WHEN i.flavour IS NOT NULL AND i.flavour != ''
+              THEN i.name || ' (' || i.flavour || ')'
+              ELSE i.name
+         END,
+         ', ' ORDER BY i.name
+       )               AS food_item,
+       SUM(COALESCE(i.kcal_per_serving, 0))       AS calories_kcal,
+       SUM(COALESCE(i.serving_qty, 1))            AS quantity_g,
+       NULL::int        AS menu_item_id,
+       NULL::text       AS menu_item_name,
+       NULL::text       AS meal_slot
+     FROM member_check_ins mci
+     JOIN members m ON m.id = mci.member_id
+     JOIN visit_ingredient_selections vis ON vis.checkin_id = mci.id
+     JOIN ingredients i ON i.id = vis.ingredient_id
+     WHERE mci.center_id = $1
+       AND mci.checked_out_at IS NOT NULL
+       AND mci.cancelled = FALSE
+       AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+     GROUP BY mci.id, mci.member_id, m.name, mci.checked_out_at
+     ORDER BY mci.checked_out_at DESC`,
+    [centerId, from, to]
+  );
+
+  // Also include any manually written consumption_logs with checkin_id for this center+period
+  const { rows: clLogs } = await pool.query(
+    `SELECT cl.id AS checkin_id, cl.member_id, m.name AS member_name,
+            cl.logged_at, cl.meal_slot, cl.food_item,
+            cl.quantity_g, cl.calories_kcal,
+            NULL::int AS menu_item_id, NULL::text AS menu_item_name
      FROM consumption_logs cl
-     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      JOIN members m ON m.id = cl.member_id
+     JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      WHERE mcm.center_id = $1
        AND cl.checkin_id IS NOT NULL
        AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+       AND NOT EXISTS (
+         SELECT 1 FROM visit_ingredient_selections vis
+         JOIN member_check_ins mci2 ON mci2.id = vis.checkin_id
+         WHERE mci2.id = cl.checkin_id
+       )
      ORDER BY cl.logged_at DESC`,
     [centerId, from, to]
   );
 
-  res.json({ from, to, by_component: byComponent, logs: logsRaw });
+  res.json({ from, to, by_component: byComponent, logs: [...logsRaw, ...clLogs] });
 });
+
+
+
 
 // GET /api/admin/centers/:centerId/member-self-logs?from=YYYY-MM-DD&to=YYYY-MM-DD
 // Returns meals that members logged themselves outside of center check-ins.

@@ -264,9 +264,9 @@ export default function ConsumptionPage() {
             </div>
           ) : !data || data.logs.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
-              <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">No center-issued logs</p>
-              <p className="text-sm mt-1">No meals were issued via check-in for the selected period</p>
+              <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No member visits logged</p>
+              <p className="text-sm mt-1">No check-ins were completed for the selected period</p>
             </div>
           ) : (
             <div className="bg-card rounded-2xl border border-border overflow-hidden">
@@ -274,33 +274,22 @@ export default function ConsumptionPage() {
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Member</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Menu Item</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Food Logged</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Slot</th>
-                    <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Qty (g)</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Items Consumed</th>
                     <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">kcal</th>
                     <th className="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.logs.map(log => (
-                    <tr key={log.id} className="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
-                      <td className="px-5 py-3 text-sm font-medium text-foreground">{log.member_name}</td>
-                      <td className="px-5 py-3 text-sm">
-                        {log.menu_item_name
-                          ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-pale text-teal-dark">{log.menu_item_name}</span>
-                          : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-100 text-violet-700">Direct flavour</span>
-                        }
-                      </td>
+                  {data.logs.map((log, idx) => (
+                    <tr key={idx} className="border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors">
+                      <td className="px-5 py-3 text-sm font-medium text-foreground whitespace-nowrap">{log.member_name}</td>
                       <td className="px-5 py-3 text-sm text-foreground">{log.food_item}</td>
-                      <td className="px-5 py-3 text-sm text-muted-foreground">{log.meal_slot}</td>
                       <td className="px-5 py-3 text-sm text-right tabular-nums">
-                        {log.quantity_g != null ? log.quantity_g : <span className="text-muted-foreground/40 text-xs">N/A</span>}
+                        {log.calories_kcal != null && Number(log.calories_kcal) > 0
+                          ? Math.round(Number(log.calories_kcal))
+                          : <span className="text-muted-foreground/40 text-xs">—</span>}
                       </td>
-                      <td className="px-5 py-3 text-sm text-right tabular-nums">
-                        {log.calories_kcal != null ? Math.round(log.calories_kcal) : <span className="text-muted-foreground/40 text-xs">N/A</span>}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-right text-muted-foreground">
+                      <td className="px-5 py-3 text-sm text-right text-muted-foreground whitespace-nowrap">
                         {new Date(log.logged_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                       </td>
                     </tr>
@@ -310,6 +299,7 @@ export default function ConsumptionPage() {
             </div>
           )
         )}
+
 
         {tab === "batches" && (
           batchesLoading ? (
