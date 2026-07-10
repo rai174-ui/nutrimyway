@@ -559,8 +559,6 @@ router.post("/members/:id/analyze-food-photo", async (req, res) => {
 
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash" });
-
   const prompt = `Analyse this food image and respond with ONLY a valid JSON object, no markdown, no explanation:
 {
   "food_item": "<name of the food>",
@@ -570,14 +568,41 @@ router.post("/members/:id/analyze-food-photo", async (req, res) => {
 }
 If you cannot identify food, return: {"error": "No food detected"}`;
 
-  let text: string;
-  try {
-    const result = await model.generateContent([
-      prompt,
-      { inlineData: { data: image_base64, mimeType: mime_type } },
-    ]);
-    text = result.response.text().trim().replace(/^```json\s*|```\s*$/g, "");
-  } catch (err) {
+  const modelsToTry = [
+    "gemini-3.1-flash",
+    "gemini-3.0-flash",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b"
+  ];
+
+  let text: string | null = null;
+  let lastError: unknown = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent([
+        prompt,
+        { inlineData: { data: image_base64, mimeType: mime_type } },
+      ]);
+      text = result.response.text().trim().replace(/^```json\s*|```\s*$/g, "");
+      break; // Success, exit the loop
+    } catch (err: any) {
+      lastError = err;
+      // If it's a 404 (model not found), try the next model. Otherwise, break and handle the error (e.g. auth, quota).
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("404") || msg.includes("not found")) {
+        req.log.info({ model: modelName, err: msg }, "Model not found, trying fallback...");
+        continue;
+      }
+      break;
+    }
+  }
+
+  if (text === null) {
+    const err = lastError;
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("permission")) {
         res.status(403).json({ error: "Gemini API key is not valid. Please contact your wellness center." });
