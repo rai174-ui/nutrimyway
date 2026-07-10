@@ -358,8 +358,8 @@ router.post("/members/:id/checkin", async (req, res) => {
   }
 
   const { rows } = await pool.query(
-    `INSERT INTO member_check_ins (member_id, center_id, weight_kg) VALUES ($1,$2,$3) RETURNING *`,
-    [memberId, center_id, weight_kg]
+    `INSERT INTO member_check_ins (member_id, center_id) VALUES ($1,$2) RETURNING *`,
+    [memberId, center_id]
   );
 
   // Also record it as a formal health record for the day
