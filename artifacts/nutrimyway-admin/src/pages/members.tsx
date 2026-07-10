@@ -521,108 +521,85 @@ function VisitPanel({
 
       {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">{error}</p>}
 
-      {/* Items grouped by category — single-item = auto-selected badge, multi-item = tappable buttons */}
+      {/* Items — compact list */}
       {flavourOptions.length === 0 ? (
         <p className="text-xs text-muted-foreground">No items configured for this center yet.</p>
       ) : (() => {
-        // Build groups
         const grouped: Record<string, FlavourOption[]> = {};
         for (const opt of flavourOptions) {
           const key = opt.category_name ?? opt.name;
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(opt);
         }
-
+        const entries = Object.entries(grouped);
         return (
-          <div className="space-y-3">
-            {Object.entries(grouped).map(([groupName, opts]) => {
+          <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/60">
+            {entries.map(([groupName, opts]) => {
               const isSingle = opts.length === 1;
               const selectedOpt = opts.find(o => selectedFlavourIngredientIds.has(o.id));
+              const isAutoSelected = isSingle && selectedFlavourIngredientIds.has(opts[0].id);
 
               return (
-                <div key={groupName} className="rounded-xl border border-border overflow-hidden">
-                  <div className="px-3 py-1.5 bg-muted/40 border-b border-border/50">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{groupName}</p>
-                  </div>
-                  <div className="p-3">
+                <div key={groupName} className="flex items-center gap-2 px-3 py-2 min-h-[40px]">
+                  {/* Category label */}
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 w-16 shrink-0 leading-tight truncate">{groupName}</span>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
                     {isSingle ? (
-                      // Single-item group: show as auto-selected if confirmed in state, tappable if not yet
-                      selectedFlavourIngredientIds.has(opts[0].id) ? (
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium text-foreground truncate">{opts[0].name}</p>
-                              <p className="text-[10px] text-muted-foreground truncate">{opts[0].flavour}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Auto</span>
-                            <button
-                              onClick={() => void toggleFlavour(opts[0])}
-                              disabled={busy}
-                              className="w-5 h-5 rounded-full bg-muted flex items-center justify-center hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                              title="Remove"
-                            >
-                              <XCircle className="w-3.5 h-3.5 text-muted-foreground" />
-                            </button>
-                          </div>
-                        </div>
+                      isAutoSelected ? (
+                        <span className="text-xs font-medium text-foreground">
+                          {opts[0].name}
+                          {opts[0].flavour && opts[0].flavour !== opts[0].name && (
+                            <span className="text-muted-foreground font-normal"> · {opts[0].flavour}</span>
+                          )}
+                        </span>
                       ) : (
-                        // Auto-select pending / failed — show as tappable
                         <button
                           onClick={() => void toggleFlavour(opts[0])}
                           disabled={busy}
-                          className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border border-dashed border-border hover:border-emerald-400 hover:bg-emerald-50 transition-all disabled:opacity-50 text-left"
+                          className="text-xs text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 underline-offset-2 hover:underline"
                         >
-                          <XCircle className="w-3.5 h-3.5 opacity-40 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium text-foreground truncate">{opts[0].name}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{opts[0].flavour} · Tap to select</p>
-                          </div>
+                          {opts[0].name} · Tap to select
                         </button>
                       )
                     ) : (
-                      // Multi-flavour: tappable pills
-                      <div className="space-y-2">
-                        {selectedOpt && (
-                          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-violet-50 border border-violet-200 mb-1.5">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-violet-600 flex-shrink-0" />
-                              <span className="text-xs font-medium text-violet-800 truncate">{selectedOpt.flavour}</span>
-                            </div>
+                      <div className="flex flex-wrap gap-1">
+                        {opts.map(opt => {
+                          const sel = selectedFlavourIngredientIds.has(opt.id);
+                          return (
                             <button
-                              onClick={() => void toggleFlavour(selectedOpt)}
+                              key={opt.id}
+                              onClick={() => void toggleFlavour(opt)}
                               disabled={busy}
-                              className="w-5 h-5 rounded-full bg-muted flex items-center justify-center hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all disabled:cursor-not-allowed ${
+                                sel
+                                  ? "bg-violet-100 text-violet-800 border-violet-300"
+                                  : "bg-muted/50 text-muted-foreground border-border hover:border-violet-400 hover:text-violet-700"
+                              }`}
                             >
-                              <XCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                              {opt.flavour}
                             </button>
-                          </div>
-                        )}
-                        <div className="flex flex-wrap gap-1.5">
-                          {opts.map(opt => {
-                            const selected = selectedFlavourIngredientIds.has(opt.id);
-                            return (
-                              <button
-                                key={opt.id}
-                                onClick={() => void toggleFlavour(opt)}
-                                disabled={busy}
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all disabled:cursor-not-allowed ${
-                                  selected
-                                    ? "bg-violet-100 text-violet-800 border-violet-300"
-                                    : "bg-background text-foreground border-border hover:border-violet-400 hover:text-violet-700"
-                                }`}
-                              >
-                                {selected && <CheckCircle2 className="w-3 h-3" />}
-                                {opt.flavour}
-                              </button>
-                            );
-                          })}
-                        </div>
+                          );
+                        })}
                       </div>
+                    )}
+                  </div>
+
+                  {/* Right action */}
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    {isSingle && isAutoSelected && (
+                      <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Auto</span>
+                    )}
+                    {(isAutoSelected || (!isSingle && selectedOpt)) && (
+                      <button
+                        onClick={() => void toggleFlavour(isAutoSelected ? opts[0] : selectedOpt!)}
+                        disabled={busy}
+                        className="w-4 h-4 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                        title="Remove"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -633,6 +610,7 @@ function VisitPanel({
       })()}
 
       {/* Checkout footer */}
+
       <div className="pt-2 border-t border-border/50 space-y-2">
         {/* Confirmation prompt */}
         {pendingAction && (
