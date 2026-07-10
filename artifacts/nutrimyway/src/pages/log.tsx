@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, Sparkles, Search, CalendarDays, UtensilsCrossed, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, Sparkles, Search, UtensilsCrossed, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCreateConsumptionLog, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -267,6 +267,13 @@ export function Log() {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Gemini API key / wizard state
+  const consentKey = MEMBER_ID ? `gemini_consent_${MEMBER_ID}` : "gemini_consent";
+  const [hasGeminiKey, setHasGeminiKey] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [savingKey, setSavingKey] = useState(false);
 
   useEffect(() => {
     if (!MEMBER_ID) return;
@@ -544,7 +551,7 @@ export function Log() {
         {activeTab === "history" ? (
           MEMBER_ID ? <MealHistory memberId={MEMBER_ID} /> : null
         ) : (
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+          <>
           <div className="bg-card border border-border rounded-[12px] p-5 shadow-sm">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -610,7 +617,6 @@ export function Log() {
               </div>
             )}
           </div>
-        </motion.div>
 
         {/* Slot selector */}
         <div className="flex gap-2 p-1 bg-muted rounded-lg">
@@ -729,6 +735,7 @@ export function Log() {
               </button>
             </div>
           </section>
+          </>
         )}
       </motion.div>
 
