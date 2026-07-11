@@ -62,6 +62,22 @@ export async function initPushNotifications(memberId: number, apiBase: string): 
     // silently fail
   });
 
+  // Create high-importance channel for Android so notifications show up even in foreground
+  if (platform() === "android") {
+    try {
+      await PushNotifications.createChannel({
+        id: "default",
+        name: "General Notifications",
+        description: "General notifications for NutriMyWay",
+        importance: 5, // High importance (shows heads-up notification)
+        visibility: 1, // Public visibility
+        vibration: true,
+      });
+    } catch {
+      // safely ignore if channel already exists or creation fails
+    }
+  }
+
   // Register with FCM
   await PushNotifications.register();
 }

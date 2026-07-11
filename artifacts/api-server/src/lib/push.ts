@@ -11,12 +11,31 @@ if (fs.existsSync(serviceAccountPath)) {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
-    logger.info("Firebase Admin SDK initialized successfully");
+    logger.info("Firebase Admin SDK initialized successfully from service-account.json");
   } catch (err) {
     logger.error({ err }, "Failed to initialize Firebase Admin SDK from service-account.json");
   }
+} else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    logger.info("Firebase Admin SDK initialized successfully from FIREBASE_SERVICE_ACCOUNT env var");
+  } catch (err) {
+    logger.error({ err }, "Failed to initialize Firebase Admin SDK from FIREBASE_SERVICE_ACCOUNT");
+  }
+} else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault(),
+    });
+    logger.info("Firebase Admin SDK initialized successfully from GOOGLE_APPLICATION_CREDENTIALS");
+  } catch (err) {
+    logger.error({ err }, "Failed to initialize Firebase Admin SDK from GOOGLE_APPLICATION_CREDENTIALS");
+  }
 } else {
-  logger.warn("service-account.json not found in api-server root. Push notifications will be disabled.");
+  logger.warn("No Firebase credentials found. Push notifications will be disabled.");
 }
 
 export async function sendPushNotification(tokens: string[], title: string, body: string): Promise<void> {
