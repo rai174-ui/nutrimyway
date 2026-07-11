@@ -6,7 +6,7 @@ import { randomBytes } from "crypto";
 import { pool } from "../lib/sqlite";
 import { logger } from "../lib/logger";
 import { bookAndCheckout } from "../lib/checkout";
-import { sendPushNotification, isFirebaseInitialized } from "../lib/push";
+import { sendPushNotification, isFirebaseInitialized, getFirebaseInitError } from "../lib/push";
 
 const SUPER_ADMIN_EMAIL = process.env["SUPER_ADMIN_EMAIL"] ?? "rai.174@gmail.com";
 const APP_URL = process.env["APP_URL"] ?? "http://localhost:8080";
@@ -60,6 +60,7 @@ router.get("/push-diagnostic", async (_req, res) => {
   );
   res.json({
     firebase_initialized: isFirebaseInitialized(),
+    firebase_init_error: getFirebaseInitError() || null,
     active_members: Number(rows[0].total),
     members_with_push_token: Number(rows[0].with_token),
   });
