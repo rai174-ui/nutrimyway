@@ -105,12 +105,12 @@ function QuickReceiptForm({
         batch_number: batchNumber.trim(),
         no_of_packs: count
       };
-      const batch = await apiPost<IngredientBatch>(
+      const batches = await apiPost<IngredientBatch[]>(
         `/admin/centers/${centerId}/ingredient-batches`,
         body
       );
-      if (openNow) {
-        await apiPatch(`/admin/ingredient-batches/${batch.id}/open`);
+      if (openNow && batches && batches.length > 0) {
+        await apiPatch(`/admin/ingredient-batches/${batches[0].id}/open`);
       }
       setLastReceived({ batch: batchNumber.trim(), count });
       setBatchNumber("");
@@ -241,7 +241,7 @@ function AddBatchForm({
     if (!ingredientId || !batchNumber.trim()) return;
     setSaving(true); setError(null);
     try {
-      const b = await apiPost<IngredientBatch>(
+      const batches = await apiPost<IngredientBatch[]>(
         `/admin/centers/${centerId}/ingredient-batches`,
         {
           ingredient_id: Number(ingredientId),
@@ -250,7 +250,7 @@ function AddBatchForm({
           received_unit: receivedUnit,
         }
       );
-      onAdded(b);
+      onAdded(batches[0]);
       setBatchNumber(""); setIngredientId(ingredients[0]?.id ? String(ingredients[0].id) : "");
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
