@@ -38,7 +38,12 @@ export default function LoginPage() {
       saveAuth(res.token, res.center_id, res.center_name, res.needs_terms_acceptance ?? false);
       navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const msg = err instanceof Error ? err.message : "Login failed";
+      if (msg === "Failed to fetch") {
+        setError("Server is waking up. Please wait 10 seconds and try again.");
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
