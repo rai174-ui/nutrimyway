@@ -96,7 +96,7 @@ export function getFirebaseInitError(): string {
   return firebaseInitError;
 }
 
-export async function sendPushNotification(tokens: string[], title: string, body: string): Promise<void> {
+export async function sendPushNotification(tokens: string[], title: string, body: string, imageUrl?: string): Promise<void> {
   if (tokens.length === 0) return;
   if (!firebaseInitialized) {
     logger.warn("Firebase not initialized; skipping push notification");
@@ -111,7 +111,7 @@ export async function sendPushNotification(tokens: string[], title: string, body
     try {
       const response = await messaging.sendEachForMulticast({
         tokens: batch,
-        notification: { title, body },
+        notification: { title, body, ...(imageUrl ? { imageUrl } : {}) },
         android: {
           priority: "high",
           notification: {

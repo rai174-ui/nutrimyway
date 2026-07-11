@@ -44,6 +44,7 @@ function StatCard({
 
 function AdHocBroadcastModal({ centerId, onClose }: { centerId: string; onClose: () => void }) {
   const [message, setMessage] = useState("");
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -62,9 +63,13 @@ function AdHocBroadcastModal({ centerId, onClose }: { centerId: string; onClose:
     if (!message.trim()) { setError("Message is required"); return; }
     setSending(true); setError(null); setSent(false);
     try {
-      await apiPost<{ id: number }>(`/admin/centers/${centerId}/broadcasts`, { message: message.trim() });
+      await apiPost<{ id: number }>(`/admin/centers/${centerId}/broadcasts`, { 
+        message: message.trim(),
+        image_base64: imageBase64 || undefined
+      });
       setSent(true);
       setMessage("");
+      setImageBase64(null);
       void loadHistory();
       setTimeout(() => setSent(false), 3000);
     } catch (err) {
@@ -113,6 +118,39 @@ function AdHocBroadcastModal({ centerId, onClose }: { centerId: string; onClose:
               rows={4}
               className="w-full px-3 py-2 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
             />
+            <div className="mt-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 cursor-pointer w-fit hover:text-foreground">
+                <input 
+                  type="file" 
+                  accept="image/jpeg,image/png,image/webp" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        setError("Image too large. Max 10MB allowed.");
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setImageBase64(ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                <span className="bg-secondary/50 px-3 py-1.5 rounded-md border border-border flex items-center gap-2">
+                  <span className="text-lg">📷</span>
+                  {imageBase64 ? "Image selected (Click to change)" : "Attach Image (Optional)"}
+                </span>
+              </label>
+              {imageBase64 && (
+                <div className="relative mt-2 inline-block">
+                  <img src={imageBase64} className="h-20 rounded-md border border-border object-cover" />
+                  <button onClick={() => setImageBase64(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">

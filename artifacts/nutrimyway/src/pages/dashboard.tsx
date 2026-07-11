@@ -44,6 +44,7 @@ interface Broadcast {
   sent_at: string;
   sent_by: "scheduled" | "manual";
   is_read: boolean;
+  image_url?: string;
 }
 
 function useActiveCheckin(memberId: number | null) {
@@ -648,6 +649,13 @@ function BroadcastCard({ broadcast, memberId, onDismiss }: {
       >
         <X className="w-3.5 h-3.5" />
       </button>
+      {broadcast.image_url && (
+        <img 
+          src={broadcast.image_url} 
+          alt="Broadcast Attachment" 
+          className="w-full h-auto max-h-48 object-cover rounded-md mb-2 border border-amber-200" 
+        />
+      )}
       <p className="text-sm text-amber-900 pr-6 leading-snug">{linkifyMessage(broadcast.message)}</p>
       <p className="text-[10px] text-amber-600 mt-1.5">
         {safeFormat(broadcast.sent_at, "MMM d", "--")}

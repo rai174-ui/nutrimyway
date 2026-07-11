@@ -700,6 +700,7 @@ export async function initDb(): Promise<void> {
     await migrateAdminTables42();
     await migrateAdminTables43();
     await migrateAdminTables44();
+    await migrateAdminTables45();
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
@@ -1191,7 +1192,19 @@ async function migrateAdminTables44(): Promise<void> {
       checkin_id INTEGER NOT NULL REFERENCES member_check_ins(id) ON DELETE CASCADE,
       category_id INTEGER REFERENCES checkin_categories(id) ON DELETE SET NULL,
       ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
-      UNIQUE(checkin_id, category_id, ingredient_id)
     )
   `);
+}
+
+async function migrateAdminTables45(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS broadcast_images (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      data BYTEA NOT NULL,
+      mime_type TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`ALTER TABLE member_broadcasts ADD COLUMN IF NOT EXISTS image_id UUID REFERENCES broadcast_images(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE center_broadcast_schedules ADD COLUMN IF NOT EXISTS image_id UUID REFERENCES broadcast_images(id) ON DELETE SET NULL`);
 }

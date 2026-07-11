@@ -2380,20 +2380,47 @@ router.post("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res
   const { centerId } = req.params;
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
-  const { message } = req.body as { message?: string };
+  const { message, image_base64 } = req.body as { message?: string, image_base64?: string };
   if (!message || typeof message !== "string" || message.trim().length === 0) {
     res.status(400).json({ error: "Message is required" }); return;
   }
   const trimmed = message.trim();
+  
+  let imageId = null;
+  let imageUrl: string | undefined = undefined;
+
+  if (image_base64 && typeof image_base64 === "string") {
+    try {
+      const match = image_base64.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+      if (match) {
+        const mimeType = match[1];
+        const base64Data = match[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const { rows: imgRows } = await pool.query(
+          `INSERT INTO broadcast_images (data, mime_type) VALUES ($1, $2) RETURNING id`,
+          [buffer, mimeType]
+        );
+        imageId = (imgRows[0] as { id: string }).id;
+        
+        // Construct the full image URL. For production Railway, it should use the public domain.
+        // req.protocol might be http locally, but in production we prefer the BASE_URL.
+        const baseUrl = process.env.VITE_API_BASE_FALLBACK?.replace(/\/api$/, '') || `${req.protocol}://${req.get("host")}`;
+        imageUrl = `${baseUrl}/api/images/${imageId}`;
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to process image_base64");
+    }
+  }
+
   // Insert the broadcast
   const { rows } = await pool.query(
-    `INSERT INTO member_broadcasts (center_id, message, sent_at, sent_by)
-     VALUES ($1, $2, NOW(), 'manual') RETURNING id`,
-    [centerId, trimmed]
+    `INSERT INTO member_broadcasts (center_id, message, sent_at, sent_by, image_id)
+     VALUES ($1, $2, NOW(), 'manual', $3) RETURNING id`,
+    [centerId, trimmed, imageId]
   );
   const broadcastId = (rows[0] as { id: number }).id;
 
-  res.json({ id: broadcastId, message: trimmed, sent_at: new Date().toISOString(), sent_by: "manual" });
+  res.json({ id: broadcastId, message: trimmed, sent_at: new Date().toISOString(), sent_by: "manual", image_url: imageUrl });
 
   // Send push notification asynchronously
   pool.query(
@@ -2404,7 +2431,7 @@ router.post("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res
   ).then(res => {
     const tokens = res.rows.map(r => r.push_token as string);
     if (tokens.length > 0) {
-      sendPushNotification(tokens, "New Broadcast", trimmed).catch(err => {
+      sendPushNotification(tokens, "New Broadcast", trimmed, imageUrl).catch(err => {
         logger.error({ err }, "Failed to send ad-hoc broadcast push notifications");
       });
     }

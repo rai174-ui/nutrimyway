@@ -7,6 +7,7 @@ import authRouter from "./auth";
 import centersRouter from "./centers";
 import adminRouter from "./admin";
 import storageRouter from "./storage";
+import { router as imagesRouter } from "./images";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(membersRouter);
 router.use(bomRouter);
 router.use(packsRouter);
 router.use(adminRouter);
+router.use(imagesRouter);
 
 export default router;
