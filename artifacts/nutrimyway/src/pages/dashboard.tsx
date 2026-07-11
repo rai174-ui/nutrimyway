@@ -504,42 +504,29 @@ export function Dashboard() {
         <div className="flex-1 space-y-1.5">
           <div className="flex justify-between items-center">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Protein</span>
-            <span className="text-xs font-bold">{summary?.total_protein?.toFixed(1) || "0.0"}g</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Carbs</span>
-            <span className="text-xs font-bold">{summary?.total_carbs?.toFixed(1) || "0.0"}g</span>
+            <span className="text-xs font-bold">
+              {Math.round(summary?.total_protein ?? 0)}
+              {(summary as any)?.protein_target_g ? <span className="text-[10px] font-normal text-muted-foreground">/{Math.round((summary as any).protein_target_g)}g</span> : "g"}
+            </span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Fiber</span>
-            <span className="text-xs font-bold">{summary?.total_fiber?.toFixed(1) || "0.0"}g</span>
+            <span className="text-xs font-bold">
+              {Math.round(summary?.total_fiber ?? 0)}
+              {(summary as any)?.fiber_target_g ? <span className="text-[10px] font-normal text-muted-foreground">/{Math.round((summary as any).fiber_target_g)}g</span> : "g"}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Water</span>
+            <span className="text-xs font-bold">
+              {(summary as any)?.total_water ?? 0}
+              {(summary as any)?.water_target_ml ? <span className="text-[10px] font-normal text-muted-foreground">/{Math.round((summary as any).water_target_ml)}ml</span> : "ml"}
+            </span>
           </div>
         </div>
       </section>
 
-      {/* Target mini-pills (only if targets are set) */}
-      {((summary as any)?.protein_target_g || (summary as any)?.fiber_target_g || (summary as any)?.water_target_ml) && (
-        <div className="flex gap-1.5">
-          {(summary as any)?.protein_target_g && (
-            <div className="flex-1 bg-blue-50 border border-blue-100 rounded-lg p-1 text-center">
-              <p className="text-[8px] text-blue-500 font-bold uppercase">Protein</p>
-              <p className="text-[10px] font-bold text-blue-700">{Math.round(summary?.total_protein ?? 0)}<span className="text-[8px] font-normal">/{Math.round((summary as any).protein_target_g)}g</span></p>
-            </div>
-          )}
-          {(summary as any)?.fiber_target_g && (
-            <div className="flex-1 bg-green-50 border border-green-100 rounded-lg p-1 text-center">
-              <p className="text-[8px] text-green-500 font-bold uppercase">Fiber</p>
-              <p className="text-[10px] font-bold text-green-700">{Math.round(summary?.total_fiber ?? 0)}<span className="text-[8px] font-normal">/{Math.round((summary as any).fiber_target_g)}g</span></p>
-            </div>
-          )}
-          {(summary as any)?.water_target_ml && (
-            <div className="flex-1 bg-sky-50 border border-sky-100 rounded-lg p-1 text-center">
-              <p className="text-[8px] text-sky-500 font-bold uppercase">Water</p>
-              <p className="text-[10px] font-bold text-sky-700">{(summary as any)?.total_water ?? 0}<span className="text-[8px] font-normal">/{Math.round((summary as any).water_target_ml)}ml</span></p>
-            </div>
-          )}
-        </div>
-      )}
+
 
       {/* Water Tracker */}
       {MEMBER_ID && (summary as any)?.water_target_ml && (
