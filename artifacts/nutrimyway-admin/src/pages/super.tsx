@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearch } from "wouter";
 import {
   ShieldCheck, CheckCircle2, XCircle, Loader2, LogOut, RefreshCw,
-  Key, Calendar, Mail, Eye, EyeOff, Pencil, Upload, Users, Plus,
+  Key, Calendar, Mail, Eye, EyeOff, Pencil, Upload, Users, Plus, Trash2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -310,6 +310,165 @@ function ResetPwdDialog({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Reset Center Data Dialog ────────────────────────────────────────────────
+
+const RESET_CATEGORIES = [
+  { key: "check_ins",   label: "Check-ins & Visit Selections", desc: "All check-in records, flavour/ingredient selections" },
+  { key: "consumption", label: "Consumption Logs",              desc: "All meal consumption log entries" },
+  { key: "inventory",   label: "Inventory Batches",             desc: "Ingredient batches, batch logs & adjustments" },
+  { key: "health",      label: "Health Records",                desc: "Weight and health entries" },
+  { key: "issuances",   label: "Issuances & Renewals",          desc: "Plan issuances, renewals, membership cycle reset" },
+  { key: "members",     label: "Members (unlink & delete)",     desc: "⚠ Unlinks + deletes members unique to this center" },
+] as const;
+
+function ResetCenterDataDialog({
+  center, onClose, onSuccess,
+}: { center: CenterWithStatus; onClose: () => void; onSuccess: (summary: string) => void }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmText, setConfirmText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<Record<string, number> | null>(null);
+
+  function toggleCat(key: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  async function handleReset() {
+    if (confirmText !== center.id) { setError(`Type the center ID exactly: ${center.id}`); return; }
+    if (selected.size === 0) { setError("Select at least one category."); return; }
+    setLoading(true); setError(null);
+    try {
+      const res = await superFetch<{ deleted: Record<string, number> }>(
+        `/admin/super/centers/${center.id}/reset`,
+        { method: "POST", body: JSON.stringify({ confirm: "RESET", categories: [...selected] }) }
+      );
+      setResult(res.deleted);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const canReset = selected.size > 0 && confirmText === center.id && !loading;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-md">
+        {/* Header */}
+        <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-border">
+          <div>
+            <h3 className="text-base font-bold text-foreground">Reset Center Data</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">{center.name} <span className="font-mono text-xs">({center.id})</span></p>
+          </div>
+          <button onClick={result ? () => { onSuccess(`Reset complete`); onClose(); } : onClose}
+            className="text-muted-foreground hover:text-foreground transition-colors p-1">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        {result ? (
+          /* ── Success summary ── */
+          <div className="p-5 space-y-4">
+            <div className="flex items-center gap-2 text-emerald-700">
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-semibold">Reset complete</span>
+            </div>
+            <div className="bg-muted/50 rounded-xl border border-border overflow-hidden">
+              {Object.entries(result).map(([cat, count]) => (
+                <div key={cat} className="flex items-center justify-between px-4 py-2.5 border-b border-border/50 last:border-0">
+                  <span className="text-sm text-foreground capitalize">{cat.replace("_", " ")}</span>
+                  <span className="text-sm font-semibold tabular-nums text-destructive">{count} rows deleted</span>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => { onSuccess(`Reset complete for ${center.name}`); onClose(); }}
+              className="w-full h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          /* ── Selection & confirmation ── */
+          <div className="p-5 space-y-4">
+            {/* Warning banner */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-amber-800 font-medium">⚠ This action is irreversible. Select only what you want to permanently delete.</p>
+            </div>
+
+            {/* Category checkboxes */}
+            <div className="space-y-2">
+              {RESET_CATEGORIES.map(({ key, label, desc }) => {
+                const isDanger = key === "members";
+                return (
+                  <label
+                    key={key}
+                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      selected.has(key)
+                        ? isDanger ? "bg-red-50 border-red-300" : "bg-primary/5 border-primary/30"
+                        : "border-border hover:border-border/80 hover:bg-muted/30"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.has(key)}
+                      onChange={() => toggleCat(key)}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <div className="min-w-0">
+                      <p className={`text-sm font-medium ${isDanger ? "text-red-700" : "text-foreground"}`}>{label}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{desc}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* Confirmation input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Type center ID to confirm
+              </label>
+              <input
+                value={confirmText}
+                onChange={e => setConfirmText(e.target.value)}
+                placeholder={center.id}
+                className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-destructive/40"
+              />
+            </div>
+
+            {error && (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2">
+                <span className="text-xs text-destructive">{error}</span>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={onClose}
+                className="flex-1 h-10 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleReset()}
+                disabled={!canReset}
+                className="flex-1 h-10 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Trash2 className="w-4 h-4" />Reset Selected</>}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -667,6 +826,7 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
   const [toggling, setToggling] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resetPwdCenter, setResetPwdCenter] = useState<CenterWithStatus | null>(null);
+  const [resetDataCenter, setResetDataCenter] = useState<CenterWithStatus | null>(null);
   const [validityCenter, setValidityCenter] = useState<CenterWithStatus | null>(null);
   const [editCenter, setEditCenter] = useState<CenterWithStatus | null>(null);
   const [uploadMembersCenter, setUploadMembersCenter] = useState<CenterWithStatus | null>(null);
@@ -724,6 +884,14 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
           center={resetPwdCenter}
           onClose={() => setResetPwdCenter(null)}
           onSuccess={() => { setResetPwdCenter(null); showToast("Password reset successfully"); }}
+        />
+      )}
+
+      {resetDataCenter && (
+        <ResetCenterDataDialog
+          center={resetDataCenter}
+          onClose={() => setResetDataCenter(null)}
+          onSuccess={msg => { setResetDataCenter(null); showToast(msg); }}
         />
       )}
 
@@ -943,6 +1111,13 @@ function SuperDashboard({ onLogout }: { onLogout: () => void }) {
                           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
                         >
                           <Key className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setResetDataCenter(center)}
+                          title="Reset center data"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => setValidityCenter(center)}

@@ -2786,10 +2786,113 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
 });
 
 // POST /api/admin/super/reset-transactional-data
+// POST /api/admin/super/centers/:centerId/reset
+// Selective per-center data reset. Body: { confirm: "RESET", categories: string[] }
+// Valid categories: "check_ins" | "consumption" | "inventory" | "health" | "issuances" | "members"
+router.post("/admin/super/centers/:centerId/reset", requireSuperAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const { confirm, categories } = req.body as { confirm?: string; categories?: string[] };
+
+  if (confirm !== "RESET") {
+    res.status(400).json({ error: 'Body must include { "confirm": "RESET" } to proceed.' });
+    return;
+  }
+  if (!Array.isArray(categories) || categories.length === 0) {
+    res.status(400).json({ error: "At least one category must be selected." });
+    return;
+  }
+
+  const valid = new Set(["check_ins", "consumption", "inventory", "health", "issuances", "members"]);
+  const invalid = categories.filter(c => !valid.has(c));
+  if (invalid.length > 0) {
+    res.status(400).json({ error: `Unknown categories: ${invalid.join(", ")}` });
+    return;
+  }
+
+  const cats = new Set(categories);
+  const client = await pool.connect();
+  const deleted: Record<string, number> = {};
+
+  try {
+    await client.query("BEGIN");
+
+    // ── check_ins: visit selections + check-in records
+    if (cats.has("check_ins")) {
+      const { rowCount: vfs } = await client.query(
+        `DELETE FROM visit_flavour_selections WHERE checkin_id IN (SELECT id FROM member_check_ins WHERE center_id = $1)`, [centerId]);
+      const { rowCount: vis } = await client.query(
+        `DELETE FROM visit_ingredient_selections WHERE checkin_id IN (SELECT id FROM member_check_ins WHERE center_id = $1)`, [centerId]);
+      const { rowCount: vms } = await client.query(
+        `DELETE FROM visit_menu_selections WHERE checkin_id IN (SELECT id FROM member_check_ins WHERE center_id = $1)`, [centerId]);
+      const { rowCount: ci } = await client.query(
+        `DELETE FROM member_check_ins WHERE center_id = $1`, [centerId]);
+      deleted["check_ins"] = (vfs ?? 0) + (vis ?? 0) + (vms ?? 0) + (ci ?? 0);
+    }
+
+    // ── consumption: consumption_logs for center members
+    if (cats.has("consumption")) {
+      const { rowCount: cl } = await client.query(
+        `DELETE FROM consumption_logs WHERE member_id IN (SELECT member_id FROM member_center_mapping WHERE center_id = $1)`, [centerId]);
+      deleted["consumption"] = cl ?? 0;
+    }
+
+    // ── inventory: batches + their logs/adjustments
+    if (cats.has("inventory")) {
+      const { rowCount: bcl } = await client.query(
+        `DELETE FROM batch_consumption_logs WHERE batch_id IN (SELECT id FROM ingredient_batches WHERE center_id = $1)`, [centerId]);
+      const { rowCount: ba } = await client.query(
+        `DELETE FROM batch_adjustments WHERE batch_id IN (SELECT id FROM ingredient_batches WHERE center_id = $1)`, [centerId]);
+      const { rowCount: ib } = await client.query(
+        `DELETE FROM ingredient_batches WHERE center_id = $1`, [centerId]);
+      deleted["inventory"] = (bcl ?? 0) + (ba ?? 0) + (ib ?? 0);
+    }
+
+    // ── health: health_records for this center
+    if (cats.has("health")) {
+      const { rowCount: hr } = await client.query(
+        `DELETE FROM health_records WHERE center_id = $1`, [centerId]);
+      deleted["health"] = hr ?? 0;
+    }
+
+    // ── issuances: plan issuances + renewals for center members
+    if (cats.has("issuances")) {
+      const { rowCount: iss } = await client.query(
+        `DELETE FROM issuances WHERE member_id IN (SELECT member_id FROM member_center_mapping WHERE center_id = $1)`, [centerId]);
+      const { rowCount: ren } = await client.query(
+        `DELETE FROM member_renewals WHERE member_id IN (SELECT member_id FROM member_center_mapping WHERE center_id = $1)`, [centerId]);
+      // Reset membership cycle start for center members
+      await client.query(
+        `UPDATE members SET cycle_started_at = NULL WHERE id IN (SELECT member_id FROM member_center_mapping WHERE center_id = $1)`, [centerId]);
+      deleted["issuances"] = (iss ?? 0) + (ren ?? 0);
+    }
+
+    // ── members: unlink + delete members belonging ONLY to this center
+    if (cats.has("members")) {
+      // Only delete members who are not mapped to any other center
+      const { rowCount: mcm } = await client.query(
+        `DELETE FROM member_center_mapping WHERE center_id = $1`, [centerId]);
+      const { rowCount: mem } = await client.query(
+        `DELETE FROM members WHERE id NOT IN (SELECT DISTINCT member_id FROM member_center_mapping)`);
+      deleted["members"] = (mcm ?? 0) + (mem ?? 0);
+    }
+
+    await client.query("COMMIT");
+    logger.info({ centerId, categories, deleted }, "Super admin reset center data selectively.");
+    res.json({ success: true, centerId, categories, deleted });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    logger.error({ err, centerId }, "Selective center reset failed — rolled back.");
+    res.status(500).json({ error: "Reset failed and was rolled back.", detail: err instanceof Error ? err.message : String(err) });
+  } finally {
+    client.release();
+  }
+});
+
 // ⚠️  Wipes ALL transactional data — check-ins, consumption logs, inventory batches,
 //     renewals, health records, issuances, OTPs — while keeping master data intact.
 //     Requires superadmin JWT AND body: { confirm: "RESET" } as a double-guard.
 router.post("/admin/super/reset-transactional-data", requireSuperAdmin, async (req, res) => {
+
   const { confirm } = req.body as { confirm?: string };
   if (confirm !== "RESET") {
     res.status(400).json({ error: 'Body must include { "confirm": "RESET" } to proceed.' });
