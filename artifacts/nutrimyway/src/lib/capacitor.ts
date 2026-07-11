@@ -6,6 +6,7 @@
 import { Capacitor } from "@capacitor/core";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { LocalNotifications } from "@capacitor/local-notifications";
 
 export function native(): boolean {
   return Capacitor.isNativePlatform();
@@ -44,6 +45,7 @@ export async function initPushNotifications(memberId: number, apiBase: string): 
   // Request permission
   const perm = await PushNotifications.requestPermissions();
   if (perm.receive !== "granted") return;
+  await LocalNotifications.requestPermissions();
 
   // Start listening for token
   PushNotifications.addListener("registration", async (token) => {
@@ -62,6 +64,23 @@ export async function initPushNotifications(memberId: number, apiBase: string): 
     // silently fail
   });
 
+  // Listen for incoming notifications when app is in foreground
+  PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+    // Display as a local notification (system alert) so the user sees it immediately
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: Math.floor(Date.now() / 1000), // safe 32-bit int
+          title: notification.title || "NutriMyWay",
+          body: notification.body || "",
+          schedule: { at: new Date(Date.now() + 100) },
+          channelId: "default",
+          smallIcon: "ic_launcher_round",
+        },
+      ],
+    });
+  });
+
   // Create high-importance channel for Android so notifications show up even in foreground
   if (platform() === "android") {
     try {
@@ -71,6 +90,14 @@ export async function initPushNotifications(memberId: number, apiBase: string): 
         description: "General notifications for NutriMyWay",
         importance: 5, // High importance (shows heads-up notification)
         visibility: 1, // Public visibility
+        vibration: true,
+      });
+      await LocalNotifications.createChannel({
+        id: "default",
+        name: "General Notifications",
+        description: "General notifications for NutriMyWay",
+        importance: 5,
+        visibility: 1,
         vibration: true,
       });
     } catch {
