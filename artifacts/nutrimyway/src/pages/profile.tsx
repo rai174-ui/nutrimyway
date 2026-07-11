@@ -1,4 +1,4 @@
-import { useGetMember, getGetMemberQueryKey, useGetMemberIssuances, getGetMemberIssuancesQueryKey, useGetMemberStatus, getGetMemberStatusQueryKey } from "@workspace/api-client-react";
+import { useGetMember, getGetMemberQueryKey, useGetMemberIssuances, getGetMemberIssuancesQueryKey, useGetMemberStatus, getGetMemberStatusQueryKey, useGetDailySummary, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { format, isValid } from "date-fns";
 import { motion } from "framer-motion";
 import { Package, Calendar, LogOut, Info, AlertTriangle, Ticket } from "lucide-react";
@@ -10,6 +10,9 @@ function safeFormat(value: string | null | undefined, fmt: string, fallback = "-
   const d = new Date(value);
   return isValid(d) ? format(d, fmt) : fallback;
 }
+
+function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
+const TODAY = todayLocal();
 
 export function Profile() {
   const { memberId: MEMBER_ID, logout } = useAuth();
@@ -25,6 +28,22 @@ export function Profile() {
   const { data: status } = useGetMemberStatus(MEMBER_ID!, {
     query: { enabled: !!MEMBER_ID, queryKey: getGetMemberStatusQueryKey(MEMBER_ID!) }
   });
+
+  const { data: summary } = useGetDailySummary(MEMBER_ID!, TODAY, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, TODAY) }
+  });
+
+  const consumedCal = summary?.total_kcal ?? 0;
+  const targetCal = (summary as any)?.target_kcal ?? member?.daily_kcal ?? 2000;
+  const calPercent = Math.min(100, Math.round((consumedCal / (targetCal || 1)) * 100));
+
+  const consumedProtein = summary?.total_protein ?? 0;
+  const targetProtein = (summary as any)?.protein_target_g ?? 120;
+  const proteinPercent = targetProtein > 0 ? Math.min(100, Math.round((consumedProtein / targetProtein) * 100)) : 0;
+
+  const consumedWater = (summary as any)?.total_water ?? 0;
+  const targetWater = (summary as any)?.water_target_ml ?? 4000;
+  const waterPercent = targetWater > 0 ? Math.min(100, Math.round((consumedWater / targetWater) * 100)) : 0;
 
 
   const getInitials = (name?: string) => {
@@ -81,20 +100,29 @@ export function Profile() {
         <div className="space-y-4">
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="font-medium">Target Calories</span>
-              <span className="font-bold">{(member?.daily_kcal ?? 2000)} kcal</span>
+              <span className="font-medium">Calories</span>
+              <span className="font-bold">{Math.round(consumedCal)} / {Math.round(targetCal)} kcal</span>
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-primary w-3/4 rounded-full" />
+              <div className="h-full bg-primary rounded-full transition-all duration-1000 ease-out" style={{ width: `${calPercent}%` }} />
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="font-medium">Protein Goal</span>
-              <span className="font-bold">120g</span>
+              <span className="font-bold">{Math.round(consumedProtein)} / {Math.round(targetProtein)}g</span>
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-[#0F6E56] w-1/2 rounded-full" />
+              <div className="h-full bg-[#0F6E56] rounded-full transition-all duration-1000 ease-out" style={{ width: `${proteinPercent}%` }} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="font-medium">Water Goal</span>
+              <span className="font-bold">{consumedWater} / {Math.round(targetWater)}ml</span>
+            </div>
+            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-sky-500 rounded-full transition-all duration-1000 ease-out" style={{ width: `${waterPercent}%` }} />
             </div>
           </div>
         </div>
