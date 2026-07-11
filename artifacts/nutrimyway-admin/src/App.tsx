@@ -10,7 +10,7 @@ import SuperPage from "@/pages/super";
 import MembersPage from "@/pages/members";
 import LogsPage from "@/pages/logs";
 import InventoryPage from "@/pages/inventory";
-import { isAuthenticated, needsTermsAcceptance } from "@/lib/api";
+import { isAuthenticated, needsTermsAcceptance, clearAuth } from "@/lib/api";
 import { ConsentModal } from "@/components/consent-modal";
 
 const queryClient = new QueryClient();
@@ -18,9 +18,35 @@ const queryClient = new QueryClient();
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const [, navigate] = useLocation();
   const [pendingTerms, setPendingTerms] = useState(needsTermsAcceptance());
+
   useEffect(() => {
-    if (!isAuthenticated()) navigate("/login");
+    if (!isAuthenticated()) {
+      navigate("/login");
+      return;
+    }
+
+    let timeoutId: number;
+
+    const resetTimer = () => {
+      window.clearTimeout(timeoutId);
+      // 15 minutes = 15 * 60 * 1000 = 900000 ms
+      timeoutId = window.setTimeout(() => {
+        clearAuth();
+        navigate("/login");
+      }, 900000);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+
+    resetTimer();
+    events.forEach(event => document.addEventListener(event, resetTimer, { passive: true }));
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      events.forEach(event => document.removeEventListener(event, resetTimer));
+    };
   }, [navigate]);
+
   if (!isAuthenticated()) return null;
   if (pendingTerms) {
     return <ConsentModal onAccepted={() => setPendingTerms(false)} />;

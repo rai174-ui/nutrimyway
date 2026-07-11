@@ -1,0 +1,22 @@
+
+  const activeBatches = useMemo(() => batches.filter(b => b.status !== "consumed"), [batches]);
+
+  // Center-stock open batches only (no member-assigned packs)
+  const openGroups = useMemo(() => {
+    const map = new Map<number, { ingredient: Ingredient; openBatch: IngredientBatch; reserveCount: number }>();
+    for (const b of activeBatches) {
+      if (b.status === "open" && !b.assigned_member_id) {
+        const ing = ingredients.find(i => i.id === b.ingredient_id);
+        if (ing) map.set(ing.id, { ingredient: ing, openBatch: b, reserveCount: 0 });
+      }
+    }
+    for (const b of activeBatches) {
+      if (b.status === "new" && !b.assigned_member_id) {
+        const entry = map.get(b.ingredient_id);
+        if (entry) entry.reserveCount++;
+      }
+    }
+    return [...map.values()];
+  }, [activeBatches, ingredients]);
+
+

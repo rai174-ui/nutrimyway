@@ -13,7 +13,7 @@ import { About } from "@/pages/about";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ConsentModal } from "@/components/consent-modal";
 import { initApiBase } from "@/lib/api-base";
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, useEffect, type ErrorInfo, type ReactNode } from "react";
 
 initApiBase();
 
@@ -87,7 +87,31 @@ const queryClient = new QueryClient({
 });
 
 function ProtectedRouter() {
-  const { isAuthenticated, needsTermsAcceptance, markTermsAccepted } = useAuth();
+  const { isAuthenticated, needsTermsAcceptance, markTermsAccepted, logout } = useAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let timeoutId: number;
+
+    const resetTimer = () => {
+      window.clearTimeout(timeoutId);
+      // 15 minutes = 15 * 60 * 1000 = 900000 ms
+      timeoutId = window.setTimeout(() => {
+        logout();
+      }, 900000);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+
+    resetTimer();
+    events.forEach(event => document.addEventListener(event, resetTimer, { passive: true }));
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      events.forEach(event => document.removeEventListener(event, resetTimer));
+    };
+  }, [isAuthenticated, logout]);
 
   if (!isAuthenticated) {
     return <Login />;
