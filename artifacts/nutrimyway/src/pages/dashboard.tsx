@@ -355,6 +355,7 @@ function WaterTracker({ memberId, totalWater }: { memberId: number, totalWater: 
     try {
       await apiFetch(`/members/${memberId}/water`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ water_ml: newTotal })
       });
       queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(memberId, { date: TODAY }) });

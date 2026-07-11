@@ -1063,6 +1063,11 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        (
          SELECT water_ml FROM member_nutrition_logs mnl
          WHERE mnl.member_id = m.id
+           AND mnl.logged_date = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+       ) AS today_water_ml,
+       (
+         SELECT water_ml FROM member_nutrition_logs mnl
+         WHERE mnl.member_id = m.id
            AND mnl.logged_date = DATE(NOW() AT TIME ZONE 'Asia/Kolkata') - INTERVAL '1 day'
        ) AS yesterday_water_ml
 

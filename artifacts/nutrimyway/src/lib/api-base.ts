@@ -91,10 +91,16 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   for (const base of ordered) {
     try {
       const res = await fetch(`${base}${path}`, { ...init, headers });
+      
+      const contentType = res.headers.get("content-type") || "";
+      if (res.ok && contentType.includes("text/html")) {
+        throw new Error("API returned HTML. Ensure VITE_API_BASE is correctly configured (use pnpm run build:mobile).");
+      }
+
       activateBase(base);
       return res;
     } catch (err) {
-      if (!isNetworkError(err)) throw err;
+      if (!isNetworkError(err) && !(err instanceof Error && err.message.includes("API returned HTML"))) throw err;
       lastErr = err;
     }
   }
