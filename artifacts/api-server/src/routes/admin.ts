@@ -6,6 +6,7 @@ import { randomBytes } from "crypto";
 import { pool } from "../lib/sqlite";
 import { logger } from "../lib/logger";
 import { bookAndCheckout } from "../lib/checkout";
+import { sendPushNotification } from "../lib/push";
 
 const SUPER_ADMIN_EMAIL = process.env["SUPER_ADMIN_EMAIL"] ?? "rai.174@gmail.com";
 const APP_URL = process.env["APP_URL"] ?? "http://localhost:8080";
@@ -2417,7 +2418,23 @@ router.post("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res
     [centerId, trimmed]
   );
   const broadcastId = (rows[0] as { id: number }).id;
+
   res.json({ id: broadcastId, message: trimmed, sent_at: new Date().toISOString(), sent_by: "manual" });
+
+  // Send push notification asynchronously
+  pool.query(
+    `SELECT push_token FROM members m
+     JOIN member_center_mapping mcm ON mcm.member_id = m.id
+     WHERE mcm.center_id = $1 AND m.is_active = TRUE AND m.push_token IS NOT NULL`,
+    [centerId]
+  ).then(res => {
+    const tokens = res.rows.map(r => r.push_token as string);
+    if (tokens.length > 0) {
+      sendPushNotification(tokens, "New Broadcast", trimmed).catch(err => {
+        logger.error({ err }, "Failed to send ad-hoc broadcast push notifications");
+      });
+    }
+  }).catch(err => logger.error({ err }, "Failed to query push tokens for broadcast"));
 });
 
 // GET /api/admin/centers/:centerId/broadcasts — recent broadcasts (admin sees all; retention only affects member view)

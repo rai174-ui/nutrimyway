@@ -8,6 +8,7 @@ import { logger } from "./lib/logger";
 import { pool } from "./lib/sqlite";
 import { ObjectStorageService } from "./lib/objectStorage";
 import { ObjectNotFoundError } from "./lib/objectStorage";
+import { sendPushNotification } from "./lib/push";
 
 const app: Express = express();
 
@@ -170,6 +171,21 @@ export function startBroadcastScheduler(): void {
             { scheduleId: s.id, centerId: s.center_id, time: timeStr },
             "Scheduled broadcast sent",
           );
+
+          // Send push notification asynchronously
+          pool.query(
+            `SELECT push_token FROM members m
+             JOIN member_center_mapping mcm ON mcm.member_id = m.id
+             WHERE mcm.center_id = $1 AND m.is_active = TRUE AND m.push_token IS NOT NULL`,
+            [s.center_id]
+          ).then(res => {
+            const tokens = res.rows.map(r => r.push_token as string);
+            if (tokens.length > 0) {
+              sendPushNotification(tokens, "Scheduled Broadcast", s.message).catch(err => {
+                logger.error({ err }, "Failed to send scheduled broadcast push notifications");
+              });
+            }
+          }).catch(err => logger.error({ err }, "Failed to query push tokens for scheduled broadcast"));
         } catch (err) {
           await pool.query("ROLLBACK");
           logger.error({ err, scheduleId: s.id }, "Scheduled broadcast failed");

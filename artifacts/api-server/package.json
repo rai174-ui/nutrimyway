@@ -24,6 +24,7 @@
     "drizzle-orm": "catalog:",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
+    "firebase-admin": "^14.1.0",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^9.0.1",
     "pg": "^8.22.0",
