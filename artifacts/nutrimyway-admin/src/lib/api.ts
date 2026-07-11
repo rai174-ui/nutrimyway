@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_BASE || "/api";
+const BASE = import.meta.env.PROD ? "/api" : (import.meta.env.VITE_API_BASE || "/api");
 
 function getToken(): string | null {
   return localStorage.getItem("nmw_admin_token");
