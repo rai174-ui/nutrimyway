@@ -2802,7 +2802,7 @@ router.post("/admin/super/centers/:centerId/reset", requireSuperAdmin, async (re
     return;
   }
 
-  const valid = new Set(["check_ins", "consumption", "inventory", "health", "issuances", "members"]);
+  const valid = new Set(["check_ins", "consumption", "inventory", "health", "issuances", "members", "consent"]);
   const invalid = categories.filter(c => !valid.has(c));
   if (invalid.length > 0) {
     res.status(400).json({ error: `Unknown categories: ${invalid.join(", ")}` });
@@ -2874,6 +2874,15 @@ router.post("/admin/super/centers/:centerId/reset", requireSuperAdmin, async (re
       const { rowCount: mem } = await client.query(
         `DELETE FROM members WHERE id NOT IN (SELECT DISTINCT member_id FROM member_center_mapping)`);
       deleted["members"] = (mcm ?? 0) + (mem ?? 0);
+    }
+
+    // ── consent: reset terms_accepted_at for center and its members
+    if (cats.has("consent")) {
+      const { rowCount: ca } = await client.query(
+        `UPDATE center_auth SET terms_accepted_at = NULL WHERE center_id = $1`, [centerId]);
+      const { rowCount: ua } = await client.query(
+        `UPDATE user_auth SET terms_accepted_at = NULL WHERE member_id IN (SELECT member_id FROM member_center_mapping WHERE center_id = $1)`, [centerId]);
+      deleted["consent"] = (ca ?? 0) + (ua ?? 0);
     }
 
     await client.query("COMMIT");

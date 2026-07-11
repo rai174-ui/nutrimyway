@@ -324,6 +324,7 @@ const RESET_CATEGORIES = [
   { key: "health",      label: "Health Records",                desc: "Weight and health entries" },
   { key: "issuances",   label: "Issuances & Renewals",          desc: "Plan issuances, renewals, membership cycle reset" },
   { key: "members",     label: "Members (unlink & delete)",     desc: "⚠ Unlinks + deletes members unique to this center" },
+  { key: "consent",     label: "Terms & Consent",               desc: "Resets terms acceptance for center admin and all its members" },
 ] as const;
 
 function ResetCenterDataDialog({
