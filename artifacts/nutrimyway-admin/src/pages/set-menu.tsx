@@ -88,7 +88,7 @@ export default function SetMenuPage() {
   async function consumeBatch(id: number) {
     if (!confirm("Mark this batch as fully consumed?")) return;
     try {
-      await apiPatch(`/admin/ingredient-batches/${id}`, { status: "consumed" });
+      await apiPatch(`/admin/ingredient-batches/${id}/consume`);
       await load();
     } catch (e) { alert((e as Error).message); }
   }
