@@ -703,7 +703,7 @@ router.get("/members/:memberId/broadcasts", async (req, res) => {
      WHERE b.center_id IN (${placeholders})
        AND b.sent_at >= NOW() - COALESCE(
          (SELECT NULLIF(cbs.retention_days, 0) FROM center_broadcast_settings cbs WHERE cbs.center_id = b.center_id),
-         7
+         1
        ) * INTERVAL '1 day'
      ORDER BY b.sent_at DESC
      LIMIT $${centerIds.length + 2}`,
