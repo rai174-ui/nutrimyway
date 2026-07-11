@@ -701,10 +701,10 @@ router.get("/members/:memberId/broadcasts", async (req, res) => {
             EXISTS(SELECT 1 FROM member_broadcast_reads r WHERE r.broadcast_id = b.id AND r.member_id = $1) AS is_read
      FROM member_broadcasts b
      WHERE b.center_id IN (${placeholders})
-       AND b.sent_at >= NOW() - (
-         SELECT COALESCE(NULLIF(cbs.retention_days, 0), 7) * INTERVAL '1 day'
-         FROM center_broadcast_settings cbs WHERE cbs.center_id = b.center_id
-       )
+       AND b.sent_at >= NOW() - COALESCE(
+         (SELECT NULLIF(cbs.retention_days, 0) FROM center_broadcast_settings cbs WHERE cbs.center_id = b.center_id),
+         7
+       ) * INTERVAL '1 day'
      ORDER BY b.sent_at DESC
      LIMIT $${centerIds.length + 2}`,
     [memberId, ...centerIds, limit]
