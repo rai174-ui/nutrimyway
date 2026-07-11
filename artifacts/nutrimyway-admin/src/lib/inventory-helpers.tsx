@@ -86,9 +86,9 @@ export function AdjustBatchForm({ batch, onClose, onRefresh }: { batch: Ingredie
     if (!reason.trim()) { setError("Reason is required"); return; }
     setLoading(true);
     try {
-      await apiPost(`/admin/ingredient-batches/${batch.id}/adjustments`, {
-        quantity: Number(qty),
-        reason
+      await apiPost(`/admin/ingredient-batches/${batch.id}/adjust`, {
+        qty_change: Number(qty),
+        note: reason
       });
       onRefresh();
       onClose();
@@ -101,7 +101,7 @@ export function AdjustBatchForm({ batch, onClose, onRefresh }: { batch: Ingredie
   async function undo(logId: number) {
     setLoading(true);
     try {
-      await apiDelete(`/admin/ingredient-batches/${batch.id}/consumption-logs/${logId}`);
+      await apiDelete(`/admin/consumption-logs/${logId}`);
       onRefresh();
       onClose();
     } catch (e) {
