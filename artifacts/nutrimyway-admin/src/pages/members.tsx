@@ -1086,17 +1086,17 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
             {member.membership_no && <p className="text-xs text-muted-foreground">{member.membership_no}</p>}
             {member.daily_kcal != null && (
               <span className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-full px-2 py-0.5">
-                🔥 {member.daily_kcal} kcal
+                🔥 {Math.round((member as any).today_kcal || 0)} / {member.daily_kcal} kcal
               </span>
             )}
             {(member as any).protein_target_g != null && (
               <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
-                🍗 {(member as any).protein_target_g}g protein
+                🍗 {Math.round((member as any).today_protein_g || 0)} / {(member as any).protein_target_g}g protein
               </span>
             )}
             {(member as any).fiber_target_g != null && (
               <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 border border-green-100 rounded-full px-2 py-0.5">
-                🌾 {(member as any).fiber_target_g}g fiber
+                🌾 {Math.round((member as any).today_fiber_g || 0)} / {(member as any).fiber_target_g}g fiber
               </span>
             )}
             {(member as any).water_target_ml != null && (

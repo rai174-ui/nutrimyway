@@ -1061,6 +1061,21 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
            AND mci2.checked_out_at IS NOT NULL
        ) AS already_consumed_today,
        (
+         SELECT SUM(calories_kcal) FROM consumption_logs cl
+         WHERE cl.member_id = m.id
+           AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+       ) AS today_kcal,
+       (
+         SELECT SUM(protein_g) FROM consumption_logs cl
+         WHERE cl.member_id = m.id
+           AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+       ) AS today_protein_g,
+       (
+         SELECT SUM(fiber_g) FROM consumption_logs cl
+         WHERE cl.member_id = m.id
+           AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
+       ) AS today_fiber_g,
+       (
          SELECT water_ml FROM member_nutrition_logs mnl
          WHERE mnl.member_id = m.id
            AND mnl.logged_date = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
