@@ -114,7 +114,8 @@ async function createTables(): Promise<void> {
       carbs_g REAL,
       fat_g REAL,
       photo_url TEXT,
-      photo_uploaded_at TIMESTAMPTZ
+      photo_uploaded_at TIMESTAMPTZ,
+      fiber_g REAL
     );
 
     CREATE TABLE IF NOT EXISTS bom_items (
@@ -991,6 +992,7 @@ async function migrateAdminTables35(): Promise<void> {
   // Push notification tokens for FCM
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS push_token TEXT`);
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS push_platform TEXT`);
+  await pool.query(`ALTER TABLE consumption_logs ADD COLUMN IF NOT EXISTS fiber_g REAL`);
 }
 
 async function migrateAdminTables36(): Promise<void> {
