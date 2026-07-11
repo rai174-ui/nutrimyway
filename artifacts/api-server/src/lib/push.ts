@@ -1,4 +1,5 @@
-import * as admin from "firebase-admin";
+import { initializeApp, cert, getApps, applicationDefault, type ServiceAccount } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 import path from "path";
 import fs from "fs";
 import { logger } from "./logger";
@@ -6,11 +7,11 @@ import { logger } from "./logger";
 let firebaseInitialized = false;
 let firebaseInitError = "";
 
-function parseServiceAccount(raw: string): admin.ServiceAccount {
-  // raw could be JSON string or base64-encoded JSON
+function parseServiceAccount(raw: string): ServiceAccount {
+  // raw could be plain JSON or base64-encoded JSON
   let jsonStr = raw.trim();
-  
-  // Detect base64: no '{' at start means it's likely base64
+
+  // Detect base64: JSON always starts with '{'
   if (!jsonStr.startsWith("{")) {
     try {
       jsonStr = Buffer.from(jsonStr, "base64").toString("utf8");
@@ -18,8 +19,8 @@ function parseServiceAccount(raw: string): admin.ServiceAccount {
       // not base64, use as-is
     }
   }
-  
-  const parsed = JSON.parse(jsonStr) as admin.ServiceAccount & { private_key?: string };
+
+  const parsed = JSON.parse(jsonStr) as ServiceAccount & { private_key?: string };
   // Fix common issue: env vars double-escape \n in private key
   if (parsed.private_key && typeof parsed.private_key === "string") {
     parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
@@ -28,13 +29,19 @@ function parseServiceAccount(raw: string): admin.ServiceAccount {
 }
 
 function tryInitFirebase(): void {
+  // Only initialize once
+  if (getApps().length > 0) {
+    firebaseInitialized = true;
+    return;
+  }
+
   const serviceAccountPath = path.join(process.cwd(), "service-account.json");
 
   if (fs.existsSync(serviceAccountPath)) {
     try {
       const raw = fs.readFileSync(serviceAccountPath, "utf8");
       const serviceAccount = parseServiceAccount(raw);
-      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+      initializeApp({ credential: cert(serviceAccount) });
       firebaseInitialized = true;
       logger.info("Firebase Admin SDK initialized from service-account.json");
       return;
@@ -48,7 +55,7 @@ function tryInitFirebase(): void {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     try {
       const serviceAccount = parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT);
-      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+      initializeApp({ credential: cert(serviceAccount) });
       firebaseInitialized = true;
       logger.info("Firebase Admin SDK initialized from FIREBASE_SERVICE_ACCOUNT env var");
       return;
@@ -61,7 +68,7 @@ function tryInitFirebase(): void {
 
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     try {
-      admin.initializeApp({ credential: admin.credential.applicationDefault() });
+      initializeApp({ credential: applicationDefault() });
       firebaseInitialized = true;
       logger.info("Firebase Admin SDK initialized from GOOGLE_APPLICATION_CREDENTIALS");
       return;
@@ -91,28 +98,27 @@ export function getFirebaseInitError(): string {
 
 export async function sendPushNotification(tokens: string[], title: string, body: string): Promise<void> {
   if (tokens.length === 0) return;
-  if (!admin.apps.length) {
-    logger.warn("Firebase Admin SDK not initialized; skipping push notification");
+  if (!firebaseInitialized) {
+    logger.warn("Firebase not initialized; skipping push notification");
     return;
   }
 
-  // FCM multicast allows max 500 tokens per request
+  const messaging = getMessaging();
   const MAX_BATCH_SIZE = 500;
-  
+
   for (let i = 0; i < tokens.length; i += MAX_BATCH_SIZE) {
     const batch = tokens.slice(i, i + MAX_BATCH_SIZE);
     try {
-      const response = await admin.messaging().sendEachForMulticast({
+      const response = await messaging.sendEachForMulticast({
         tokens: batch,
-        notification: {
-          title,
-          body,
-        },
+        notification: { title, body },
         android: {
+          priority: "high",
           notification: {
             channelId: "default",
-          }
-        }
+            sound: "default",
+          },
+        },
       });
 
       if (response.failureCount > 0) {
@@ -120,13 +126,13 @@ export async function sendPushNotification(tokens: string[], title: string, body
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
             failedTokens.push(batch[idx]);
-            logger.error({ error: resp.error, token: batch[idx] }, "Failed to send push notification to token");
+            logger.error({ error: resp.error, token: batch[idx] }, "Failed to send push to token");
           }
         });
-        logger.warn({ failedCount: response.failureCount, failedTokens }, "Some push notifications failed to send");
+        logger.warn({ failedCount: response.failureCount, failedTokens }, "Some push notifications failed");
       }
-      
-      logger.info({ successCount: response.successCount }, "Push notification batch sent successfully");
+
+      logger.info({ successCount: response.successCount }, "Push notification batch sent");
     } catch (err) {
       logger.error({ err }, "Error sending push notification batch");
     }
