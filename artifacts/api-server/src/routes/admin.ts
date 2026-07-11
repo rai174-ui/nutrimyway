@@ -494,7 +494,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
        ), 0) AS total_calories
        FROM consumption_logs cl
        JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
-       WHERE mcm.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2`,
+       WHERE mcm.center_id = $1 AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') = $2 AND cl.checkin_id IS NOT NULL`,
       [centerId, today]
     ),
     pool.query(
@@ -879,47 +879,6 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
      ORDER BY mci.checked_out_at DESC`,
     [centerId, from, to]
   );
-
-  // ── Append water logs from member_nutrition_logs
-  const { rows: waterAgg } = await pool.query(
-    `SELECT SUM(mnl.water_ml) AS total_water, COUNT(DISTINCT mnl.member_id) AS member_count, COUNT(*) AS log_count
-     FROM member_nutrition_logs mnl
-     JOIN member_center_mapping mcm ON mcm.member_id = mnl.member_id
-     WHERE mcm.center_id = $1 AND mnl.water_ml > 0 AND mnl.logged_date BETWEEN $2 AND $3`,
-    [centerId, from, to]
-  );
-  if (waterAgg[0] && waterAgg[0].total_water > 0) {
-    byComponent.push({
-      ingredient: "Water",
-      unit: "ml",
-      total_quantity: Number(waterAgg[0].total_water),
-      member_count: Number(waterAgg[0].member_count),
-      log_count: Number(waterAgg[0].log_count)
-    });
-  }
-
-  const { rows: waterMembers } = await pool.query(
-    `SELECT
-       NULL::int AS checkin_id,
-       mnl.member_id,
-       m.name AS member_name,
-       mnl.logged_at,
-       'Water' AS food_item,
-       0::real AS calories_kcal,
-       mnl.water_ml AS quantity_g,
-       NULL::int AS menu_item_id,
-       NULL::text AS menu_item_name,
-       'Hydration' AS meal_slot
-     FROM member_nutrition_logs mnl
-     JOIN members m ON m.id = mnl.member_id
-     JOIN member_center_mapping mcm ON mcm.member_id = mnl.member_id
-     WHERE mcm.center_id = $1 AND mnl.water_ml > 0 AND mnl.logged_date BETWEEN $2 AND $3
-     ORDER BY mnl.logged_at DESC`,
-    [centerId, from, to]
-  );
-
-  logsRaw.push(...waterMembers);
-  logsRaw.sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime());
 
   res.json({ from, to, by_component: byComponent, logs: logsRaw });
 });
