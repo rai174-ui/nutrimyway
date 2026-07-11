@@ -87,31 +87,7 @@ const queryClient = new QueryClient({
 });
 
 function ProtectedRouter() {
-  const { isAuthenticated, needsTermsAcceptance, markTermsAccepted, logout } = useAuth();
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    let timeoutId: number;
-
-    const resetTimer = () => {
-      window.clearTimeout(timeoutId);
-      // 15 minutes = 15 * 60 * 1000 = 900000 ms
-      timeoutId = window.setTimeout(() => {
-        logout();
-      }, 900000);
-    };
-
-    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
-
-    resetTimer();
-    events.forEach(event => document.addEventListener(event, resetTimer, { passive: true }));
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      events.forEach(event => document.removeEventListener(event, resetTimer));
-    };
-  }, [isAuthenticated, logout]);
+  const { isAuthenticated, needsTermsAcceptance, markTermsAccepted } = useAuth();
 
   if (!isAuthenticated) {
     return <Login />;
