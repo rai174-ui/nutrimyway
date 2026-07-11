@@ -1191,7 +1191,7 @@ async function migrateAdminTables44(): Promise<void> {
       id SERIAL PRIMARY KEY,
       checkin_id INTEGER NOT NULL REFERENCES member_check_ins(id) ON DELETE CASCADE,
       category_id INTEGER REFERENCES checkin_categories(id) ON DELETE SET NULL,
-      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE
     )
   `);
 }

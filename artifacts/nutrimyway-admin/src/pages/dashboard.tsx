@@ -114,7 +114,25 @@ function AdHocBroadcastModal({ centerId, onClose }: { centerId: string; onClose:
             <textarea
               value={message}
               onChange={e => setMessage(e.target.value)}
-              placeholder="Type your message to all active members..."
+              onPaste={(e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                for (let i = 0; i < items.length; i++) {
+                  if (items[i].type.indexOf("image") !== -1) {
+                    const file = items[i].getAsFile();
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        setError("Pasted image too large. Max 10MB allowed.");
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setImageBase64(ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                    }
+                  }
+                }
+              }}
+              placeholder="Type your message to all active members... (You can also paste an image here)"
               rows={4}
               className="w-full px-3 py-2 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
             />
