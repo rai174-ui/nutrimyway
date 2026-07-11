@@ -2404,7 +2404,8 @@ router.post("/admin/centers/:centerId/broadcasts", requireAdmin, async (req, res
         
         // Construct the full image URL. For production Railway, it should use the public domain.
         // req.protocol might be http locally, but in production we prefer the BASE_URL.
-        const baseUrl = process.env.VITE_API_BASE_FALLBACK?.replace(/\/api$/, '') || `${req.protocol}://${req.get("host")}`;
+        const baseUrl = process.env.VITE_API_BASE_FALLBACK?.replace(/\/api$/, '') || 
+          (req.get("host")?.includes("localhost") ? `http://${req.get("host")}` : `https://${req.get("host")}`);
         imageUrl = `${baseUrl}/api/images/${imageId}`;
       }
     } catch (err) {

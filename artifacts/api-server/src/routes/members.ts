@@ -696,15 +696,14 @@ router.get("/members/:memberId/broadcasts", async (req, res) => {
   if (centers.length === 0) { res.json([]); return; }
   const centerIds = centers.map((c: { center_id: string }) => c.center_id);
   const placeholders = centerIds.map((_: unknown, i: number) => "$" + (i + 2)).join(",");
+  const fallbackUrl = process.env.VITE_API_BASE_FALLBACK?.replace(/\/api$/, '') || 
+    (req.get("host")?.includes("localhost") ? `http://${req.get("host")}` : `https://${req.get("host")}`);
+
   const { rows } = await pool.query(
     `SELECT b.id, b.center_id, b.message, b.sent_at, b.sent_by,
             EXISTS(SELECT 1 FROM member_broadcast_reads r WHERE r.broadcast_id = b.id AND r.member_id = $1) AS is_read,
             CASE WHEN b.image_id IS NOT NULL THEN
-              CONCAT(
-                COALESCE($${centerIds.length + 3}::text, $${centerIds.length + 4}::text), 
-                '/api/images/', 
-                b.image_id
-              )
+              CONCAT($${centerIds.length + 3}::text, '/api/images/', b.image_id)
             ELSE NULL END as image_url
      FROM member_broadcasts b
      WHERE b.center_id IN (${placeholders})
@@ -714,13 +713,7 @@ router.get("/members/:memberId/broadcasts", async (req, res) => {
        ) * INTERVAL '1 day'
      ORDER BY b.sent_at DESC
      LIMIT $${centerIds.length + 2}`,
-    [
-      memberId, 
-      ...centerIds, 
-      limit, 
-      process.env.VITE_API_BASE_FALLBACK?.replace(/\/api$/, ''), 
-      `${req.protocol}://${req.get("host")}`
-    ]
+    [memberId, ...centerIds, limit, fallbackUrl]
   );
   res.json(rows);
 });
