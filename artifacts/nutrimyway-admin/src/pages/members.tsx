@@ -1466,6 +1466,8 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
   const [to, setTo] = useState(todayISO);
   const [logs, setLogs] = useState<SelfLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [nameFilter, setNameFilter] = useState("");
+  const [viewType, setViewType] = useState<"details" | "summary">("details");
 
   function load() {
     setLoading(true);
@@ -1493,12 +1495,14 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
     XLSX.writeFile(wb, `outside-meals-${from}-to-${to}.xlsx`);
   }
 
-  const grouped = logs.reduce<Record<string, SelfLogEntry[]>>((acc, l) => {
+  const filteredLogs = logs.filter(l => l.member_name.toLowerCase().includes(nameFilter.toLowerCase()));
+
+  const grouped = filteredLogs.reduce<Record<string, SelfLogEntry[]>>((acc, l) => {
     (acc[l.member_name] ??= []).push(l);
     return acc;
   }, {});
 
-  const totalKcal = logs.reduce((s, l) => s + (l.calories_kcal ?? 0), 0);
+  const totalKcal = filteredLogs.reduce((s, l) => s + (l.calories_kcal ?? 0), 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1518,7 +1522,7 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
         </div>
 
         {/* Filters */}
-        <div className="px-5 py-3 border-b border-border shrink-0 flex flex-wrap items-end gap-3">
+                <div className="px-5 py-3 border-b border-border shrink-0 flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">From</label>
             <input type="date" value={from} onChange={e => setFrom(e.target.value)}
@@ -1529,8 +1533,29 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
             <input type="date" value={to} onChange={e => setTo(e.target.value)}
               className="h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40" />
           </div>
+          <div className="flex flex-col gap-1 w-48">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Member Name</label>
+            <input type="text" placeholder="Filter by name..." value={nameFilter} onChange={e => setNameFilter(e.target.value)}
+              className="h-8 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          </div>
+          
+          <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border border-border">
+            <button 
+              onClick={() => setViewType("details")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${viewType === "details" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Details
+            </button>
+            <button 
+              onClick={() => setViewType("summary")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${viewType === "summary" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Daily Summary
+            </button>
+          </div>
+
           <div className="flex gap-2 ml-auto items-end">
-            {logs.length > 0 && (
+            {filteredLogs.length > 0 && (
               <button onClick={exportXlsx}
                 className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 text-xs font-medium transition-colors">
                 <FileDown className="w-3.5 h-3.5" />
@@ -1541,9 +1566,9 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
         </div>
 
         {/* Summary strip */}
-        {!loading && logs.length > 0 && (
+        {!loading && filteredLogs.length > 0 && (
           <div className="px-5 py-2 border-b border-border shrink-0 flex gap-4 text-xs text-muted-foreground">
-            <span><span className="font-semibold text-foreground">{logs.length}</span> entries</span>
+            <span><span className="font-semibold text-foreground">{filteredLogs.length}</span> entries</span>
             <span><span className="font-semibold text-foreground">{Object.keys(grouped).length}</span> members</span>
             <span><span className="font-semibold text-foreground">{Math.round(totalKcal).toLocaleString()}</span> kcal total</span>
           </div>
@@ -1555,7 +1580,7 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
             <div className="space-y-2">
               {[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-xl bg-muted animate-pulse" />)}
             </div>
-          ) : logs.length === 0 ? (
+          ) : filteredLogs.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Flame className="w-8 h-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm font-medium">No outside meals logged</p>
@@ -1568,8 +1593,9 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
                   <span className="text-sm font-semibold text-foreground">{memberName}</span>
                   <span className="text-xs text-muted-foreground">{entries.length} entr{entries.length === 1 ? "y" : "ies"} · {Math.round(entries.reduce((s, e) => s + (e.calories_kcal ?? 0), 0))} kcal</span>
                 </div>
-                <table className="w-full">
-                  <thead>
+                {viewType === "details" ? (
+                  <table className="w-full">
+                    <thead>
                     <tr className="border-b border-border/50">
                       <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Food</th>
                       <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Slot</th>
@@ -1613,6 +1639,34 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
                     ))}
                   </tbody>
                 </table>
+                ) : (
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border/50">
+                        <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
+                        <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Items Logged</th>
+                        <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total Kcal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(
+                        entries.reduce<Record<string, { kcal: number, items: number }>>((acc, e) => {
+                          const d = new Date(e.logged_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                          acc[d] = acc[d] || { kcal: 0, items: 0 };
+                          acc[d].kcal += (e.calories_kcal || 0);
+                          acc[d].items += 1;
+                          return acc;
+                        }, {})
+                      ).map(([date, summary]) => (
+                        <tr key={date} className="border-b border-border/30 last:border-0 hover:bg-muted/50 transition-colors">
+                          <td className="px-4 py-2 text-sm text-foreground">{date}</td>
+                          <td className="px-4 py-2 text-sm text-right tabular-nums text-muted-foreground">{summary.items} items</td>
+                          <td className="px-4 py-2 text-sm text-right tabular-nums font-medium text-foreground">{Math.round(summary.kcal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             ))
           )}
@@ -1633,6 +1687,8 @@ function HealthReportModal({ centerId, members, onClose }: {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set(members.map(m => m.id)));
   const [records, setRecords] = useState<HealthReportRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [nameFilter, setNameFilter] = useState("");
+  const [viewType, setViewType] = useState<"details" | "summary">("details");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const allSelected = members.every(m => selectedIds.has(m.id));
@@ -1830,6 +1886,8 @@ function RenewalHistoryModal({ centerId, onClose }: {
   const [to, setTo] = useState(todayISO);
   const [records, setRecords] = useState<MemberRenewalReportRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [nameFilter, setNameFilter] = useState("");
+  const [viewType, setViewType] = useState<"details" | "summary">("details");
 
   useEffect(() => {
     if (!from || !to) return;
