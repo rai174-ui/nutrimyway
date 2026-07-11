@@ -51,3 +51,5 @@ Thumbs.db
 db_data/
 test-express.js
 test_pg_date.mjs
+
+service-account.json
