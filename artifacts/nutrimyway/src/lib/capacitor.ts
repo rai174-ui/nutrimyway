@@ -42,46 +42,7 @@ export async function snapPhoto(): Promise<string | null> {
 export async function initPushNotifications(memberId: number, apiBase: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
 
-  // Request permission
-  const perm = await PushNotifications.requestPermissions();
-  if (perm.receive !== "granted") return;
-  await LocalNotifications.requestPermissions();
-
-  // Start listening for token
-  PushNotifications.addListener("registration", async (token) => {
-    try {
-      await fetch(`${apiBase}/members/${memberId}/push-token`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: token.value, platform: "android" }),
-      });
-    } catch {
-      // silently fail
-    }
-  });
-
-  PushNotifications.addListener("registrationError", () => {
-    // silently fail
-  });
-
-  // Listen for incoming notifications when app is in foreground
-  PushNotifications.addListener("pushNotificationReceived", async (notification) => {
-    // Display as a local notification (system alert) so the user sees it immediately
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          id: Math.floor(Date.now() / 1000), // safe 32-bit int
-          title: notification.title || "NutriMyWay",
-          body: notification.body || "",
-          schedule: { at: new Date(Date.now() + 100) },
-          channelId: "default",
-          smallIcon: "ic_launcher_round",
-        },
-      ],
-    });
-  });
-
-  // Create high-importance channel for Android so notifications show up even in foreground
+  // Create notification channels first (Android requires this before register)
   if (platform() === "android") {
     try {
       await PushNotifications.createChannel({
@@ -101,10 +62,63 @@ export async function initPushNotifications(memberId: number, apiBase: string): 
         vibration: true,
       });
     } catch {
-      // safely ignore if channel already exists or creation fails
+      // safely ignore if channel already exists
     }
   }
 
-  // Register with FCM
+  // Request permission
+  const perm = await PushNotifications.requestPermissions();
+  if (perm.receive !== "granted") {
+    console.warn("[Push] Permission not granted");
+    return;
+  }
+  await LocalNotifications.requestPermissions();
+
+  // Remove any previously registered listeners to avoid stacking duplicates
+  await PushNotifications.removeAllListeners();
+
+  // Listen for token registration
+  PushNotifications.addListener("registration", async (token) => {
+    console.log("[Push] FCM token received:", token.value.substring(0, 20) + "...");
+    try {
+      const authRaw = localStorage.getItem("nmw_auth");
+      const authToken = authRaw ? (JSON.parse(authRaw) as { token?: string }).token : null;
+      const res = await fetch(`${apiBase}/members/${memberId}/push-token`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ token: token.value, platform: "android" }),
+      });
+      console.log("[Push] Token saved to server, status:", res.status);
+    } catch (err) {
+      console.error("[Push] Failed to save token:", err);
+    }
+  });
+
+  PushNotifications.addListener("registrationError", (err) => {
+    console.error("[Push] Registration error:", err);
+  });
+
+  // Listen for incoming notifications when app is in foreground
+  PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+    // Display as a local notification (system alert) so the user sees it immediately
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: Math.floor(Date.now() / 1000), // safe 32-bit int
+          title: notification.title || "NutriMyWay",
+          body: notification.body || "",
+          schedule: { at: new Date(Date.now() + 100) },
+          channelId: "default",
+          smallIcon: "ic_launcher_round",
+        },
+      ],
+    });
+  });
+
+  // Register with FCM — this triggers the "registration" event above
+  console.log("[Push] Registering with FCM for member", memberId);
   await PushNotifications.register();
 }
