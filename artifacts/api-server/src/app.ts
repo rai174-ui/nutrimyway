@@ -132,7 +132,7 @@ export function startBroadcastScheduler(): void {
         `SELECT id, center_id, message, schedule_time, last_sent_at
          FROM center_broadcast_schedules
          WHERE is_active = TRUE
-           AND schedule_time = $1
+           AND schedule_time <= $1
            AND (last_sent_at IS NULL OR last_sent_at < $2)`,
         [timeStr, todayStart.toISOString()],
       );
