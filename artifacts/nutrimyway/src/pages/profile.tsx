@@ -33,13 +33,17 @@ export function Profile() {
     query: { enabled: !!MEMBER_ID, queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, TODAY) }
   });
 
-  const consumedCal = summary?.total_kcal ?? 0;
-  const targetCal = (summary as any)?.target_kcal ?? member?.daily_kcal ?? 2000;
+  const consumedCal = summary?.total_calories ?? 0;
+  const targetCal = summary?.target_calories ?? member?.daily_kcal ?? 2000;
   const calPercent = Math.min(100, Math.round((consumedCal / (targetCal || 1)) * 100));
 
   const consumedProtein = summary?.total_protein ?? 0;
   const targetProtein = (summary as any)?.protein_target_g ?? 120;
   const proteinPercent = targetProtein > 0 ? Math.min(100, Math.round((consumedProtein / targetProtein) * 100)) : 0;
+  
+  const consumedFiber = summary?.total_fiber ?? 0;
+  const targetFiber = (summary as any)?.fiber_target_g ?? 25;
+  const fiberPercent = targetFiber > 0 ? Math.min(100, Math.round((consumedFiber / targetFiber) * 100)) : 0;
 
   const consumedWater = (summary as any)?.total_water ?? 0;
   const targetWater = (summary as any)?.water_target_ml ?? 4000;
@@ -114,6 +118,15 @@ export function Profile() {
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
               <div className="h-full bg-[#0F6E56] rounded-full transition-all duration-1000 ease-out" style={{ width: `${proteinPercent}%` }} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="font-medium">Fiber Goal</span>
+              <span className="font-bold">{Math.round(consumedFiber)} / {Math.round(targetFiber)}g</span>
+            </div>
+            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000 ease-out" style={{ width: `${fiberPercent}%` }} />
             </div>
           </div>
           <div className="space-y-2">
