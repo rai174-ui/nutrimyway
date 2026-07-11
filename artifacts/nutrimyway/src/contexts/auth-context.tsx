@@ -50,6 +50,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTimeout(() => initPushNotifications(memberId, getApiBase()), 1000);
   }, []);
 
+  // Also register push token on app startup if user is already logged in
+  // This handles the case where user installs a new APK without logging out
+  useEffect(() => {
+    if (state.token && state.memberId) {
+      setTimeout(() => initPushNotifications(state.memberId!, getApiBase()), 2000);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // only on mount
+
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setAuthTokenGetter(() => null);
