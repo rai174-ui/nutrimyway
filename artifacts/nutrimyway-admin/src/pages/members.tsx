@@ -1100,8 +1100,17 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               </span>
             )}
             {(member as any).water_target_ml != null && (
-              <span className="flex items-center gap-1 text-xs text-sky-600 bg-sky-50 border border-sky-100 rounded-full px-2 py-0.5">
-                💧 {(member as any).water_target_ml}ml water
+              <span 
+                className="flex items-center gap-1 text-xs text-sky-600 bg-sky-50 border border-sky-100 rounded-full px-2 py-0.5 cursor-help"
+                title={`Yesterday: ${(member as any).yesterday_water_ml || 0}ml / ${(member as any).water_target_ml}ml`}
+              >
+                {(() => {
+                  const target = Number((member as any).water_target_ml);
+                  const actual = Number((member as any).yesterday_water_ml || 0);
+                  if (actual === 0) return "🥛";
+                  if (actual < target) return "🚰";
+                  return "💧";
+                })()} {(member as any).water_target_ml}ml water
               </span>
             )}
             {validityBadge(member.valid_until)}

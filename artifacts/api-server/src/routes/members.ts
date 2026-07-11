@@ -252,11 +252,54 @@ router.get("/members/:id/summary", async (req, res) => {
     logsBySlot[slot].push(log);
   }
 
-  // Use member-specific daily_kcal if set, otherwise fall back to 2000
-  const { rows: memberKcal } = await pool.query("SELECT daily_kcal FROM members WHERE id = $1", [memberId]);
-  const targetKcal = (memberKcal[0] as { daily_kcal: number | null } | undefined)?.daily_kcal ?? 2000;
-  res.json({ date, ...totals, target_calories: targetKcal, logs_by_slot: logsBySlot });
+  // Get member targets
+  const { rows: memberRows } = await pool.query("SELECT daily_kcal, protein_target_g, fiber_target_g, water_target_ml FROM members WHERE id = $1", [memberId]);
+  const m = memberRows[0] as { daily_kcal: number | null; protein_target_g: number | null; fiber_target_g: number | null; water_target_ml: number | null } | undefined;
+
+  // Get self-logged nutrition (water)
+  const { rows: nutRows } = await pool.query(
+    "SELECT water_ml FROM member_nutrition_logs WHERE member_id = $1 AND logged_date = $2",
+    [memberId, date]
+  );
+  const totalWater = nutRows[0]?.water_ml ?? 0;
+
+  res.json({
+    date,
+    ...totals,
+    total_water: totalWater,
+    target_calories: m?.daily_kcal ?? 2000,
+    protein_target_g: m?.protein_target_g,
+    fiber_target_g: m?.fiber_target_g,
+    water_target_ml: m?.water_target_ml,
+    logs_by_slot: logsBySlot
+  });
 });
+
+// POST /api/members/:id/water
+router.post("/members/:id/water", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const { water_ml } = req.body as { water_ml: number };
+  const date = todayIST();
+
+  if (typeof water_ml !== "number" || isNaN(water_ml) || water_ml < 0) {
+    res.status(400).json({ error: "Invalid water_ml" });
+    return;
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO member_nutrition_logs (member_id, logged_date, water_ml)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (member_id, logged_date)
+       DO UPDATE SET water_ml = EXCLUDED.water_ml, logged_at = NOW()`,
+      [memberId, date, water_ml]
+    );
+    res.json({ success: true, water_ml });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to log water" });
+  }
+});
+
 
 // GET /api/members/:id/issuances
 router.get("/members/:id/issuances", async (req, res) => {

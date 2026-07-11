@@ -343,6 +343,60 @@ function CheckInCard({ memberId, checkin, onRefresh }: {
   );
 }
 
+// ─── Water Tracker ─────────────────────────────────────────────────────────────
+function WaterTracker({ memberId, totalWater }: { memberId: number, totalWater: number }) {
+  const queryClient = useQueryClient();
+  const [loading, setLoading] = useState(false);
+
+  async function addWater(amount: number) {
+    if (amount <= 0 && totalWater === 0) return;
+    const newTotal = Math.max(0, totalWater + amount);
+    setLoading(true);
+    try {
+      await apiFetch(`/members/${memberId}/water`, {
+        method: "POST",
+        body: JSON.stringify({ water_ml: newTotal })
+      });
+      queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(memberId, { date: TODAY }) });
+    } catch (e) {
+      console.error("Failed to log water", e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="bg-card rounded-xl border border-border p-3 flex items-center justify-between gap-3 shadow-sm">
+      <div className="flex items-center gap-2.5">
+        <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center text-sky-600">
+          <span className="text-xl">💧</span>
+        </div>
+        <div>
+          <p className="text-xs font-bold text-foreground">Log Water</p>
+          <p className="text-[10px] text-muted-foreground">+250ml per glass</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button 
+          onClick={() => void addWater(-250)} 
+          disabled={loading || totalWater === 0}
+          className="w-8 h-8 rounded-full border border-sky-200 bg-sky-50 text-sky-600 flex items-center justify-center disabled:opacity-50 hover:bg-sky-100 transition-colors"
+        >
+          -
+        </button>
+        <button 
+          onClick={() => void addWater(250)} 
+          disabled={loading}
+          className="h-8 px-3 rounded-full bg-sky-500 text-white font-semibold text-xs disabled:opacity-50 hover:bg-sky-600 transition-colors shadow-sm"
+        >
+          + Glass
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard Root ───────────────────────────────────────────────────────────
 export function Dashboard() {
   const { memberId: MEMBER_ID } = useAuth();
   const queryClient = useQueryClient();
@@ -479,10 +533,15 @@ export function Dashboard() {
           {(summary as any)?.water_target_ml && (
             <div className="flex-1 bg-sky-50 border border-sky-100 rounded-lg p-1 text-center">
               <p className="text-[8px] text-sky-500 font-bold uppercase">Water</p>
-              <p className="text-[10px] font-bold text-sky-700">--<span className="text-[8px] font-normal">/{Math.round((summary as any).water_target_ml)}ml</span></p>
+              <p className="text-[10px] font-bold text-sky-700">{(summary as any)?.total_water ?? 0}<span className="text-[8px] font-normal">/{Math.round((summary as any).water_target_ml)}ml</span></p>
             </div>
           )}
         </div>
+      )}
+
+      {/* Water Tracker */}
+      {MEMBER_ID && (summary as any)?.water_target_ml && (
+        <WaterTracker memberId={MEMBER_ID} totalWater={(summary as any)?.total_water ?? 0} />
       )}
 
       {/* Check-in card */}

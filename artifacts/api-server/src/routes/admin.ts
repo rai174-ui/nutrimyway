@@ -879,9 +879,49 @@ router.get("/admin/centers/:centerId/consumption", requireAdmin, async (req, res
     [centerId, from, to]
   );
 
+  // ── Append water logs from member_nutrition_logs
+  const { rows: waterAgg } = await pool.query(
+    `SELECT SUM(mnl.water_ml) AS total_water, COUNT(DISTINCT mnl.member_id) AS member_count, COUNT(*) AS log_count
+     FROM member_nutrition_logs mnl
+     JOIN member_center_mapping mcm ON mcm.member_id = mnl.member_id
+     WHERE mcm.center_id = $1 AND mnl.water_ml > 0 AND mnl.logged_date BETWEEN $2 AND $3`,
+    [centerId, from, to]
+  );
+  if (waterAgg[0] && waterAgg[0].total_water > 0) {
+    byComponent.push({
+      ingredient: "Water",
+      unit: "ml",
+      total_quantity: Number(waterAgg[0].total_water),
+      member_count: Number(waterAgg[0].member_count),
+      log_count: Number(waterAgg[0].log_count)
+    });
+  }
+
+  const { rows: waterMembers } = await pool.query(
+    `SELECT
+       NULL::int AS checkin_id,
+       mnl.member_id,
+       m.name AS member_name,
+       mnl.logged_at,
+       'Water' AS food_item,
+       0::real AS calories_kcal,
+       mnl.water_ml AS quantity_g,
+       NULL::int AS menu_item_id,
+       NULL::text AS menu_item_name,
+       'Hydration' AS meal_slot
+     FROM member_nutrition_logs mnl
+     JOIN members m ON m.id = mnl.member_id
+     JOIN member_center_mapping mcm ON mcm.member_id = mnl.member_id
+     WHERE mcm.center_id = $1 AND mnl.water_ml > 0 AND mnl.logged_date BETWEEN $2 AND $3
+     ORDER BY mnl.logged_at DESC`,
+    [centerId, from, to]
+  );
+
+  logsRaw.push(...waterMembers);
+  logsRaw.sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime());
+
   res.json({ from, to, by_component: byComponent, logs: logsRaw });
 });
-
 
 
 
@@ -1019,7 +1059,13 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
            AND mci2.center_id = $1
            AND DATE(mci2.checked_in_at AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
            AND mci2.checked_out_at IS NOT NULL
-       ) AS already_consumed_today
+       ) AS already_consumed_today,
+       (
+         SELECT water_ml FROM member_nutrition_logs mnl
+         WHERE mnl.member_id = m.id
+           AND mnl.logged_date = DATE(NOW() AT TIME ZONE 'Asia/Kolkata') - INTERVAL '1 day'
+       ) AS yesterday_water_ml
+
      FROM members m
      JOIN member_center_mapping mcm ON mcm.member_id = m.id
      LEFT JOIN member_check_ins ci
