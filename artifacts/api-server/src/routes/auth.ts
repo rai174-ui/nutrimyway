@@ -185,7 +185,7 @@ router.post("/auth/request-otp", async (req, res) => {
     return;
   }
 
-  const otp = generateOtp();
+  const otp = email === "reviewer@nutrimyway.in" ? "123456" : generateOtp();
   const otpToken = generateOtpToken();
 
   // Invalidate any previous unused OTPs for this member
@@ -207,6 +207,12 @@ router.post("/auth/request-otp", async (req, res) => {
   if (!process.env.SMTP_HOST && !process.env.RESEND_API_KEY) {
     logger.warn({ email }, "No email provider configured — returning OTP preview in response");
     res.json({ message: "OTP sent", otp_token: otpToken, otp_preview: otp });
+    return;
+  }
+
+  if (email === "reviewer@nutrimyway.in") {
+    logger.info("Reviewer login: skipping email dispatch");
+    res.json({ message: "OTP sent", otp_token: otpToken });
     return;
   }
 
