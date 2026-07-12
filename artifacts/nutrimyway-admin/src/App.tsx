@@ -101,8 +101,8 @@ function App() {
           <div className="flex-1">
             <Router />
           </div>
-          <div className="text-center py-2 text-[10px] text-muted-foreground/60">
-            Powered by Zero Limit Automation
+          <div className="text-center py-2 text-[10px] text-muted-foreground/60 flex flex-col items-center gap-1">
+            <span>Powered by Nutrition My Way</span>
           </div>
         </div>
       </WouterRouter>

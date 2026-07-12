@@ -211,9 +211,10 @@ export function Login() {
       <p className="text-center pb-2 tracking-wide text-[18px] text-ring">
         Nutrition My Way
       </p>
-      <p className="text-center pb-6 text-[10px] text-muted-foreground/60">
-        Powered by Zero Limit Automation
-      </p>
+      <div className="text-center pb-6 text-[10px] text-muted-foreground/60 flex flex-col items-center gap-1">
+        <span>Powered by Nutrition My Way</span>
+        <a href="/privacy" className="underline hover:text-foreground transition-colors">Privacy Policy</a>
+      </div>
     </div>
   );
 }

@@ -123,9 +123,10 @@ export default function LoginPage() {
             Super Admin →
           </Link>
         </p>
-        <p className="text-center text-[10px] text-muted-foreground/60 mt-2 pb-2">
-          Powered by Zero Limit Automation
-        </p>
+        <div className="text-center text-[10px] text-muted-foreground/60 mt-2 pb-2 flex flex-col items-center gap-1">
+          <span>Powered by Nutrition My Way</span>
+          <a href="https://nutrimyway.com/privacy-policy.html" className="underline hover:text-muted-foreground transition-colors">Privacy Policy</a>
+        </div>
       </div>
     </div>
   );
