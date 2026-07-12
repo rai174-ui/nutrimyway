@@ -221,67 +221,7 @@ export default function OpenBatchesPage() {
         )}
       </section>
 
-      {/* -- Modals -------------------------------------------- */}
 
-      {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-background rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col border border-border">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-slate-50/50">
-              <h2 className="text-lg font-bold text-foreground">{editId ? 'Edit Category' : 'New Category'}</h2>
-              <button onClick={() => setIsEditing(false)} className="p-2 rounded-xl text-muted-foreground hover:bg-slate-200 transition-colors"><X className="w-5 h-5" /></button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto flex-1 space-y-5">
-              <div>
-                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 ml-1">Category Name</label>
-                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Shake Flavour" className="w-full px-4 py-2.5 bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm font-medium" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 ml-1">Display Order</label>
-                  <input type="number" value={displayOrder} onChange={e => setDisplayOrder(Number(e.target.value))} className="w-full px-4 py-2.5 bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm font-medium" />
-                </div>
-                <div className="flex items-center gap-3 pt-6">
-                  <input type="checkbox" id="mandatory" checked={isMandatory} onChange={e => setIsMandatory(e.target.checked)} className="w-5 h-5 rounded border-input text-primary focus:ring-primary/40" />
-                  <label htmlFor="mandatory" className="text-sm font-bold text-foreground">Is Mandatory?</label>
-                </div>
-              </div>
-              
-              <div className="pt-2 border-t border-border">
-                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 ml-1">Select Ingredients</label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
-                  {availableIngredients.length === 0 && (
-                    <div className="col-span-full p-4 text-center text-sm text-muted-foreground italic">
-                      No available ingredients left to add.
-                    </div>
-                  )}
-                  {availableIngredients.map(ing => (
-                    <label key={ing.id} className="flex items-center gap-3 p-3 border border-border rounded-xl hover:bg-slate-50 cursor-pointer transition-colors">
-                      <input 
-                        type="checkbox" 
-                        className="w-4 h-4 rounded border-input text-primary"
-                        checked={selectedIngredients.includes(ing.id)}
-                        onChange={e => {
-                          if (e.target.checked) setSelectedIngredients([...selectedIngredients, ing.id]);
-                          else setSelectedIngredients(selectedIngredients.filter(id => id !== ing.id));
-                        }}
-                      />
-                      <span className="text-sm font-medium">{ing.name} {ing.flavour ? `(${ing.flavour})` : ""}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="p-5 border-t border-border bg-slate-50/50 flex justify-end gap-3">
-              <button onClick={() => setIsEditing(false)} className="px-5 py-2.5 rounded-xl font-bold text-muted-foreground hover:bg-slate-200 transition-colors text-sm">Cancel</button>
-              <button onClick={handleSave} disabled={loading} className="px-6 py-2.5 rounded-xl font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm flex items-center gap-2 shadow-sm disabled:opacity-50">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Category
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       </main>
     </div>
   );
