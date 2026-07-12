@@ -6,7 +6,7 @@ const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/members", label: "Members", icon: Users },
   { path: "/logs", label: "Logs", icon: ClipboardList },
-  { path: "/set-menu", label: "Menu & Open Batches", icon: UtensilsCrossed },
+  { path: "/open-batches", label: "Open Batches", icon: UtensilsCrossed },
   { path: "/consumption", label: "Consumption", icon: BarChart3 },
   { path: "/inventory", label: "Inventory", icon: Boxes },
   { path: "/settings", label: "Settings", icon: Settings },

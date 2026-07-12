@@ -3,7 +3,7 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
-import SetMenuPage from "@/pages/set-menu";
+import OpenBatchesPage from "@/pages/open-batches";
 import ConsumptionPage from "@/pages/consumption";
 import SettingsPage from "@/pages/settings";
 import SuperPage from "@/pages/super";
@@ -70,8 +70,8 @@ function Router() {
       <Route path="/dashboard">
         <AuthGuard><DashboardPage /></AuthGuard>
       </Route>
-      <Route path="/set-menu">
-        <AuthGuard><SetMenuPage /></AuthGuard>
+      <Route path="/open-batches">
+        <AuthGuard><OpenBatchesPage /></AuthGuard>
       </Route>
       <Route path="/consumption">
         <AuthGuard><ConsumptionPage /></AuthGuard>

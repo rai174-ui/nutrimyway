@@ -4,7 +4,7 @@ import { apiGet, apiPost, apiPut, apiDelete, apiPatch, getAdminCenter, type Ingr
 import { StatusChip, fmt, exportInventoryXlsx, AdjustBatchForm, batchUnit, batchCapacity } from "@/lib/inventory-helpers";
 import { Nav } from "@/components/nav";
 
-export default function SetMenuPage() {
+export default function OpenBatchesPage() {
   
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [batches, setBatches] = useState<IngredientBatch[]>([]);
