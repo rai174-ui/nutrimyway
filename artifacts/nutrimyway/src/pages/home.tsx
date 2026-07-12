@@ -8,8 +8,8 @@ export function Home() {
     <div className="min-h-screen bg-background flex flex-col font-sans">
       <header className="px-6 py-6 flex justify-between items-center max-w-5xl mx-auto w-full">
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold shadow-sm">
-            <Leaf className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm p-1">
+            <img src="logo.png" alt="NutriMyWay Logo" className="w-full h-full object-contain" />
           </div>
           <span className="font-bold text-xl tracking-tight text-foreground">NutriMyWay</span>
         </div>
