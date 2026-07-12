@@ -454,10 +454,9 @@ router.get("/members/:id/checkin-menu", async (req, res) => {
   );
   
   const { rows: mappings } = await pool.query(
-    `SELECT ci.category_id, i.id as ingredient_id, i.name, i.flavour 
-     FROM checkin_category_ingredients ci
-     JOIN ingredients i ON i.id = ci.ingredient_id
-     JOIN checkin_categories c ON c.id = ci.category_id
+    `SELECT i.category_id, i.id as ingredient_id, i.name, i.flavour 
+     FROM ingredients i
+     JOIN checkin_categories c ON c.id = i.category_id
      WHERE c.center_id = $1`,
     [centerId]
   );

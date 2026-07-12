@@ -5,52 +5,38 @@ import { StatusChip, fmt, exportInventoryXlsx, AdjustBatchForm, batchUnit, batch
 import { Nav } from "@/components/nav";
 
 export default function SetMenuPage() {
-  const [categories, setCategories] = useState<CheckinCategory[]>([]);
+  
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [batches, setBatches] = useState<IngredientBatch[]>([]);
   const [requirements, setRequirements] = useState<IngredientRequirement[]>([]);
   
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [name, setName] = useState("");
-  const [isMandatory, setIsMandatory] = useState(true);
-  const [displayOrder, setDisplayOrder] = useState(0);
-  const [selectedIngredients, setSelectedIngredients] = useState<number[]>([]);
+  
+  
+  
+  
+  
+  
   
   const [adjustingId, setAdjustingId] = useState<number | null>(null);
 
-  const [mealCategoriesExpanded, setMealCategoriesExpanded] = useState(false);
+  
   const [openBatchesExpanded, setOpenBatchesExpanded] = useState(true);
 
   const centerId = getAdminCenter()?.id;
 
-  const assignedOtherIds = useMemo(() => {
-    const ids = new Set<number>();
-    categories.forEach(c => {
-      if (c.id !== editId) {
-        c.ingredients.forEach(i => ids.add(i.ingredient_id));
-      }
-    });
-    return ids;
-  }, [categories, editId]);
-
-  const availableIngredients = useMemo(() => {
-    return ingredients.filter(ing => !assignedOtherIds.has(ing.id));
-  }, [ingredients, assignedOtherIds]);
-
-  async function load() {
+      async function load() {
     if (!centerId) return;
     try {
-      const [catsRes, ingsRes, batsRes, reqsRes] = await Promise.all([
-        apiGet<CheckinCategory[]>(`/admin/centers/${centerId}/checkin-categories`),
+      const [ingsRes, batsRes, reqsRes] = await Promise.all([
+        
         apiGet<Ingredient[]>("/admin/ingredients"),
         apiGet<IngredientBatch[]>(`/admin/centers/${centerId}/ingredient-batches`),
         apiGet<IngredientRequirement[]>(`/admin/centers/${centerId}/ingredient-requirements`),
       ]);
-      setCategories(catsRes);
+      
       setIngredients(ingsRes);
       setBatches(batsRes);
       setRequirements(reqsRes);
@@ -99,140 +85,15 @@ export default function SetMenuPage() {
     window.location.href = `/admin/inventory`;
   }
 
-  function startCreate() {
-    setEditId(null);
-    setName("");
-    setIsMandatory(true);
-    setDisplayOrder(categories.length);
-    setSelectedIngredients([]);
-    setIsEditing(true);
-  }
 
-  function startEdit(cat: CheckinCategory) {
-    setEditId(cat.id);
-    setName(cat.name);
-    setIsMandatory(cat.is_mandatory);
-    setDisplayOrder(cat.display_order);
-    setSelectedIngredients(cat.ingredients.map(i => i.ingredient_id));
-    setIsEditing(true);
-  }
 
-  async function handleSave() {
-    if (!name.trim()) { setError("Name is required"); return; }
-    setLoading(true);
-    try {
-      if (editId) {
-        await apiPut(`/admin/centers/${centerId}/checkin-categories/${editId}`, {
-          name, is_mandatory: isMandatory, display_order: displayOrder, ingredients: selectedIngredients
-        });
-      } else {
-        await apiPost(`/admin/centers/${centerId}/checkin-categories`, {
-          name, is_mandatory: isMandatory, display_order: displayOrder, ingredients: selectedIngredients
-        });
-      }
-      setIsEditing(false);
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-      setLoading(false);
-    }
-  }
-
-  async function handleDelete(id: number) {
-    if (!confirm("Delete this category?")) return;
-    setLoading(true);
-    try {
-      await apiDelete(`/admin/centers/${centerId}/checkin-categories/${id}`);
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-      setLoading(false);
-    }
-  }
-
-  if (loading && categories.length === 0) return <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+  if (loading) return <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
 
   return (
     <div className="min-h-screen bg-background">
       <Nav />
       <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-10">
       
-      {/* -- Meal Categories -------------------------------------------- */}
-      <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <button
-            onClick={() => setMealCategoriesExpanded(v => !v)}
-            className="flex items-center gap-3 text-left hover:bg-muted/30 -m-2 p-2 rounded-lg transition-colors flex-1"
-          >
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">Meal Categories</h1>
-              <p className="text-xs text-muted-foreground mt-0.5">Configure groups of ingredients members can choose from during check-in.</p>
-            </div>
-            <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
-              {categories.length}
-            </span>
-          </button>
-          <div className="flex items-center gap-2 ml-4">
-            <button onClick={startCreate} className="bg-primary text-primary-foreground h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 hover:bg-primary/90 transition-colors shadow-sm">
-              <Plus className="w-3.5 h-3.5" /> Add Category
-            </button>
-            <button onClick={() => setMealCategoriesExpanded(v => !v)} className="p-1 text-muted-foreground hover:text-foreground">
-              {mealCategoriesExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-            </button>
-          </div>
-        </div>
-
-        {mealCategoriesExpanded && (
-          <div className="p-5">
-            {error && <div className="mb-4 p-4 bg-red-50 text-red-700 text-sm rounded-xl border border-red-100">{error}</div>}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {categories.map(cat => (
-            <div key={cat.id} className="bg-white border border-border rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md">
-              <div className="p-5 flex items-center justify-between border-b border-border/50 bg-slate-50/50">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary/10 text-primary rounded-xl"><Settings2 className="w-5 h-5" /></div>
-                  <div>
-                    <h3 className="font-bold text-foreground text-lg flex items-center gap-2">
-                      {cat.name}
-                      {cat.is_mandatory && <span className="text-[10px] uppercase tracking-wider font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">Mandatory</span>}
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-0.5">Order: {cat.display_order}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => startEdit(cat)} className="p-2 text-muted-foreground hover:bg-slate-200 rounded-xl transition-colors"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => handleDelete(cat.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 className="w-4 h-4" /></button>
-                </div>
-              </div>
-              <div className="p-5 bg-white">
-                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Available Ingredients</h4>
-                {cat.ingredients.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">No ingredients assigned.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {cat.ingredients.map(ing => (
-                      <div key={ing.ingredient_id} className="text-sm font-medium px-3 py-1.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg">
-                        {ing.name} {ing.flavour ? `(${ing.flavour})` : ""}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {categories.length === 0 && (
-            <div className="col-span-full p-12 text-center border-2 border-dashed border-border rounded-2xl bg-slate-50 text-muted-foreground">
-              No categories found. Click Add Category to create your first check-in group.
-            </div>
-          )}
-        </div>
-        </div>
-        )}
-      </section>
-
-      <hr className="border-border" />
-
       {/* -- Open Batches -------------------------------------------- */}
       <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">

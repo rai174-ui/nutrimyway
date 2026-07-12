@@ -701,6 +701,7 @@ export async function initDb(): Promise<void> {
     await migrateAdminTables43();
     await migrateAdminTables44();
     await migrateAdminTables45();
+    await migrateAdminTables46();
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
@@ -1207,4 +1208,24 @@ async function migrateAdminTables45(): Promise<void> {
   `);
   await pool.query(`ALTER TABLE member_broadcasts ADD COLUMN IF NOT EXISTS image_id UUID REFERENCES broadcast_images(id) ON DELETE SET NULL`);
   await pool.query(`ALTER TABLE center_broadcast_schedules ADD COLUMN IF NOT EXISTS image_id UUID REFERENCES broadcast_images(id) ON DELETE SET NULL`);
+}
+
+async function migrateAdminTables46(): Promise<void> {
+  // Add category_id to ingredients
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES checkin_categories(id) ON DELETE SET NULL`);
+  
+  // Data migration: copy existing relations
+  await pool.query(`
+    UPDATE ingredients 
+    SET category_id = (
+      SELECT category_id 
+      FROM checkin_category_ingredients 
+      WHERE checkin_category_ingredients.ingredient_id = ingredients.id 
+      LIMIT 1
+    )
+    WHERE category_id IS NULL
+  `);
+
+  // Drop old mapping table
+  await pool.query(`DROP TABLE IF EXISTS checkin_category_ingredients`);
 }

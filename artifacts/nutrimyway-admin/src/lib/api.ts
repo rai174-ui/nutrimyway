@@ -344,6 +344,7 @@ export interface Ingredient {
   serving_qty?: number;
   kcal_per_serving?: number | null;
   trial_eligible?: boolean;
+  category_id?: number | null;
   created_at: string;
 }
 

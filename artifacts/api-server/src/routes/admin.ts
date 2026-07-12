@@ -1680,7 +1680,7 @@ router.delete("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, asyn
 // GET /api/admin/ingredients
 router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
   const { rows } = await pool.query(
-    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible, created_at FROM ingredients ORDER BY name"
+    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible, category_id, created_at FROM ingredients ORDER BY name"
   );
   const { rows: skus } = await pool.query("SELECT * FROM ingredient_skus");
   const result = rows.map((ing) => {
@@ -1694,8 +1694,8 @@ router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
 
 // POST /api/admin/ingredients
 router.post("/admin/ingredients", requireAdmin, async (req, res) => {
-  const { name, flavour, serving_qty, kcal_per_serving, trial_eligible, skus } = req.body as {
-    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean;
+  const { name, flavour, serving_qty, kcal_per_serving, trial_eligible, category_id, skus } = req.body as {
+    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean; category_id?: number | null;
     skus?: { material_code: string; pack_size: number; pack_unit: string }[];
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
@@ -1706,8 +1706,8 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
   try {
     await pool.query("BEGIN");
     const { rows } = await pool.query(
-      "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, flavour, serving_qty, kcal_per_serving, trial_eligible) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false]
+      "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, flavour, serving_qty, kcal_per_serving, trial_eligible, category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
+      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false, category_id ?? null]
     );
     const ingredientId = rows[0].id;
     const insertedSkus = [];
@@ -1729,8 +1729,8 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
 // PUT /api/admin/ingredients/:ingredientId
 router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
   const { ingredientId } = req.params;
-  const { name, flavour, serving_qty, kcal_per_serving, trial_eligible, skus } = req.body as {
-    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean;
+  const { name, flavour, serving_qty, kcal_per_serving, trial_eligible, category_id, skus } = req.body as {
+    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean; category_id?: number | null;
     skus?: { material_code: string; pack_size: number; pack_unit: string }[];
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
@@ -1741,8 +1741,8 @@ router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) =>
   try {
     await pool.query("BEGIN");
     const { rows } = await pool.query(
-      "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, flavour=$5, serving_qty=$6, kcal_per_serving=$7, trial_eligible=$8 WHERE id=$9 RETURNING *",
-      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false, Number(ingredientId)]
+      "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, flavour=$5, serving_qty=$6, kcal_per_serving=$7, trial_eligible=$8, category_id=$9 WHERE id=$10 RETURNING *",
+      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false, category_id ?? null, Number(ingredientId)]
     );
     if (!rows[0]) {
       await pool.query("ROLLBACK");
@@ -3047,10 +3047,9 @@ export default router;
     );
     
     const { rows: mappings } = await pool.query(
-      `SELECT ci.category_id, i.id as ingredient_id, i.name, i.flavour, i.serving_qty 
-       FROM checkin_category_ingredients ci
-       JOIN ingredients i ON i.id = ci.ingredient_id
-       JOIN checkin_categories c ON c.id = ci.category_id
+      `SELECT i.category_id, i.id as ingredient_id, i.name, i.flavour, i.serving_qty 
+       FROM ingredients i
+       JOIN checkin_categories c ON c.id = i.category_id
        WHERE c.center_id = $1`,
       [centerId]
     );
@@ -3068,8 +3067,8 @@ export default router;
     const adminReq = req as AdminRequest;
     if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
     
-    const { name, is_mandatory, display_order, ingredients } = req.body as {
-      name: string; is_mandatory?: boolean; display_order?: number; ingredients?: number[];
+    const { name, is_mandatory, display_order } = req.body as {
+      name: string; is_mandatory?: boolean; display_order?: number;
     };
     if (!name?.trim()) { res.status(400).json({ error: "Name is required" }); return; }
     
@@ -3079,21 +3078,9 @@ export default router;
         `INSERT INTO checkin_categories (center_id, name, is_mandatory, display_order) VALUES ($1, $2, $3, $4) RETURNING *`,
         [centerId, name.trim(), is_mandatory ?? true, display_order ?? 0]
       );
-      const catId = rows[0].id;
-      
-      const mappedIngredients = [];
-      if (Array.isArray(ingredients)) {
-        for (const ingId of ingredients) {
-          const { rows: ingRes } = await pool.query(
-            `INSERT INTO checkin_category_ingredients (category_id, ingredient_id) VALUES ($1, $2) RETURNING ingredient_id`,
-            [catId, ingId]
-          );
-          mappedIngredients.push(ingRes[0].ingredient_id);
-        }
-      }
       
       await pool.query("COMMIT");
-      res.status(201).json({ ...rows[0], ingredients: mappedIngredients });
+      res.status(201).json({ ...rows[0], ingredients: [] });
     } catch(e) {
       await pool.query("ROLLBACK");
       res.status(500).json({ error: "Failed to create category" });
@@ -3105,8 +3092,8 @@ export default router;
     const adminReq = req as AdminRequest;
     if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
     
-    const { name, is_mandatory, display_order, ingredients } = req.body as {
-      name?: string; is_mandatory?: boolean; display_order?: number; ingredients?: number[];
+    const { name, is_mandatory, display_order } = req.body as {
+      name?: string; is_mandatory?: boolean; display_order?: number;
     };
     
     try {
@@ -3131,16 +3118,6 @@ export default router;
           res.status(404).json({ error: "Category not found" }); return;
         }
         updatedCat = rows[0];
-      }
-      
-      if (Array.isArray(ingredients)) {
-        await pool.query(`DELETE FROM checkin_category_ingredients WHERE category_id = $1`, [categoryId]);
-        for (const ingId of ingredients) {
-          await pool.query(
-            `INSERT INTO checkin_category_ingredients (category_id, ingredient_id) VALUES ($1, $2)`,
-            [categoryId, ingId]
-          );
-        }
       }
       
       await pool.query("COMMIT");

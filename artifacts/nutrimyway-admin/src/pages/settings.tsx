@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock, Megaphone, Send, ChevronDown, ChevronUp } from "lucide-react";
+import { KeyRound, CheckCircle2, Loader2, Package, Plus, Edit2, Check, X, Trash2, Users, AlertTriangle, QrCode, Download, Tag, Clock, Megaphone, Send, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { QRCodeCanvas } from "qrcode.react";
 import { Nav } from "@/components/nav";
@@ -334,6 +334,7 @@ function BroadcastSettingsCard() {
 function FlavourMaster() {
   const center = getAdminCenter();
   const [flavours, setFlavours] = useState<CenterFlavour[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -526,12 +527,230 @@ function FlavourMaster() {
   );
 }
 
+
+// ── Meal Categories ────────────────────────────────────────────────────────────
+
+function MealCategories() {
+  const center = getAdminCenter();
+  const [categories, setCategories] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [newName, setNewName] = useState("");
+  const [newOrder, setNewOrder] = useState(0);
+  const [newMandatory, setNewMandatory] = useState(true);
+
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editOrder, setEditOrder] = useState(0);
+  const [editMandatory, setEditMandatory] = useState(true);
+
+  async function load() {
+    if (!center) return;
+    try {
+      const data = await apiGet<any[]>(`/admin/centers/${center.id}/checkin-categories`);
+      setCategories(data);
+    } finally { setLoading(false); }
+  }
+
+  useEffect(() => { void load(); }, [center?.id]);
+
+  async function addCategory() {
+    if (!center || !newName.trim()) return;
+    setSaving(true); setError(null);
+    try {
+      await apiPost(`/admin/centers/${center.id}/checkin-categories`, {
+        name: newName.trim(),
+        display_order: newOrder,
+        is_mandatory: newMandatory
+      });
+      setNewName(""); setNewOrder(categories.length + 1); setAdding(false);
+      void load();
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  function startEdit(c: any) {
+    setEditId(c.id);
+    setEditName(c.name);
+    setEditOrder(c.display_order);
+    setEditMandatory(c.is_mandatory);
+  }
+
+  async function saveEdit(id: number) {
+    if (!center || !editName.trim()) return;
+    setSaving(true); setError(null);
+    try {
+      await apiPut(`/admin/centers/${center.id}/checkin-categories/${id}`, {
+        name: editName.trim(),
+        display_order: editOrder,
+        is_mandatory: editMandatory
+      });
+      setEditId(null);
+      void load();
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  async function deleteCategory(id: number) {
+    if (!center) return;
+    if (!confirm("Delete this category? Items assigned to it will lose their category.")) return;
+    try {
+      await apiDelete(`/admin/centers/${center.id}/checkin-categories/${id}`);
+      void load();
+    } catch (e) { setError((e as Error).message); }
+  }
+
+  return (
+    <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="flex items-center gap-3 text-left hover:bg-muted/30 -m-2 p-2 rounded-lg transition-colors"
+        >
+          <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center">
+            <Settings2 className="w-4 h-4 text-sky-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground leading-tight">Meal Categories</h2>
+            <p className="text-xs text-muted-foreground">Configure groups of items for member check-in</p>
+          </div>
+          <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+            {categories.length}
+          </span>
+        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setAdding(v => !v); setError(null); setNewName(""); setNewOrder(categories.length); }}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-sky-600 text-white text-xs font-medium"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add
+          </button>
+          <button onClick={() => setExpanded(v => !v)} className="p-1 text-muted-foreground hover:text-foreground">
+            {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+      <>
+      {error && (
+        <div className="mx-5 mt-3 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">{error}</div>
+      )}
+
+      {adding && (
+        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-3">
+          <div className="flex items-center gap-2">
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && void addCategory()}
+              autoFocus
+              placeholder="Category name e.g. Shake Flavour"
+              className="flex-1 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+            <input
+              type="number"
+              value={newOrder}
+              onChange={e => setNewOrder(Number(e.target.value))}
+              placeholder="Order"
+              className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+              <input type="checkbox" checked={newMandatory} onChange={e => setNewMandatory(e.target.checked)} className="w-3.5 h-3.5 accent-sky-600" />
+              Mandatory
+            </label>
+            <button
+              onClick={() => void addCategory()}
+              disabled={!newName.trim() || saving}
+              className="h-9 px-3 rounded-lg bg-sky-600 text-white text-xs font-medium disabled:opacity-40 ml-2"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
+            </button>
+            <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="w-5 h-5 animate-spin text-sky-500" />
+        </div>
+      ) : categories.length === 0 ? (
+        <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+          No meal categories yet. Add some above.
+        </p>
+      ) : (
+        <div className="divide-y divide-border">
+          {categories.map(c => (
+            <div key={c.id} className="px-5 py-3 hover:bg-muted/20 transition-colors">
+              {editId === c.id ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    className="flex-1 h-8 px-2 text-sm rounded border border-input focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <input
+                    type="number"
+                    value={editOrder}
+                    onChange={e => setEditOrder(Number(e.target.value))}
+                    className="w-16 h-8 px-2 text-sm rounded border border-input focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+                    <input type="checkbox" checked={editMandatory} onChange={e => setEditMandatory(e.target.checked)} className="w-3.5 h-3.5 accent-sky-600" />
+                    Mandatory
+                  </label>
+                  <button onClick={() => void saveEdit(c.id)} disabled={saving} className="text-sky-600 hover:text-sky-700 disabled:opacity-40 ml-2">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  </button>
+                  <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground">{c.name}</p>
+                      {c.is_mandatory && <span className="text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">Mandatory</span>}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Order: {c.display_order}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => startEdit(c)} className="text-muted-foreground hover:text-sky-600 p-1">
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => void deleteCategory(c.id)} className="text-muted-foreground hover:text-destructive p-1">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
 // ── Item Master ───────────────────────────────────────────────────────────────
+
 
 function ItemMaster() {
   const center = getAdminCenter();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [flavours, setFlavours] = useState<CenterFlavour[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -544,6 +763,7 @@ function ItemMaster() {
   const [newServingQty, setNewServingQty] = useState("1");
   const [newKcalPerServing, setNewKcalPerServing] = useState("");
   const [newTrialEligible, setNewTrialEligible] = useState(false);
+  const [newCategory, setNewCategory] = useState<string>("");
 
   const [expanded, setExpanded] = useState(false);
   
@@ -553,15 +773,18 @@ function ItemMaster() {
   const [editServingQty, setEditServingQty] = useState("1");
   const [editKcalPerServing, setEditKcalPerServing] = useState("");
   const [editTrialEligible, setEditTrialEligible] = useState(false);
+  const [editCategory, setEditCategory] = useState<string>("");
 
   async function load() {
     try {
-      const [ingData, flavData] = await Promise.all([
+      const [ingData, flavData, catData] = await Promise.all([
         apiGet<Ingredient[]>("/admin/ingredients"),
         center ? apiGet<CenterFlavour[]>(`/admin/centers/${center.id}/flavours`) : Promise.resolve([]),
+        center ? apiGet<any[]>(`/admin/centers/${center.id}/checkin-categories`) : Promise.resolve([]),
       ]);
       setIngredients(ingData);
       setFlavours(flavData);
+      setCategories(catData);
     } finally { setLoading(false); }
   }
 
@@ -581,10 +804,11 @@ function ItemMaster() {
         serving_qty: Number(newServingQty) || 1,
         kcal_per_serving: newKcalPerServing.trim() ? Number(newKcalPerServing) : null,
         trial_eligible: newTrialEligible,
+        category_id: newCategory ? Number(newCategory) : null,
       });
       setNewName("");
       setNewSkus([{ material_code: "", pack_size: 1, pack_unit: "g" }]);
-      setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing(""); setNewTrialEligible(false);
+      setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing(""); setNewTrialEligible(false); setNewCategory("");
       setAdding(false);
       void load();
     } catch (e) { setError((e as Error).message); }
@@ -605,6 +829,7 @@ function ItemMaster() {
         serving_qty: Number(editServingQty) || 1,
         kcal_per_serving: editKcalPerServing.trim() ? Number(editKcalPerServing) : null,
         trial_eligible: editTrialEligible,
+        category_id: editCategory ? Number(editCategory) : null,
       });
       setEditId(null);
       void load();
@@ -628,6 +853,7 @@ function ItemMaster() {
     setEditServingQty(String(ing.serving_qty ?? 1));
     setEditKcalPerServing(ing.kcal_per_serving != null ? String(ing.kcal_per_serving) : "");
     setEditTrialEligible(ing.trial_eligible ?? false);
+    setEditCategory(ing.category_id ? String(ing.category_id) : "");
   }
 
   return (
@@ -682,10 +908,18 @@ function ItemMaster() {
             <select
               value={newFlavour}
               onChange={e => setNewFlavour(e.target.value)}
-              className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-32 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">— Flavour —</option>
               {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
+            </select>
+            <select
+              value={newCategory}
+              onChange={e => setNewCategory(e.target.value)}
+              className="w-36 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">— Category —</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
 
@@ -788,6 +1022,7 @@ function ItemMaster() {
           <thead>
             <tr className="border-b border-border/60 bg-muted/40">
               <th className="py-2 pl-5 pr-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Item Name</th>
+              <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Category</th>
               <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Flavour</th>
               <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">SKUs & Sizes</th>
               <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Serving Info</th>
