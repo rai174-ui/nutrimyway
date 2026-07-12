@@ -11,12 +11,15 @@ function slotForNowIST(): string {
 export async function bookAndCheckout(checkinId: number, memberId: number, centerId: string): Promise<void> {
   // Fetch all ingredient selections for this checkin, including flavour
   const { rows: selections } = await pool.query(
-    `SELECT vis.ingredient_id, vis.category_id,
-            i.name, i.flavour, i.serving_qty, i.kcal_per_serving,
+    `SELECT vis.ingredient_id,
+            i.name, COALESCE(vis.flavour, i.flavour) AS flavour, i.serving_qty, i.kcal_per_serving,
             i.protein_per_serving, i.fiber_per_serving, i.carbs_per_serving, i.fat_per_serving
-     FROM visit_ingredient_selections vis
-     JOIN ingredients i ON i.id = vis.ingredient_id
-     WHERE vis.checkin_id = $1`,
+     FROM (
+       SELECT ingredient_id, NULL as flavour FROM visit_ingredient_selections WHERE checkin_id = $1
+       UNION ALL
+       SELECT ingredient_id, flavour FROM visit_flavour_selections WHERE checkin_id = $1
+     ) vis
+     JOIN ingredients i ON i.id = vis.ingredient_id`,
     [checkinId]
   );
 

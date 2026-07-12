@@ -229,7 +229,40 @@ router.get("/members/:id/summary", async (req, res) => {
   const memberId = Number(req.params.id);
   const date = (req.query.date as string) ?? todayIST();
   const { rows: logs } = await pool.query(
-    "SELECT * FROM consumption_logs WHERE member_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2 ORDER BY logged_at ASC",
+    `SELECT id, member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, fiber_g 
+     FROM consumption_logs 
+     WHERE member_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2
+     
+     UNION ALL
+     
+     SELECT 
+        -vfs.id as id, 
+        mci.member_id, 
+        mci.checked_out_at as logged_at,
+        CASE 
+          WHEN EXTRACT(HOUR FROM mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') < 12 THEN 'Breakfast'
+          WHEN EXTRACT(HOUR FROM mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') < 15 THEN 'Lunch'
+          WHEN EXTRACT(HOUR FROM mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') < 18 THEN 'Snack'
+          ELSE 'Dinner'
+        END as meal_slot,
+        CASE WHEN vfs.flavour IS NOT NULL THEN i.name || ' (' || vfs.flavour || ')' ELSE i.name END as food_item,
+        NULL as quantity_g, 
+        i.kcal_per_serving as calories_kcal, 
+        i.protein_per_serving as protein_g, 
+        i.carbs_per_serving as carbs_g, 
+        i.fat_per_serving as fat_g, 
+        i.fiber_per_serving as fiber_g
+     FROM visit_flavour_selections vfs
+     JOIN member_check_ins mci ON mci.id = vfs.checkin_id
+     JOIN ingredients i ON i.id = vfs.ingredient_id
+     WHERE mci.member_id = $1 
+       AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') = $2
+       AND mci.checked_out_at IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM consumption_logs cl 
+         WHERE cl.checkin_id = mci.id AND cl.food_item LIKE i.name || '%'
+       )
+     ORDER BY logged_at ASC`,
     [memberId, date]
   ) as { rows: Array<{ id: number; member_id: number; logged_at: string; meal_slot: string; food_item: string; quantity_g: number | null; calories_kcal: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null }> };
 

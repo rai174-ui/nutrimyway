@@ -65,6 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ token: null, memberId: null, needsTermsAcceptance: false });
   }, []);
 
+  useEffect(() => {
+    const handleUnauthorized = () => logout();
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
+  }, [logout]);
+
   const markTermsAccepted = useCallback(() => {
     setState(prev => {
       const next = { ...prev, needsTermsAcceptance: false };

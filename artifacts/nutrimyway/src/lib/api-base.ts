@@ -97,6 +97,10 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
         throw new Error("API returned HTML. Ensure VITE_API_BASE is correctly configured (use pnpm run build:mobile).");
       }
 
+      if (res.status === 401) {
+        window.dispatchEvent(new Event("auth:unauthorized"));
+      }
+
       activateBase(base);
       return res;
     } catch (err) {
