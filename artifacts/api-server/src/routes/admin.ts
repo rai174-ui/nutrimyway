@@ -2176,8 +2176,7 @@ router.get("/admin/checkins/:checkinId/flavour-options", requireAdmin, async (re
             cc.id AS category_id, cc.name AS category_name
      FROM ingredients i
      JOIN ingredient_batches ib ON ib.ingredient_id = i.id
-     LEFT JOIN checkin_category_ingredients cci ON cci.ingredient_id = i.id
-     LEFT JOIN checkin_categories cc ON cc.id = cci.category_id AND cc.center_id = $1
+     LEFT JOIN checkin_categories cc ON cc.id = i.category_id AND cc.center_id = $1
      LEFT JOIN center_flavours cf ON cf.name = i.flavour AND cf.center_id = $1
      WHERE i.flavour IS NOT NULL AND i.flavour != ''
        AND ib.center_id = $1 AND ib.status = 'open'
