@@ -868,7 +868,7 @@ function ItemMaster() {
           </div>
           <div>
             <h2 className="font-semibold text-foreground leading-tight">Item Master</h2>
-            <p className="text-xs text-muted-foreground">Define items with SKUs, flavours, and pack sizes used in BOM &amp; inventory</p>
+            <p className="text-xs text-muted-foreground">Define items with SKUs, flavours, meal category, pack sizes, serving qty etc.</p>
           </div>
           <span className="ml-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">
             {ingredients.length}
@@ -1050,6 +1050,14 @@ function ItemMaster() {
                           <option value="">— Flavour —</option>
                           {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
                         </select>
+                    <select
+                      value={editCategory}
+                      onChange={e => setEditCategory(e.target.value)}
+                      className="w-32 h-8 px-2 text-sm rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary ml-2"
+                    >
+                      <option value="">— Category —</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
                       </div>
 
                       <div className="space-y-2 border-l-2 border-primary/20 pl-3 ml-1">
@@ -1635,6 +1643,8 @@ export default function SettingsPage() {
         <CenterSettingsCard />
 
         <BroadcastSettingsCard />
+
+        <MealCategories />
 
         <FlavourMaster />
 
