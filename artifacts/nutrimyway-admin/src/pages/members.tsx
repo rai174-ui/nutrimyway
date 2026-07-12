@@ -1477,6 +1477,7 @@ function MemberMealsModal({ centerId, onClose }: { centerId: string; onClose: ()
   const [waterLogs, setWaterLogs] = useState<import("@/lib/api").SelfWaterLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [nameFilter, setNameFilter] = useState("");
+  const [onlyOutside, setOnlyOutside] = useState(false);
   const [viewType, setViewType] = useState<"details" | "summary">("details");
 
   function load() {
@@ -1507,7 +1508,11 @@ function MemberMealsModal({ centerId, onClose }: { centerId: string; onClose: ()
     XLSX.writeFile(wb, `outside-meals-${from}-to-${to}.xlsx`);
   }
 
-  const filteredLogs = logs.filter(l => l.member_name.toLowerCase().includes(nameFilter.toLowerCase()));
+  const filteredLogs = logs.filter(l => {
+    const matchesName = l.member_name.toLowerCase().includes(nameFilter.toLowerCase());
+    const matchesType = !onlyOutside || l.checkin_id == null;
+    return matchesName && matchesType;
+  });
 
   const grouped = filteredLogs.reduce<Record<string, SelfLogEntry[]>>((acc, l) => {
     (acc[l.member_name] ??= []).push(l);
@@ -1550,6 +1555,16 @@ function MemberMealsModal({ centerId, onClose }: { centerId: string; onClose: ()
             <input type="text" placeholder="Filter by name..." value={nameFilter} onChange={e => setNameFilter(e.target.value)}
               className="h-8 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40" />
           </div>
+          
+          <label className="flex items-center gap-2 cursor-pointer h-8 px-3 rounded-lg border border-border bg-background hover:bg-muted/50 transition-colors shrink-0">
+            <input 
+              type="checkbox" 
+              checked={onlyOutside} 
+              onChange={e => setOnlyOutside(e.target.checked)} 
+              className="w-4 h-4 rounded border-input text-primary focus:ring-primary/40 cursor-pointer" 
+            />
+            <span className="text-xs font-medium text-foreground">Outside Only</span>
+          </label>
           
           <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border border-border">
             <button 
