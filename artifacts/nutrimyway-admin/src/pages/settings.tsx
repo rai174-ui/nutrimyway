@@ -437,6 +437,11 @@ function FlavourMaster() {
 
       {adding && (
         <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-3">
+                    <div className="flex items-center gap-2 mb-1 px-1">
+            <label className="flex-1 min-w-[200px] text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
+            <label className="w-36 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
+            <label className="w-32 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
+          </div>
           <div className="flex items-center gap-2">
             <input
               value={newName}
@@ -644,6 +649,11 @@ function MealCategories() {
 
       {adding && (
         <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-3">
+                    <div className="flex items-center gap-2 mb-1 px-1">
+            <label className="flex-1 min-w-[200px] text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
+            <label className="w-36 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
+            <label className="w-32 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
+          </div>
           <div className="flex items-center gap-2">
             <input
               value={newName}
@@ -896,6 +906,11 @@ function ItemMaster() {
 
       {adding && (
         <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-3">
+                    <div className="flex items-center gap-2 mb-1 px-1">
+            <label className="flex-1 min-w-[200px] text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
+            <label className="w-36 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
+            <label className="w-32 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
+          </div>
           <div className="flex items-center gap-2">
             <input
               value={newName}
@@ -1033,8 +1048,13 @@ function ItemMaster() {
             {ingredients.map(ing => (
               <tr key={ing.id} className="hover:bg-muted/30 transition-colors">
                 {editId === ing.id ? (
-                  <td colSpan={5} className="px-5 py-4 bg-muted/10">
+                  <td colSpan={6} className="px-5 py-4 bg-muted/10">
                     <div className="space-y-3">
+                                            <div className="flex items-center gap-2 mb-1 px-1">
+                        <label className="flex-1 min-w-[200px] text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
+                        <label className="w-40 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
+                        <label className="w-40 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
+                      </div>
                       <div className="flex items-center gap-2">
                         <input
                           value={editName}
@@ -1146,7 +1166,16 @@ function ItemMaster() {
                     <td className="py-3 pl-5 pr-3 font-semibold text-foreground align-top">
                       {ing.name}
                     </td>
-                    <td className="py-3 px-3 align-top">
+                                        <td className="py-3 px-3 align-top">
+                      {ing.category_id ? (
+                        <span className="text-xs bg-sky-100 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-full inline-block">
+                          {categories.find(c => c.id === ing.category_id)?.name || ing.category_id}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
+<td className="py-3 px-3 align-top">
                       {ing.flavour ? (
                         <span className="text-xs bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full inline-block">{ing.flavour}</span>
                       ) : (
