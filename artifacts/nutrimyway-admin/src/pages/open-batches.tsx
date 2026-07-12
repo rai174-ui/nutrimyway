@@ -11,6 +11,7 @@ export default function OpenBatchesPage() {
   const [requirements, setRequirements] = useState<IngredientRequirement[]>([]);
   
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
 
   

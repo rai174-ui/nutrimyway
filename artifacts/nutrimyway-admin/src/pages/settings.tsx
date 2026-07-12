@@ -906,20 +906,20 @@ function ItemMaster() {
               autoFocus
             />
             <select
-              value={newFlavour}
-              onChange={e => setNewFlavour(e.target.value)}
-              className="w-32 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">— Flavour —</option>
-              {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
-            </select>
-            <select
               value={newCategory}
               onChange={e => setNewCategory(e.target.value)}
               className="w-36 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">— Category —</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select
+              value={newFlavour}
+              onChange={e => setNewFlavour(e.target.value)}
+              className="w-32 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">— Flavour —</option>
+              {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
             </select>
           </div>
 
@@ -1043,6 +1043,14 @@ function ItemMaster() {
                           placeholder="Item name *"
                         />
                         <select
+                          value={editCategory}
+                          onChange={e => setEditCategory(e.target.value)}
+                          className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          <option value="">— Category —</option>
+                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <select
                           value={editFlavour}
                           onChange={e => setEditFlavour(e.target.value)}
                           className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
@@ -1050,14 +1058,6 @@ function ItemMaster() {
                           <option value="">— Flavour —</option>
                           {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
                         </select>
-                    <select
-                      value={editCategory}
-                      onChange={e => setEditCategory(e.target.value)}
-                      className="w-32 h-8 px-2 text-sm rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary ml-2"
-                    >
-                      <option value="">— Category —</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
                       </div>
 
                       <div className="space-y-2 border-l-2 border-primary/20 pl-3 ml-1">
