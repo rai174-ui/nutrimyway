@@ -702,6 +702,7 @@ export async function initDb(): Promise<void> {
     await migrateAdminTables44();
     await migrateAdminTables45();
     await migrateAdminTables46();
+    await migrateAdminTables47();
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
@@ -1228,4 +1229,11 @@ async function migrateAdminTables46(): Promise<void> {
 
   // Drop old mapping table
   await pool.query(`DROP TABLE IF EXISTS checkin_category_ingredients`);
+}
+
+async function migrateAdminTables47(): Promise<void> {
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS protein_per_serving REAL`);
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS fiber_per_serving REAL`);
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS carbs_per_serving REAL`);
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS fat_per_serving REAL`);
 }

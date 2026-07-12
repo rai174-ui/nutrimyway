@@ -266,6 +266,7 @@ export interface SelfLogEntry {
   fiber_g: number | null;
   logged_at: string;
   photo_url: string | null;
+  checkin_id: number | null;
 }
 
 export interface SelfWaterLog {

@@ -1470,7 +1470,7 @@ function thirtyDaysAgoISO() {
   const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
 }
 
-function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: () => void }) {
+function MemberMealsModal({ centerId, onClose }: { centerId: string; onClose: () => void }) {
   const [from, setFrom] = useState(todayISO);
   const [to, setTo] = useState(todayISO);
   const [logs, setLogs] = useState<SelfLogEntry[]>([]);
@@ -1503,7 +1503,7 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Outside Meals");
+    XLSX.utils.book_append_sheet(wb, ws, "Member Meals");
     XLSX.writeFile(wb, `outside-meals-${from}-to-${to}.xlsx`);
   }
 
@@ -1524,7 +1524,7 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
           <div>
             <h2 className="font-semibold text-foreground flex items-center gap-2">
               <Flame className="w-4 h-4 text-amber-500" />
-              Outside Meals
+              Member Meals
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">Meals logged by members outside of center visits</p>
           </div>
@@ -1595,8 +1595,8 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
           ) : filteredLogs.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Flame className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm font-medium">No outside meals logged</p>
-              <p className="text-xs mt-1">No member-logged meals for the selected period</p>
+              <p className="text-sm font-medium">No meals logged</p>
+              <p className="text-xs mt-1">No meals found for the selected period</p>
             </div>
           ) : (
             Object.entries(grouped).map(([memberName, entries]) => (
@@ -1623,7 +1623,12 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
                       <tr key={e.id} className="border-b border-border/30 last:border-0 hover:bg-muted/50 transition-colors">
                         <td className="px-4 py-2 text-sm text-foreground">
                           <div className="flex items-center gap-2">
-                            {e.food_item}
+                            <span>{e.food_item}</span>
+                            {e.checkin_id != null ? (
+                              <span className="text-[9px] uppercase tracking-wider font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm shrink-0">Center</span>
+                            ) : (
+                              <span className="text-[9px] uppercase tracking-wider font-bold bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded-sm shrink-0">Outside</span>
+                            )}
                             {e.photo_url && (
                               <a
                                 href={`/api/storage${e.photo_url}`}
@@ -2362,7 +2367,7 @@ export default function MembersPage() {
                   onClick={() => setShowOutsideMeals(true)}
                   className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
                 >
-                  <Flame className="w-4 h-4 text-amber-500" />Outside Meals
+                  <Flame className="w-4 h-4 text-amber-500" />Member Meals
                 </button>
                 <button
                   onClick={() => setShowHealthReport(true)}
@@ -2385,7 +2390,7 @@ export default function MembersPage() {
         </div>
 
         {showOutsideMeals && center && (
-          <OutsideMealsModal
+          <MemberMealsModal
             centerId={center.id}
             onClose={() => setShowOutsideMeals(false)}
           />

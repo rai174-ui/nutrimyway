@@ -914,12 +914,11 @@ router.get("/admin/centers/:centerId/member-self-logs", requireAdmin, async (req
 
   const { rows } = await pool.query(
     `SELECT cl.id, cl.member_id, m.name AS member_name,
-            cl.food_item, cl.meal_slot, cl.quantity_g, cl.calories_kcal, cl.protein_g, cl.fiber_g, cl.logged_at, cl.photo_url
+            cl.food_item, cl.meal_slot, cl.quantity_g, cl.calories_kcal, cl.protein_g, cl.fiber_g, cl.logged_at, cl.photo_url, cl.checkin_id
      FROM consumption_logs cl
      JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      JOIN members m ON m.id = cl.member_id
      WHERE mcm.center_id = $1
-       AND cl.checkin_id IS NULL
        AND DATE(cl.logged_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
      ORDER BY cl.logged_at DESC`,
     [centerId, from, to]

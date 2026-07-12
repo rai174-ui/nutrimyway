@@ -106,10 +106,10 @@ function MealHistory({ memberId }: { memberId: number }) {
     setSelectedDate(d.toLocaleDateString("en-CA"));
   }
 
-  // Filter: exclude center check-in logs (they have a checkin_id), only show outside/custom meals
-  const outsideLogs = logs.filter(l => l.checkin_id === null);
+  // Include all meals (both center and outside)
+  const allLogs = logs;
 
-  const filtered = outsideLogs.filter(l =>
+  const filtered = allLogs.filter(l =>
     !search.trim() ||
     l.food_item.toLowerCase().includes(search.trim().toLowerCase()) ||
     (l.meal_slot ?? "").toLowerCase().includes(search.trim().toLowerCase())
@@ -211,11 +211,11 @@ function MealHistory({ memberId }: { memberId: number }) {
         <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
           <UtensilsCrossed className="w-10 h-10 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">
-            {outsideLogs.length === 0
+            {allLogs.length === 0
               ? "No outside meals logged for this date"
               : "No meals match your search"}
           </p>
-          {outsideLogs.length === 0 && isToday && (
+          {allLogs.length === 0 && isToday && (
             <p className="text-xs text-muted-foreground/60">Use the Log tab to add a meal</p>
           )}
         </div>

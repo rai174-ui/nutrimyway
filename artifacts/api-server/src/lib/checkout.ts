@@ -12,7 +12,8 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
   // Fetch all ingredient selections for this checkin, including flavour
   const { rows: selections } = await pool.query(
     `SELECT vis.ingredient_id, vis.category_id,
-            i.name, i.flavour, i.serving_qty, i.kcal_per_serving
+            i.name, i.flavour, i.serving_qty, i.kcal_per_serving,
+            i.protein_per_serving, i.fiber_per_serving, i.carbs_per_serving, i.fat_per_serving
      FROM visit_ingredient_selections vis
      JOIN ingredients i ON i.id = vis.ingredient_id
      WHERE vis.checkin_id = $1`,
@@ -35,6 +36,10 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
     for (const sel of selections) {
       const serveQty = Number(sel.serving_qty) || 1;
       const kcal = Number(sel.kcal_per_serving) || 0;
+      const protein = Number(sel.protein_per_serving) || 0;
+      const fiber = Number(sel.fiber_per_serving) || 0;
+      const carbs = Number(sel.carbs_per_serving) || 0;
+      const fat = Number(sel.fat_per_serving) || 0;
 
       // Deduct from ingredient batch stock if an open batch exists
       const { rows: batches } = await pool.query(
@@ -83,13 +88,17 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
 
       await pool.query(
         `INSERT INTO consumption_logs
-           (member_id, meal_slot, food_item, calories_kcal, selected_flavour, checkin_id, logged_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+           (member_id, meal_slot, food_item, calories_kcal, protein_g, fiber_g, carbs_g, fat_g, selected_flavour, checkin_id, logged_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
         [
           memberId,
           mealSlot,
           foodLabel,
           kcal > 0 ? kcal : null,
+          protein > 0 ? protein : null,
+          fiber > 0 ? fiber : null,
+          carbs > 0 ? carbs : null,
+          fat > 0 ? fat : null,
           (sel.flavour as string | null) ?? null,
           checkinId,
         ]
