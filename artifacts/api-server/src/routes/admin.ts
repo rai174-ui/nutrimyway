@@ -914,7 +914,7 @@ router.get("/admin/centers/:centerId/member-self-logs", requireAdmin, async (req
 
   const { rows } = await pool.query(
     `SELECT cl.id, cl.member_id, m.name AS member_name,
-            cl.food_item, cl.meal_slot, cl.quantity_g, cl.calories_kcal, cl.logged_at, cl.photo_url
+            cl.food_item, cl.meal_slot, cl.quantity_g, cl.calories_kcal, cl.protein_g, cl.fiber_g, cl.logged_at, cl.photo_url
      FROM consumption_logs cl
      JOIN member_center_mapping mcm ON mcm.member_id = cl.member_id
      JOIN members m ON m.id = cl.member_id
@@ -924,8 +924,18 @@ router.get("/admin/centers/:centerId/member-self-logs", requireAdmin, async (req
      ORDER BY cl.logged_at DESC`,
     [centerId, from, to]
   );
+    const { rows: waterRows } = await pool.query(
+      `SELECT mnl.member_id, m.name AS member_name, mnl.logged_date, mnl.water_ml
+       FROM member_nutrition_logs mnl
+       JOIN member_center_mapping mcm ON mcm.member_id = mnl.member_id
+       JOIN members m ON m.id = mnl.member_id
+       WHERE mcm.center_id = $1
+         AND mnl.logged_date BETWEEN $2 AND $3
+         AND mnl.water_ml IS NOT NULL`,
+      [centerId, from, to]
+    );
 
-  res.json({ from, to, logs: rows });
+  res.json({ from, to, logs: rows, waterLogs: waterRows });
 });
 
 // ---------------------------------------------------------------------------

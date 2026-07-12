@@ -1474,15 +1474,16 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
   const [from, setFrom] = useState(todayISO);
   const [to, setTo] = useState(todayISO);
   const [logs, setLogs] = useState<SelfLogEntry[]>([]);
+  const [waterLogs, setWaterLogs] = useState<import("@/lib/api").SelfWaterLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [nameFilter, setNameFilter] = useState("");
   const [viewType, setViewType] = useState<"details" | "summary">("details");
 
   function load() {
     setLoading(true);
-    apiGet<{ logs: SelfLogEntry[] }>(`/admin/centers/${centerId}/member-self-logs?from=${from}&to=${to}`)
-      .then(r => setLogs(r.logs))
-      .catch(() => setLogs([]))
+    apiGet<{ logs: SelfLogEntry[], waterLogs: import("@/lib/api").SelfWaterLog[] }>(`/admin/centers/${centerId}/member-self-logs?from=${from}&to=${to}`)
+      .then(r => { setLogs(r.logs); setWaterLogs(r.waterLogs || []); })
+      .catch(() => { setLogs([]); setWaterLogs([]); })
       .finally(() => setLoading(false));
   }
 
@@ -1495,6 +1496,8 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
       Slot: l.meal_slot,
       "Qty (g)": l.quantity_g ?? "",
       "kcal": l.calories_kcal ? Math.round(l.calories_kcal) : "",
+      "Protein (g)": l.protein_g ? Math.round(l.protein_g) : "",
+      "Fiber (g)": l.fiber_g ? Math.round(l.fiber_g) : "",
       Date: new Date(l.logged_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
       Time: new Date(l.logged_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
     }));
@@ -1610,6 +1613,8 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
                       <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Slot</th>
                       <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Qty (g)</th>
                       <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">kcal</th>
+                      <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pro</th>
+                      <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fib</th>
                       <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
                     </tr>
                   </thead>
@@ -1639,6 +1644,8 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
                         <td className="px-4 py-2 text-xs text-muted-foreground">{e.meal_slot}</td>
                         <td className="px-4 py-2 text-sm text-right tabular-nums">{e.quantity_g ?? "—"}</td>
                         <td className="px-4 py-2 text-sm text-right tabular-nums">{e.calories_kcal != null ? Math.round(e.calories_kcal) : "—"}</td>
+                        <td className="px-4 py-2 text-sm text-right tabular-nums">{e.protein_g != null ? Math.round(e.protein_g) : "—"}</td>
+                        <td className="px-4 py-2 text-sm text-right tabular-nums">{e.fiber_g != null ? Math.round(e.fiber_g) : "—"}</td>
                         <td className="px-4 py-2 text-xs text-right text-muted-foreground">
                           {new Date(e.logged_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                           {" "}
@@ -1653,24 +1660,38 @@ function OutsideMealsModal({ centerId, onClose }: { centerId: string; onClose: (
                     <thead>
                       <tr className="border-b border-border/50">
                         <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
-                        <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Items Logged</th>
-                        <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total Kcal</th>
+                        <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Items</th>
+                        <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Kcal</th>
+                        <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pro</th>
+                        <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fib</th>
+                        <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Water</th>
                       </tr>
                     </thead>
                     <tbody>
                       {Object.entries(
-                        entries.reduce<Record<string, { kcal: number, items: number }>>((acc, e) => {
+                        entries.reduce<Record<string, { kcal: number, items: number, pro: number, fib: number, water: number }>>((acc, e) => {
+                          const isoDate = new Date(e.logged_at).toISOString().slice(0, 10);
                           const d = new Date(e.logged_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-                          acc[d] = acc[d] || { kcal: 0, items: 0 };
+                          acc[d] = acc[d] || { kcal: 0, items: 0, pro: 0, fib: 0, water: 0 };
                           acc[d].kcal += (e.calories_kcal || 0);
+                          acc[d].pro += (e.protein_g || 0);
+                          acc[d].fib += (e.fiber_g || 0);
                           acc[d].items += 1;
+                          
+                          // Look for water logs matching memberName and isoDate
+                          const wLog = waterLogs.find(w => w.member_name === memberName && w.logged_date.slice(0,10) === isoDate);
+                          if (wLog) acc[d].water = wLog.water_ml;
+
                           return acc;
                         }, {})
                       ).map(([date, summary]) => (
                         <tr key={date} className="border-b border-border/30 last:border-0 hover:bg-muted/50 transition-colors">
                           <td className="px-4 py-2 text-sm text-foreground">{date}</td>
-                          <td className="px-4 py-2 text-sm text-right tabular-nums text-muted-foreground">{summary.items} items</td>
+                          <td className="px-4 py-2 text-sm text-right tabular-nums text-muted-foreground">{summary.items}</td>
                           <td className="px-4 py-2 text-sm text-right tabular-nums font-medium text-foreground">{Math.round(summary.kcal)}</td>
+                          <td className="px-4 py-2 text-sm text-right tabular-nums font-medium text-foreground">{Math.round(summary.pro)}</td>
+                          <td className="px-4 py-2 text-sm text-right tabular-nums font-medium text-foreground">{Math.round(summary.fib)}</td>
+                          <td className="px-4 py-2 text-sm text-right tabular-nums font-medium text-blue-500">{summary.water > 0 ? `${Math.round(summary.water/1000 * 10)/10}L` : "—"}</td>
                         </tr>
                       ))}
                     </tbody>

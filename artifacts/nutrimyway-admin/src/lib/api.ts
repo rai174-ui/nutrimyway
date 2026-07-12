@@ -262,8 +262,17 @@ export interface SelfLogEntry {
   meal_slot: string;
   quantity_g: number | null;
   calories_kcal: number | null;
+  protein_g: number | null;
+  fiber_g: number | null;
   logged_at: string;
   photo_url: string | null;
+}
+
+export interface SelfWaterLog {
+  member_id: number;
+  member_name: string;
+  logged_date: string;
+  water_ml: number;
 }
 
 export interface ConsumptionLog {

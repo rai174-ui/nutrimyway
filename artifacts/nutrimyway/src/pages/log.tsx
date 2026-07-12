@@ -76,16 +76,23 @@ function MealHistory({ memberId }: { memberId: number }) {
   const [selectedDate, setSelectedDate] = useState(todayLocal());
   const [search, setSearch] = useState("");
   const [logs, setLogs] = useState<MealLog[]>([]);
+  const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchLogs = useCallback(async (date: string) => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/members/${memberId}/consumption?date=${date}`);
-      const data = await res.json() as MealLog[];
+      const [logRes, sumRes] = await Promise.all([
+        apiFetch(`/members/${memberId}/consumption?date=${date}`),
+        apiFetch(`/members/${memberId}/summary?date=${date}`)
+      ]);
+      const data = await logRes.json() as MealLog[];
+      const sumData = await sumRes.json();
       setLogs(Array.isArray(data) ? data : []);
+      setSummary(sumData);
     } catch {
       setLogs([]);
+      setSummary(null);
     } finally {
       setLoading(false);
     }
@@ -122,6 +129,7 @@ function MealHistory({ memberId }: { memberId: number }) {
 
   const totalKcal = filtered.reduce((sum, l) => sum + (l.calories_kcal ?? 0), 0);
   const totalProtein = filtered.reduce((sum, l) => sum + (l.protein_g ?? 0), 0);
+  const totalFiber = filtered.reduce((sum, l) => sum + (l.fiber_g ?? 0), 0);
 
   const isToday = selectedDate === todayLocal();
 
@@ -175,17 +183,21 @@ function MealHistory({ memberId }: { memberId: number }) {
       {/* Summary strip */}
       {filtered.length > 0 && (
         <div className="flex gap-2">
-          <div className="flex-1 bg-orange-50 border border-orange-100 rounded-lg p-2.5 text-center">
-            <p className="text-[10px] text-orange-500 font-bold uppercase">Calories</p>
-            <p className="text-sm font-bold text-orange-700">{Math.round(totalKcal)} <span className="text-[10px] font-normal">kcal</span></p>
+          <div className="flex-1 bg-orange-50 border border-orange-100 rounded-lg p-2 text-center">
+            <p className="text-[9px] text-orange-500 font-bold uppercase">Kcal</p>
+            <p className="text-sm font-bold text-orange-700">{Math.round(totalKcal)}</p>
           </div>
-          <div className="flex-1 bg-blue-50 border border-blue-100 rounded-lg p-2.5 text-center">
-            <p className="text-[10px] text-blue-500 font-bold uppercase">Protein</p>
-            <p className="text-sm font-bold text-blue-700">{totalProtein.toFixed(1)} <span className="text-[10px] font-normal">g</span></p>
+          <div className="flex-1 bg-blue-50 border border-blue-100 rounded-lg p-2 text-center">
+            <p className="text-[9px] text-blue-500 font-bold uppercase">Pro</p>
+            <p className="text-sm font-bold text-blue-700">{totalProtein.toFixed(1)}<span className="text-[10px] font-normal">g</span></p>
           </div>
-          <div className="flex-1 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5 text-center">
-            <p className="text-[10px] text-emerald-500 font-bold uppercase">Items</p>
-            <p className="text-sm font-bold text-emerald-700">{filtered.length}</p>
+          <div className="flex-1 bg-green-50 border border-green-100 rounded-lg p-2 text-center">
+            <p className="text-[9px] text-green-500 font-bold uppercase">Fib</p>
+            <p className="text-sm font-bold text-green-700">{totalFiber.toFixed(1)}<span className="text-[10px] font-normal">g</span></p>
+          </div>
+          <div className="flex-1 bg-cyan-50 border border-cyan-100 rounded-lg p-2 text-center">
+            <p className="text-[9px] text-cyan-500 font-bold uppercase">Water</p>
+            <p className="text-sm font-bold text-cyan-700">{summary?.water_logged_ml > 0 ? (summary.water_logged_ml/1000).toFixed(1) + 'L' : '—'}</p>
           </div>
         </div>
       )}
@@ -228,8 +240,12 @@ function MealHistory({ memberId }: { memberId: number }) {
                       {log.calories_kcal != null && (
                         <p className="text-xs font-semibold text-foreground">{Math.round(log.calories_kcal)} kcal</p>
                       )}
-                      {log.protein_g != null && (
-                        <p className="text-[10px] text-muted-foreground">{log.protein_g.toFixed(1)}g protein</p>
+                      {(log.protein_g != null || log.fiber_g != null) && (
+                        <p className="text-[10px] text-muted-foreground">
+                          {log.protein_g != null ? `${log.protein_g.toFixed(1)}g Pro` : ''}
+                          {log.protein_g != null && log.fiber_g != null ? ' · ' : ''}
+                          {log.fiber_g != null ? `${log.fiber_g.toFixed(1)}g Fib` : ''}
+                        </p>
                       )}
                     </div>
                   </div>
