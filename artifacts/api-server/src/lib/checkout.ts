@@ -24,9 +24,9 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
   );
 
   if (selections.length === 0) {
-    // Still close the check-in even if no selections were made
+    // Still close the check-in even if no selections were made, but mark as cancelled
     await pool.query(
-      `UPDATE member_check_ins SET checked_out_at = NOW() WHERE id = $1`,
+      `UPDATE member_check_ins SET checked_out_at = NOW(), cancelled = TRUE WHERE id = $1`,
       [checkinId]
     );
     return;
