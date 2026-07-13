@@ -165,26 +165,27 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
     finally { setSaving(false); }
   }
 
-  if (!open) {
-    return (
-      <button onClick={() => setOpen(true)}
-        className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
-        <UserPlus className="w-4 h-4" /> Onboard Member
-      </button>
-    );
-  }
-
   const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary";
   const hrFieldCls = "w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50";
   const hrLabelCls = "block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1";
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-foreground">Onboard Member</h3>
-        <button onClick={() => { setOpen(false); reset(); }} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
-      </div>
-      {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+    <>
+      <button onClick={() => setOpen(true)}
+        className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        <UserPlus className="w-4 h-4" /> Onboard Member
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/40 p-4 sm:p-6 overflow-y-auto" onClick={() => { setOpen(false); reset(); }}>
+          <div className="bg-card w-full max-w-4xl border border-border rounded-2xl p-6 shadow-xl space-y-5 my-auto relative" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2"><UserPlus className="w-5 h-5 text-primary" /> Onboard Member</h3>
+              <button onClick={() => { setOpen(false); reset(); }} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
       {step === "search" && (
         <div className="space-y-3">
@@ -415,8 +416,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
             </button>
           </div>
         </form>
+          </div>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
