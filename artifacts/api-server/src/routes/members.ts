@@ -644,9 +644,16 @@ router.post("/members/:id/analyze-food-photo", async (req, res) => {
 If you cannot identify food, return: {"error": "No food detected"}`;
 
   const modelsToTry = [
-    "gemini-1.5-flash",
+    "gemini-3.5-flash",
+    "gemini-flash-latest",
+    "gemini-3.1-flash-image",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash-image",
+    "gemini-3.1-flash",
+    "gemini-3.0-flash",
+    "gemini-2.5-flash",
     "gemini-1.5-flash-latest",
-    "gemini-1.5-pro",
+    "gemini-1.5-flash",
     "gemini-1.5-flash-8b"
   ];
 
@@ -664,13 +671,12 @@ If you cannot identify food, return: {"error": "No food detected"}`;
       break; // Success, exit the loop
     } catch (err: any) {
       lastError = err;
-      // If it's a 404 (model not found), try the next model. Otherwise, break and handle the error (e.g. auth, quota).
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("404") || msg.includes("not found")) {
-        req.log.info({ model: modelName, err: msg }, "Model not found, trying fallback...");
-        continue;
+      if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("permission")) {
+        break;
       }
-      break;
+      req.log.info({ model: modelName, err: msg }, "Model failed, trying fallback...");
+      continue;
     }
   }
 
