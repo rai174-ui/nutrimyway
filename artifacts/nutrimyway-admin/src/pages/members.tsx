@@ -56,6 +56,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   const [ageAtJoining, setAgeAtJoining] = useState("");
   const [validUntil, setValidUntil] = useState("");
   const [memberType, setMemberType] = useState<MemberType>("regular");
+  const [dailyKcal, setDailyKcal] = useState("");
+  const [proteinTarget, setProteinTarget] = useState("");
+  const [fiberTarget, setFiberTarget] = useState("");
+  const [waterTarget, setWaterTarget] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Health record step
@@ -73,8 +77,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 
   function reset() {
     setStep("search"); setQuery(""); setFound(null); setError("");
-    setName(""); setEmail(""); setMobile(""); setHeight(""); setGender(""); setDoj(""); setMembershipNo("");
-    setDobDay(""); setDobMonth(""); setAgeAtJoining(""); setValidUntil(""); setMemberType("regular");
+    setName(""); setMobile(""); setEmail(""); setHeight(""); setGender("");
+    setDoj(""); setMembershipNo(""); setDobDay(""); setDobMonth("");
+    setAgeAtJoining(""); setValidUntil(""); setMemberType("regular");
+    setDailyKcal(""); setProteinTarget(""); setFiberTarget(""); setWaterTarget("");
     setLinkedMemberId(null);
     setHrDate(new Date().toISOString().slice(0, 10));
     setHrWeight(""); setHrBmi(""); setHrBodyFat(""); setHrVisceralFat("");
@@ -126,6 +132,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
         age_at_joining: ageAtJoining ? Number(ageAtJoining) : null,
         valid_until: validUntil || null,
         member_type: memberType,
+        daily_kcal: dailyKcal ? Number(dailyKcal) : null,
+        protein_target_g: proteinTarget ? Number(proteinTarget) : null,
+        fiber_target_g: fiberTarget ? Number(fiberTarget) : null,
+        water_target_ml: waterTarget ? Number(waterTarget) : null,
       });
       setLinkedMemberId(member.id);
       setStep("healthrecord");
@@ -233,76 +243,112 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
       )}
 
       {step === "notfound" && (
-        <div className="space-y-3">
+        <div className="space-y-6">
           <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
             <UserX className="w-3.5 h-3.5 flex-shrink-0" />No existing member found — fill in details to create a new one.
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Name *</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Mobile *</label>
-              <input value={mobile} onChange={e => setMobile(e.target.value)} placeholder="+91 ..." type="tel" className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Email *</label>
-              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="member@email.com" type="email" className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Member ID</label>
-              <input value={membershipNo} onChange={e => setMembershipNo(e.target.value)} placeholder="MEM-001" className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Gender</label>
-              <select value={gender} onChange={e => setGender(e.target.value)} className={inputCls}>
-                <option value="">Select gender</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Height (cm)</label>
-              <input type="number" value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 165" className={inputCls} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Date of Joining</label>
-              <input type="date" value={doj} onChange={e => setDoj(e.target.value)} className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Birth Day</label>
-              <input type="number" min="1" max="31" value={dobDay} onChange={e => setDobDay(e.target.value)} placeholder="1–31" className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Birth Month</label>
-              <select value={dobMonth} onChange={e => setDobMonth(e.target.value)} className={inputCls}>
-                <option value="">Month</option>
-                {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Age at Joining</label>
-              <input type="number" step="0.5" min="1" max="100" value={ageAtJoining} onChange={e => setAgeAtJoining(e.target.value)} placeholder="e.g. 35.5" className={inputCls} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Membership Valid Until</label>
-              <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className={inputCls} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Member Type</label>
-              <select value={memberType} onChange={e => setMemberType(e.target.value as MemberType)} className={inputCls}>
-                {(Object.keys(MEMBER_TYPE_LABELS) as MemberType[]).map(t => (
-                  <option key={t} value={t}>{MEMBER_TYPE_LABELS[t]}</option>
-                ))}
-              </select>
+
+          {/* Personal Details */}
+          <div className="space-y-3">
+            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">Personal Details</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Name *</label>
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Mobile *</label>
+                <input value={mobile} onChange={e => setMobile(e.target.value)} placeholder="+91 ..." type="tel" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Email *</label>
+                <input value={email} onChange={e => setEmail(e.target.value)} placeholder="member@email.com" type="email" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Gender</label>
+                <select value={gender} onChange={e => setGender(e.target.value)} className={inputCls}>
+                  <option value="">Select gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Height (cm)</label>
+                <input type="number" value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 165" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Birth Day</label>
+                <input type="number" min="1" max="31" value={dobDay} onChange={e => setDobDay(e.target.value)} placeholder="1–31" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Birth Month</label>
+                <select value={dobMonth} onChange={e => setDobMonth(e.target.value)} className={inputCls}>
+                  <option value="">Month</option>
+                  {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
-          <p className="text-[10px] text-amber-600">* Mobile or email is required (at least one)</p>
-          <div className="flex gap-2 justify-between">
+
+          {/* Membership Details */}
+          <div className="space-y-3">
+            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">Membership Details</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Member ID</label>
+                <input value={membershipNo} onChange={e => setMembershipNo(e.target.value)} placeholder="MEM-001" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Member Type</label>
+                <select value={memberType} onChange={e => setMemberType(e.target.value as MemberType)} className={inputCls}>
+                  {(Object.keys(MEMBER_TYPE_LABELS) as MemberType[]).map(t => (
+                    <option key={t} value={t}>{MEMBER_TYPE_LABELS[t]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Date of Joining</label>
+                <input type="date" value={doj} onChange={e => setDoj(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Age at Joining</label>
+                <input type="number" step="0.5" min="1" max="100" value={ageAtJoining} onChange={e => setAgeAtJoining(e.target.value)} placeholder="e.g. 35.5" className={inputCls} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Membership Valid Until</label>
+                <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className={inputCls} />
+              </div>
+            </div>
+          </div>
+
+          {/* Nutrition Targets */}
+          <div className="space-y-3">
+            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">Nutrition Targets</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Daily Kcal Target</label>
+                <input type="number" min="500" max="5000" value={dailyKcal} onChange={e => setDailyKcal(e.target.value)} placeholder="e.g. 2000" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Water Target (ml)</label>
+                <input type="number" min="0" max="5000" value={waterTarget} onChange={e => setWaterTarget(e.target.value)} placeholder="e.g. 2500" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Protein Target (g)</label>
+                <input type="number" min="0" max="300" value={proteinTarget} onChange={e => setProteinTarget(e.target.value)} placeholder="e.g. 80" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Fiber Target (g)</label>
+                <input type="number" min="0" max="100" value={fiberTarget} onChange={e => setFiberTarget(e.target.value)} placeholder="e.g. 25" className={inputCls} />
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-amber-600 font-medium pt-2">* Mobile or email is required (at least one)</p>
+          <div className="flex gap-2 justify-between mt-2">
             <button onClick={() => { setStep("search"); setError(""); }} className="text-xs text-muted-foreground hover:text-foreground">← Back to search</button>
             <button onClick={() => void handleCreate()} disabled={saving}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">

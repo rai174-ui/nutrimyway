@@ -1,4 +1,4 @@
-package com.zerolimitautomation.nutrimyway;
+package in.nutrimyway.app;
 
 import com.getcapacitor.BridgeActivity;
 

@@ -159,7 +159,7 @@ Then re-open the `android` folder in Android Studio and rebuild.
 
 | Property | Value |
 |---|---|
-| Package name | `com.zerolimitautomation.nutrimyway` |
+| Package name | `in.nutrimyway.app` |
 | App name | `NutriMyWay` |
 | Version | `1.0.3` (versionCode 4) |
 | Min SDK | 22 (Android 5.1) |

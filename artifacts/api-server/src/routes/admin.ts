@@ -1134,11 +1134,12 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
   const adminReq = req as AdminRequest;
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { name, height_cm, gender, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type } = req.body as {
+  const { name, height_cm, gender, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type, daily_kcal, protein_target_g, fiber_target_g, water_target_ml } = req.body as {
     name?: string; height_cm?: number | null; gender?: string | null; date_of_joining?: string | null;
     mobile?: string | null; email?: string | null; membership_no?: string | null;
     dob?: string | null; age_at_joining?: number | null; valid_until?: string | null;
     member_type?: string | null;
+    daily_kcal?: number | null; protein_target_g?: number | null; fiber_target_g?: number | null; water_target_ml?: number | null;
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
   if (!mobile?.trim() && !email?.trim()) { res.status(400).json({ error: "mobile or email is required" }); return; }
@@ -1150,9 +1151,9 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
   }
 
   const { rows: memberRows } = await pool.query(
-    `INSERT INTO members (name, height_cm, gender, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type, cycle_started_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()) RETURNING *`,
-    [name.trim(), height_cm ?? null, gender?.trim() || null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null, member_type ?? "regular"]
+    `INSERT INTO members (name, height_cm, gender, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type, cycle_started_at, daily_kcal, protein_target_g, fiber_target_g, water_target_ml)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),$12,$13,$14,$15) RETURNING *`,
+    [name.trim(), height_cm ?? null, gender?.trim() || null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null, member_type ?? "regular", daily_kcal ?? null, protein_target_g ?? null, fiber_target_g ?? null, water_target_ml ?? null]
   );
   const member = memberRows[0];
   await pool.query(
