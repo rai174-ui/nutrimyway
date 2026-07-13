@@ -13,12 +13,20 @@ export function Home() {
           </div>
           <span className="font-bold text-xl tracking-tight text-foreground">NutriMyWay</span>
         </div>
-        <button
-          onClick={() => navigate("/login")}
-          className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
-        >
-          Sign In
-        </button>
+        <div className="flex items-center gap-6">
+          <a
+            href="/admin"
+            className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Admin Login
+          </a>
+          <button
+            onClick={() => navigate("/login")}
+            className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
+          >
+            Member Login
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center px-6 text-center w-full max-w-3xl mx-auto py-12">
