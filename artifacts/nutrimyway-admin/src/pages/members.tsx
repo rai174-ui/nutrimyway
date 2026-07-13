@@ -178,7 +178,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 
       {open && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/40 p-4 sm:p-6 overflow-y-auto" onClick={() => { setOpen(false); reset(); }}>
-          <div className="bg-card w-full max-w-4xl border border-border rounded-2xl p-6 shadow-xl space-y-5 my-auto relative" onClick={e => e.stopPropagation()}>
+          <div className="bg-card w-full max-w-[95vw] lg:max-w-[90vw] xl:max-w-7xl border border-border rounded-2xl p-6 shadow-xl space-y-5 my-auto relative" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h3 className="text-lg font-bold text-foreground flex items-center gap-2"><UserPlus className="w-5 h-5 text-primary" /> Onboard Member</h3>
               <button onClick={() => { setOpen(false); reset(); }} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors">
@@ -252,8 +252,8 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
           {/* Personal Details */}
           <div className="space-y-3">
             <h4 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">Personal Details</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="md:col-span-2 lg:col-span-2">
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Name *</label>
                 <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" className={inputCls} />
               </div>
@@ -297,7 +297,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
           {/* Membership Details */}
           <div className="space-y-3">
             <h4 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">Membership Details</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Member ID</label>
                 <input value={membershipNo} onChange={e => setMembershipNo(e.target.value)} placeholder="MEM-001" className={inputCls} />
@@ -318,7 +318,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Age at Joining</label>
                 <input type="number" step="0.5" min="1" max="100" value={ageAtJoining} onChange={e => setAgeAtJoining(e.target.value)} placeholder="e.g. 35.5" className={inputCls} />
               </div>
-              <div className="sm:col-span-2">
+              <div className="md:col-span-2 lg:col-span-2">
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Membership Valid Until</label>
                 <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className={inputCls} />
               </div>
@@ -328,7 +328,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
           {/* Nutrition Targets */}
           <div className="space-y-3">
             <h4 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">Nutrition Targets</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Daily Kcal Target</label>
                 <input type="number" min="500" max="5000" value={dailyKcal} onChange={e => setDailyKcal(e.target.value)} placeholder="e.g. 2000" className={inputCls} />
@@ -416,6 +416,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
             </button>
           </div>
         </form>
+      )}
           </div>
         </div>
       )}

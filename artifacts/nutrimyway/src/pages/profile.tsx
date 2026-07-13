@@ -29,8 +29,8 @@ export function Profile() {
     query: { enabled: !!MEMBER_ID, queryKey: getGetMemberStatusQueryKey(MEMBER_ID!) }
   });
 
-  const { data: summary } = useGetDailySummary(MEMBER_ID!, TODAY, {
-    query: { enabled: !!MEMBER_ID, queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, TODAY) }
+  const { data: summary } = useGetDailySummary(MEMBER_ID!, { date: TODAY }, {
+    query: { enabled: !!MEMBER_ID, queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: TODAY }) }
   });
 
   const consumedCal = summary?.total_calories ?? 0;

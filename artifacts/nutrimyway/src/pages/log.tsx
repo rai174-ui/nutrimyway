@@ -60,6 +60,8 @@ interface MealLog {
   protein_g: number | null;
   carbs_g: number | null;
   fat_g: number | null;
+  fiber_g: number | null;
+  water_ml: number | null;
   logged_at: string;
   checkin_id: number | null;
   selected_flavour: string | null;

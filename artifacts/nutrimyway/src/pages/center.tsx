@@ -90,6 +90,9 @@ export function Center() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [chartMetric, setChartMetric] = useState<"weight" | "body_fat" | "muscle">("weight");
   const [chartTab, setChartTab] = useState<'weight' | 'visceral'>('weight');
+  const [showProgressHistory, setShowProgressHistory] = useState(true);
+  const [showLatestProgress, setShowLatestProgress] = useState(true);
+  const [showVisitHistory, setShowVisitHistory] = useState(true);
   const [form, setForm] = useState<VitalsForm>({
     recorded_at: todayStr(),
     center_id: "",
@@ -202,36 +205,6 @@ export function Center() {
           </div>
         ))}
       </div>
-      {/* Latest vitals */}
-      <section className="bg-card rounded-[12px] p-5 border border-border">
-        <div className="flex items-center gap-2 mb-4">
-          <Activity className="w-5 h-5 text-primary" />
-          <h2 className="text-sm font-semibold uppercase tracking-wider">Latest Progress</h2>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          {[
-            { label: "Weight", value: latestRecord?.weight_kg != null ? `${latestRecord.weight_kg.toFixed(1)} kg` : "--" },
-            { label: "BMI", value: latestRecord?.bmi != null ? latestRecord.bmi.toFixed(1) : "--" },
-            { label: "Body Fat", value: latestRecord?.body_fat_pct != null ? `${latestRecord.body_fat_pct.toFixed(1)}%` : "--" },
-            { label: "Muscle Mass", value: latestRecord?.muscle_mass_kg != null ? `${latestRecord.muscle_mass_kg.toFixed(1)} kg` : "--" },
-            { label: "Visceral Fat", value: latestRecord?.visceral_fat != null ? String(latestRecord.visceral_fat) : "--" },
-            { label: "BMR", value: latestRecord?.bmr != null ? `${Math.round(latestRecord.bmr)} kcal` : "--" },
-            { label: "Metabolic Age", value: latestRecord?.metabolic_age != null ? `${latestRecord.metabolic_age} yrs` : "--" },
-            { label: "Resting HR", value: latestRecord?.resting_hr != null ? `${latestRecord.resting_hr} bpm` : "--" },
-          ].map(({ label, value }) => (
-            <div key={label} className="space-y-0.5">
-              <p className="text-xs text-muted-foreground">{label}</p>
-              <p className="text-base font-semibold">{value}</p>
-            </div>
-          ))}
-          <div className="col-span-2 space-y-0.5 border-t border-border pt-3 mt-1">
-            <p className="text-xs text-muted-foreground">Recorded</p>
-            <p className="text-sm font-medium">
-              {latestRecord ? safeFormat(latestRecord.recorded_at, "MMM d, yyyy") : "--"}
-            </p>
-          </div>
-        </div>
-      </section>
       {/* Trend charts */}
       <section className="bg-card rounded-[12px] p-5 border border-border">
         <div className="flex items-center justify-between mb-3">
@@ -342,7 +315,11 @@ export function Center() {
       </section>
       {/* Visit history */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Progress History</h2>
+        <button onClick={() => setShowProgressHistory(!showProgressHistory)} className="w-full flex items-center justify-between px-1 mb-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Progress History</h2>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${showProgressHistory ? "rotate-180" : ""}`} />
+        </button>
+        {showProgressHistory && (
         <div className="space-y-2">
           {records?.map((r) => (
             <div key={r.id} className="bg-card border border-border p-4 rounded-[12px] flex items-start gap-3">
@@ -385,10 +362,50 @@ export function Center() {
             </p>
           )}
         </div>
+        )}
+      </section>
+      {/* Latest vitals */}
+      <section className="bg-card rounded-[12px] p-5 border border-border">
+        <button onClick={() => setShowLatestProgress(!showLatestProgress)} className="w-full flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Activity className="w-5 h-5 text-primary" />
+            <h2 className="text-sm font-semibold uppercase tracking-wider">Latest Progress</h2>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${showLatestProgress ? "rotate-180" : ""}`} />
+        </button>
+        {showLatestProgress && (
+        <div className="grid grid-cols-2 gap-4">
+          {[
+            { label: "Weight", value: latestRecord?.weight_kg != null ? `${latestRecord.weight_kg.toFixed(1)} kg` : "--" },
+            { label: "BMI", value: latestRecord?.bmi != null ? latestRecord.bmi.toFixed(1) : "--" },
+            { label: "Body Fat", value: latestRecord?.body_fat_pct != null ? `${latestRecord.body_fat_pct.toFixed(1)}%` : "--" },
+            { label: "Muscle Mass", value: latestRecord?.muscle_mass_kg != null ? `${latestRecord.muscle_mass_kg.toFixed(1)} kg` : "--" },
+            { label: "Visceral Fat", value: latestRecord?.visceral_fat != null ? String(latestRecord.visceral_fat) : "--" },
+            { label: "BMR", value: latestRecord?.bmr != null ? `${Math.round(latestRecord.bmr)} kcal` : "--" },
+            { label: "Metabolic Age", value: latestRecord?.metabolic_age != null ? `${latestRecord.metabolic_age} yrs` : "--" },
+            { label: "Resting HR", value: latestRecord?.resting_hr != null ? `${latestRecord.resting_hr} bpm` : "--" },
+          ].map(({ label, value }) => (
+            <div key={label} className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="text-base font-semibold">{value}</p>
+            </div>
+          ))}
+          <div className="col-span-2 space-y-0.5 border-t border-border pt-3 mt-1">
+            <p className="text-xs text-muted-foreground">Recorded</p>
+            <p className="text-sm font-medium">
+              {latestRecord ? safeFormat(latestRecord.recorded_at, "MMM d, yyyy") : "--"}
+            </p>
+          </div>
+        </div>
+        )}
       </section>
       {/* Visit History (check-in log) */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Visit History</h2>
+        <button onClick={() => setShowVisitHistory(!showVisitHistory)} className="w-full flex items-center justify-between px-1 mb-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Visit History</h2>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${showVisitHistory ? "rotate-180" : ""}`} />
+        </button>
+        {showVisitHistory && (
         <div className="space-y-2">
           {(!checkinLogs || checkinLogs.length === 0) && (
             <p className="text-sm text-muted-foreground text-center py-4">No visits recorded yet.</p>
@@ -427,6 +444,7 @@ export function Center() {
             );
           })}
         </div>
+        )}
       </section>
 
       {/* Log Progress sheet */}
