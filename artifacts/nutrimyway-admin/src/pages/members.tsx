@@ -352,6 +352,24 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Height (cm)</label>
                 <input type="number" value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 165" className={inputCls} />
               </div>
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Weight (kg) *</label>
+                <input type="number" step="0.1" min="0" value={weight} onChange={e => {
+                  const wStr = e.target.value;
+                  setWeight(wStr);
+                  if (wStr && height) {
+                    const wNum = Number(wStr);
+                    const hNum = Number(height);
+                    setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+                    if (ageAtJoining && gender) {
+                      let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                      if (gender.toLowerCase() === "male") bmrVal += 5;
+                      else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                      setHrBmr(Math.round(bmrVal).toString());
+                    }
+                  }
+                }} className={inputCls} required />
+              </div>
 
               <div>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Birth Day</label>
