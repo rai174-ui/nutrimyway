@@ -1212,6 +1212,21 @@ Make sure the output is strictly valid JSON.`;
   }
 });
 
+// GET /api/admin/debug/gemini-models - debug endpoint to list available models
+router.get("/admin/debug/gemini-models", requireAdmin, async (req, res) => {
+  if (!process.env.GEMINI_API_KEY) {
+    res.status(500).json({ error: "No GEMINI_API_KEY" }); return;
+  }
+  try {
+    const fetch = require('node-fetch') || globalThis.fetch;
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
+    const data = await response.json();
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/admin/centers/:centerId/members — create & onboard new member
 router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
   const { centerId } = req.params;
