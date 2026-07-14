@@ -1342,100 +1342,129 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div className="sm:col-span-2">
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Name *</label>
-              <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Full name"
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
+          <div className="space-y-6">
+            {/* Personal Details */}
             <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Mobile</label>
-              <input value={editMobile} onChange={e => setEditMobile(e.target.value)} placeholder="+91 ..." type="tel"
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+              <h4 className="text-[11px] font-semibold text-violet-600/80 uppercase tracking-wider mb-3">Personal Details</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Name *</label>
+                  <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Full name"
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Mobile</label>
+                  <input value={editMobile} onChange={e => setEditMobile(e.target.value)} placeholder="+91 ..." type="tel"
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Email</label>
+                  <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="member@email.com" type="email"
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Gender</label>
+                  <select value={editGender} onChange={e => {
+                    const val = e.target.value;
+                    setEditGender(val);
+                    if (!editDailyKcal || editDailyKcal === "1800" || editDailyKcal === "1500") {
+                      if (val === "male") setEditDailyKcal("1800");
+                      else if (val === "female") setEditDailyKcal("1500");
+                    }
+                  }}
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-1">Birth Day</label>
+                    <input type="number" min="1" max="31" value={editDobDay} onChange={e => setEditDobDay(e.target.value)} placeholder="1–31"
+                      className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-1">Birth Month</label>
+                    <select value={editDobMonth} onChange={e => setEditDobMonth(e.target.value)}
+                      className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50">
+                      <option value="">Month</option>
+                      {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* Membership Details */}
             <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Email</label>
-              <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="member@email.com" type="email"
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+              <h4 className="text-[11px] font-semibold text-violet-600/80 uppercase tracking-wider mb-3">Membership Details</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Registration Number</label>
+                  <input value={editMembershipNo} onChange={e => setEditMembershipNo(e.target.value)} placeholder="MEM-001"
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Member Type</label>
+                  <select value={editMemberType} onChange={e => setEditMemberType(e.target.value as MemberType)}
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    {(Object.keys(MEMBER_TYPE_LABELS) as MemberType[]).map(t => (
+                      <option key={t} value={t}>{MEMBER_TYPE_LABELS[t]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Date of Joining</label>
+                  <input type="date" value={editDoj} onChange={e => setEditDoj(e.target.value)}
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Membership Valid Until</label>
+                  <input type="date" value={editValidUntil} onChange={e => setEditValidUntil(e.target.value)}
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Height (cm)</label>
+                  <input type="number" value={editHeight} onChange={e => setEditHeight(e.target.value)} placeholder="165"
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Age at Joining</label>
+                  <input type="number" step="0.5" min="1" max="100" value={editAge} onChange={e => setEditAge(e.target.value)} placeholder="35.5"
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+              </div>
             </div>
+
+            {/* Nutrition Targets */}
             <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Registration Number</label>
-              <input value={editMembershipNo} onChange={e => setEditMembershipNo(e.target.value)} placeholder="MEM-001"
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Gender</label>
-              <select value={editGender} onChange={e => {
-                const val = e.target.value;
-                setEditGender(val);
-                if (!editDailyKcal || editDailyKcal === "1800" || editDailyKcal === "1500") {
-                  if (val === "male") setEditDailyKcal("1800");
-                  else if (val === "female") setEditDailyKcal("1500");
-                }
-              }}
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary">
-                <option value="">Select gender</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Height (cm)</label>
-              <input type="number" value={editHeight} onChange={e => setEditHeight(e.target.value)} placeholder="165"
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Date of Joining</label>
-              <input type="date" value={editDoj} onChange={e => setEditDoj(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Birth Day</label>
-              <input type="number" min="1" max="31" value={editDobDay} onChange={e => setEditDobDay(e.target.value)} placeholder="1–31"
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Birth Month</label>
-              <select value={editDobMonth} onChange={e => setEditDobMonth(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary">
-                <option value="">Month</option>
-                {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Age at Joining</label>
-              <input type="number" step="0.5" min="1" max="100" value={editAge} onChange={e => setEditAge(e.target.value)} placeholder="35.5"
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Membership Valid Until</label>
-              <input type="date" value={editValidUntil} onChange={e => setEditValidUntil(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Daily Kcal Target</label>
-              <input type="number" min="500" max="5000" value={editDailyKcal} onChange={e => setEditDailyKcal(e.target.value)} placeholder="2000"
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Protein Target (g/day)</label>
-              <input type="number" min="0" max="300" value={editProteinTarget} onChange={e => setEditProteinTarget(e.target.value)} placeholder="e.g. 80" className="w-full h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mb-3" />
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Fiber Target (g/day)</label>
-              <input type="number" min="0" max="100" value={editFiberTarget} onChange={e => setEditFiberTarget(e.target.value)} placeholder="e.g. 25" className="w-full h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mb-3" />
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Water Target (ml/day)</label>
-              <input type="number" min="0" max="5000" value={editWaterTarget} onChange={e => setEditWaterTarget(e.target.value)} placeholder="e.g. 2500" className="w-full h-9 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mb-3" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Member Type</label>
-              <select value={editMemberType} onChange={e => setEditMemberType(e.target.value as MemberType)}
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary">
-                {(Object.keys(MEMBER_TYPE_LABELS) as MemberType[]).map(t => (
-                  <option key={t} value={t}>{MEMBER_TYPE_LABELS[t]}</option>
-                ))}
-              </select>
+              <h4 className="text-[11px] font-semibold text-violet-600/80 uppercase tracking-wider mb-3">Nutrition Targets</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Daily Kcal</label>
+                  <input type="number" min="500" max="5000" value={editDailyKcal} onChange={e => setEditDailyKcal(e.target.value)} placeholder="2000"
+                    className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Protein (g)</label>
+                  <input type="number" min="0" max="300" value={editProteinTarget} onChange={e => setEditProteinTarget(e.target.value)} placeholder="80" 
+                    className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Fiber (g)</label>
+                  <input type="number" min="0" max="100" value={editFiberTarget} onChange={e => setEditFiberTarget(e.target.value)} placeholder="25" 
+                    className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-1">Water (ml)</label>
+                  <input type="number" min="0" max="5000" value={editWaterTarget} onChange={e => setEditWaterTarget(e.target.value)} placeholder="2500" 
+                    className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                </div>
+              </div>
             </div>
           </div>
           {editError && (
