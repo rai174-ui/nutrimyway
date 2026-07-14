@@ -1218,8 +1218,7 @@ router.get("/admin/debug/gemini-models", async (req, res) => {
     res.status(500).json({ error: "No GEMINI_API_KEY" }); return;
   }
   try {
-    const fetch = require('node-fetch') || globalThis.fetch;
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
+    const response = await global.fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
     const data = await response.json();
     res.json(data);
   } catch (e: any) {
