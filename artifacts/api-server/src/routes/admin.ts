@@ -1187,7 +1187,7 @@ Make sure the output is strictly valid JSON.`;
         result = await model.generateContent(prompt);
         break; // Successfully generated content, exit the retry loop
       } catch (e: any) {
-        console.warn(`Gemini model ${modelName} failed or is unavailable, trying next...`);
+        console.warn(`Gemini model ${modelName} failed or is unavailable: ${e.message}. Trying next...`);
         lastError = e;
       }
     }
@@ -1261,9 +1261,10 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       res.status(400).json({ error: "Invalid e-mail id structure" }); return;
     }
-    const { rows: existing } = await pool.query("SELECT id FROM members WHERE email = $1", [cleanEmail]);
-    if (existing.length > 0) {
-      res.status(400).json({ error: "Duplicate E-mail ID found." }); return;
+    const { rows: existingEmail } = await pool.query("SELECT id FROM members WHERE LOWER(email) = LOWER($1)", [cleanEmail]);
+    if (existingEmail.length > 0) {
+      res.status(400).json({ error: "Duplicate E-mail found." });
+      return;
     }
   }
 
@@ -1275,12 +1276,11 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
       res.status(400).json({ error: "Invalid Indian mobile number structure. Must be 10 digits starting with 6-9." }); return;
     }
     finalMobile = digits;
-    const { rows: existing } = await pool.query("SELECT id FROM members WHERE mobile = $1", [finalMobile]);
-    if (existing.length > 0) {
-      res.status(400).json({ error: "Duplicate Mobile Number found." }); return;
+    const { rows: existingMobile } = await pool.query("SELECT id FROM members WHERE mobile = $1", [finalMobile]);
+    if (existingMobile.length > 0) {
+      res.status(400).json({ error: "Duplicate Mobile found." }); return;
     }
   }
-
   const { rows: memberRows } = await pool.query(
     `INSERT INTO members (name, height_cm, gender, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type, cycle_started_at, daily_kcal, protein_target_g, fiber_target_g, water_target_ml)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),$12,$13,$14,$15) RETURNING *`,

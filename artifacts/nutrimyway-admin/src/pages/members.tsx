@@ -65,7 +65,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   // Health record step
   const [linkedMemberId, setLinkedMemberId] = useState<number | null>(null);
   const [hrDate, setHrDate] = useState(new Date().toISOString().slice(0, 10));
-  const [hrWeight, setHrWeight] = useState("");
+  const [weight, setWeight] = useState("");
   const [hrBmi, setHrBmi] = useState("");
   const [hrBodyFat, setHrBodyFat] = useState("");
   const [hrVisceralFat, setHrVisceralFat] = useState("");
@@ -83,7 +83,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
     setDailyKcal(""); setProteinTarget(""); setFiberTarget(""); setWaterTarget("");
     setLinkedMemberId(null);
     setHrDate(new Date().toISOString().slice(0, 10));
-    setHrWeight(""); setHrBmi(""); setHrBodyFat(""); setHrVisceralFat("");
+    setWeight(""); setHrBmi(""); setHrBodyFat(""); setHrVisceralFat("");
     setHrMuscleMass(""); setHrMetabolicAge(""); setHrBmr(""); setHrRestingHr(""); setHrNotes("");
   }
 
@@ -115,10 +115,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
       await apiPost(`/admin/centers/${centerId}/members/link`, { member_id: found.id });
       setLinkedMemberId(found.id);
       
-      if (hrWeight && Number(hrWeight) > 0) {
+      if (weight && Number(weight) > 0) {
         await apiPost(`/admin/centers/${centerId}/members/${found.id}/health-records`, {
           recorded_at: hrDate,
-          weight_kg: Number(hrWeight),
+          weight_kg: Number(weight),
           bmi: hrBmi ? Number(hrBmi) : undefined,
           body_fat_pct: hrBodyFat ? Number(hrBodyFat) : undefined,
           visceral_fat: hrVisceralFat ? Number(hrVisceralFat) : undefined,
@@ -154,10 +154,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
       });
       setLinkedMemberId(member.id);
       
-      if (hrWeight && Number(hrWeight) > 0) {
+      if (weight && Number(weight) > 0) {
         await apiPost(`/admin/centers/${centerId}/members/${member.id}/health-records`, {
           recorded_at: hrDate,
-          weight_kg: Number(hrWeight),
+          weight_kg: Number(weight),
           bmi: hrBmi ? Number(hrBmi) : undefined,
           body_fat_pct: hrBodyFat ? Number(hrBodyFat) : undefined,
           visceral_fat: hrVisceralFat ? Number(hrVisceralFat) : undefined,
@@ -175,14 +175,14 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 
   const [suggesting, setSuggesting] = useState(false);
   async function handleSuggestTargets() {
-    if (!hrWeight || !height || !gender || !ageAtJoining) {
+    if (!weight || !height || !gender || !ageAtJoining) {
       setError("Please fill in Weight, Height, Gender, and Age at Joining to get AI suggestions.");
       return;
     }
     setSuggesting(true); setError("");
     try {
       const res = await apiPost<{ daily_kcal: number, protein_target_g: number, fiber_target_g: number, water_target_ml: number }>("/admin/members/suggest-targets", {
-        weight_kg: Number(hrWeight), height_cm: Number(height), gender, age: Number(ageAtJoining)
+        weight_kg: Number(weight), height_cm: Number(height), gender, age: Number(ageAtJoining)
       });
       setDailyKcal(String(res.daily_kcal));
       setProteinTarget(String(res.protein_target_g));
@@ -197,12 +197,12 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 
   async function handleHealthRecord(e: React.FormEvent) {
     e.preventDefault();
-    if (!hrWeight || Number(hrWeight) <= 0) { setError("Weight is required"); return; }
+    if (!weight || Number(weight) <= 0) { setError("Weight is required"); return; }
     setSaving(true); setError("");
     try {
       await apiPost(`/admin/centers/${centerId}/members/${linkedMemberId}/health-records`, {
         recorded_at: hrDate,
-        weight_kg: Number(hrWeight),
+        weight_kg: Number(weight),
         bmi: hrBmi ? Number(hrBmi) : undefined,
         body_fat_pct: hrBodyFat ? Number(hrBodyFat) : undefined,
         visceral_fat: hrVisceralFat ? Number(hrVisceralFat) : undefined,
@@ -233,53 +233,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
           <label className={hrLabelCls}>Date</label>
           <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
         </div>
-        <div>
-          <label className={hrLabelCls}>Weight (kg) *</label>
-          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
-            const wStr = e.target.value;
-            setHrWeight(wStr);
-            if (wStr && height) {
-              const wNum = Number(wStr);
-              const hNum = Number(height);
-              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
-              if (ageAtJoining && gender) {
-                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
-                if (gender.toLowerCase() === "male") bmrVal += 5;
-                else if (gender.toLowerCase() === "female") bmrVal -= 161;
-                setHrBmr(Math.round(bmrVal).toString());
-              }
-            }
-          }} className={hrFieldCls} placeholder="72.5" required />
         </div>
-        <div>
-          <label className={hrLabelCls}>BMI</label>
-          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
-        </div>
-        <div>
-          <label className={hrLabelCls}>Body Fat %</label>
-          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
-        </div>
-        <div>
-          <label className={hrLabelCls}>Visceral Fat</label>
-          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
-        </div>
-        <div>
-          <label className={hrLabelCls}>Muscle Mass (kg)</label>
-          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
-        </div>
-        <div>
-          <label className={hrLabelCls}>Metabolic Age</label>
-          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
-        </div>
-        <div>
-          <label className={hrLabelCls}>BMR (kcal)</label>
-          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
-        </div>
-        <div>
-          <label className={hrLabelCls}>Resting HR (bpm)</label>
-          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
-        </div>
-      </div>
       <div>
         <label className={hrLabelCls}>Notes</label>
         <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"

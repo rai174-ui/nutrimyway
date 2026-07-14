@@ -178,7 +178,7 @@ function QuickReceiptForm({
   if (ingredients.length === 0) return null;
 
   return (
-    <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+    <section className="bg-card rounded-2xl border border-border shadow-sm relative">
       <button type="button" onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between px-5 py-3.5 border-b border-border hover:bg-muted/30 transition-colors">
         <div className="flex items-center gap-3 text-left">
           <PackagePlus className="w-5 h-5 text-primary" />
