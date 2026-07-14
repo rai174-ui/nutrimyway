@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
 import { randomBytes } from "crypto";
-import { pool, initDbError } from "../lib/sqlite";
+import { pool, initDbError, initDb } from "../lib/sqlite";
 import { logger } from "../lib/logger";
 import { bookAndCheckout } from "../lib/checkout";
 import { sendPushNotification, isFirebaseInitialized, getFirebaseInitError } from "../lib/push";
@@ -229,6 +229,16 @@ router.get("/admin/debug/columns", async (req, res) => {
       "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'ingredients'"
     );
     res.json({ checkin_categories: rows, ingredients: ingRows });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// GET /api/admin/debug/run-initDb
+router.get("/admin/debug/run-initDb", async (req, res) => {
+  try {
+    await initDb();
+    res.json({ success: true, initDbError: initDbError ? initDbError.message : null });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
   }
