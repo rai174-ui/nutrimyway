@@ -63,7 +63,7 @@ function Combobox({
             {filtered.map(opt => (
               <button key={opt.id} type="button" 
                 onClick={() => { onChange(String(opt.id)); setOpen(false); setQuery(""); }}
-                className={`w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-muted ${String(opt.id) === value ? "bg-muted font-medium" : ""}`}>
+                className={`w-full text-left px-2 py-1 text-xs rounded-sm hover:bg-muted ${String(opt.id) === value ? "bg-muted font-medium" : ""}`}>
                 {opt.name}
               </button>
             ))}
@@ -144,6 +144,7 @@ function QuickReceiptForm({
   const [lastReceived, setLastReceived] = useState<{ batch: string; count: number } | null>(null);
 
   const [manualSkuId, setManualSkuId] = useState<number | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const selectedIngredient = ingredients.find(i => String(i.id) === ingredientId);
   const skus = selectedIngredient?.skus || [];
@@ -178,18 +179,22 @@ function QuickReceiptForm({
 
   return (
     <section className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border">
-        <PackagePlus className="w-5 h-5 text-primary" />
-        <div>
-          <h2 className="text-base font-semibold text-foreground leading-tight">Receive Stock</h2>
-          <p className="text-xs text-muted-foreground">Log an incoming pack — assign to center stock or directly to a member</p>
+      <button type="button" onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between px-5 py-3.5 border-b border-border hover:bg-muted/30 transition-colors">
+        <div className="flex items-center gap-3 text-left">
+          <PackagePlus className="w-5 h-5 text-primary" />
+          <div>
+            <h2 className="text-base font-semibold text-foreground leading-tight">Receive Stock</h2>
+            <p className="text-xs text-muted-foreground">Log an incoming pack — assign to center stock or directly to a member</p>
+          </div>
         </div>
-      </div>
+        <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+      </button>
 
-      <div className="px-5 py-4 space-y-3">
-        {error && (
-          <div className="px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">{error}</div>
-        )}
+      {isExpanded && (
+        <div className="px-5 py-4 space-y-3">
+          {error && (
+            <div className="px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">{error}</div>
+          )}
         {lastReceived && !error && (
           <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium">
             ✓ Received {lastReceived.count} pack(s) of batch &ldquo;{lastReceived.batch}&rdquo; {openNow ? " (one opened for consumption)" : " (sealed)"}.
@@ -278,7 +283,7 @@ function QuickReceiptForm({
             Receive
           </button>
         </div>
-      </div>
+      )}
     </section>
   );
 }
