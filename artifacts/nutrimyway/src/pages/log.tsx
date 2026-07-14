@@ -728,40 +728,46 @@ export function Log() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="relative">
+                  <label className="absolute left-3 top-1.5 text-[9px] font-bold text-muted-foreground uppercase tracking-wider pointer-events-none">
+                    Calorie
+                  </label>
                   <input
                     type="number"
                     min="0"
                     step="1"
                     value={customKcal}
                     onChange={(e) => setCustomKcal(e.target.value)}
-                    placeholder="Calories"
-                    className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    className="w-full bg-card border border-border rounded-lg pl-3 pr-8 pt-5 pb-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   />
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">kcal</span>
+                  <span className="absolute right-2.5 top-[60%] -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">kcal</span>
                 </div>
                 <div className="relative">
+                  <label className="absolute left-3 top-1.5 text-[9px] font-bold text-muted-foreground uppercase tracking-wider pointer-events-none">
+                    Protein
+                  </label>
                   <input
                     type="number"
                     min="0"
                     step="0.1"
                     value={customProtein}
                     onChange={(e) => setCustomProtein(e.target.value)}
-                    placeholder="Protein"
-                    className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    className="w-full bg-card border border-border rounded-lg pl-3 pr-6 pt-5 pb-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">g</span>
+                  <span className="absolute right-2.5 top-[60%] -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">g</span>
                 </div>
                 <div className="relative">
+                  <label className="absolute left-3 top-1.5 text-[9px] font-bold text-muted-foreground uppercase tracking-wider pointer-events-none">
+                    Fiber
+                  </label>
                   <input
                     type="number"
                     min="0"
                     step="0.1"
                     value={customFiber}
                     onChange={(e) => setCustomFiber(e.target.value)}
-                    placeholder="Fiber"
-                    className="w-full bg-card border border-border rounded-lg px-3 py-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    className="w-full bg-card border border-border rounded-lg pl-3 pr-6 pt-5 pb-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">g</span>
+                  <span className="absolute right-2.5 top-[60%] -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">g</span>
                 </div>
               </div>
 
