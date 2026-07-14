@@ -1154,7 +1154,6 @@ router.post("/admin/members/suggest-targets", requireAdmin, async (req, res) => 
   try {
     const { GoogleGenerativeAI } = await import("@google/generative-ai");
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
     const prompt = `You are a professional Indian nutritionist. Calculate the daily macro targets for a client based on the following details:
 Weight: ${weight_kg} kg
@@ -1170,7 +1169,33 @@ Return ONLY a raw JSON object (without any markdown formatting or backticks) wit
 - "water_target_ml" (number)
 Make sure the output is strictly valid JSON.`;
 
-    const result = await model.generateContent(prompt);
+    // Prioritized list of models. If a newer/lighter model is discontinued or unsupported by the key, it falls back to older/alternative ones.
+    const modelsToTry = [
+      "gemini-1.5-flash-latest",
+      "gemini-1.5-flash",
+      "gemini-1.5-pro-latest",
+      "gemini-1.5-pro",
+      "gemini-pro"
+    ];
+
+    let result;
+    let lastError;
+
+    for (const modelName of modelsToTry) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        result = await model.generateContent(prompt);
+        break; // Successfully generated content, exit the retry loop
+      } catch (e: any) {
+        console.warn(`Gemini model ${modelName} failed or is unavailable, trying next...`);
+        lastError = e;
+      }
+    }
+
+    if (!result) {
+      throw lastError || new Error("All configured Gemini models failed to generate content.");
+    }
+
     let text = result.response.text();
     text = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const data = JSON.parse(text);
