@@ -254,6 +254,16 @@ router.get("/admin/debug/ingredients-dump", async (req, res) => {
   }
 });
 
+// GET /api/admin/debug/fix-ingredients
+router.get("/admin/debug/fix-ingredients", async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(`UPDATE ingredients SET center_id = 'CI-1' WHERE center_id = 'testcenter'`);
+    res.json({ success: true, updated: rowCount });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 // GET /api/admin/super/centers — all centers with active status and validity (super admin only)
 router.get("/admin/super/centers", requireSuperAdmin, async (_req, res) => {
   const { rows } = await pool.query(`
