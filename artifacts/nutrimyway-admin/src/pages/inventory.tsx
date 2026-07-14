@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import { Nav } from "@/components/nav";
 import {
@@ -12,7 +12,7 @@ import {
   Plus, X, Loader2, Trash2, FileDown,
   PackageOpen, PackageCheck,
   ClipboardList, MinusCircle, AlertTriangle, PackagePlus,
-  SlidersHorizontal, Users, Search,
+  SlidersHorizontal, Users, Search, ChevronDown,
 } from "lucide-react";
 
 function batchCapacity(b: IngredientBatch): number {
@@ -20,6 +20,58 @@ function batchCapacity(b: IngredientBatch): number {
 }
 function batchUnit(b: IngredientBatch): string {
   return b.received_unit ?? b.pack_unit;
+}
+
+
+function Combobox({ 
+  options, value, onChange, placeholder = "Select..." 
+}: { 
+  options: {id: string, name: string}[], value: string, onChange: (val: string) => void, placeholder?: string 
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(o => String(o.id) === value);
+  const filtered = query ? options.filter(o => o.name.toLowerCase().includes(query.toLowerCase())) : options;
+
+  return (
+    <div className="relative w-full" ref={ref}>
+      <button type="button" onClick={() => setOpen(!open)} 
+        className="flex items-center justify-between w-full h-9 px-2.5 text-sm text-left rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+        <span className="truncate text-foreground">{selectedOption ? selectedOption.name : placeholder}</span>
+        <ChevronDown className="w-4 h-4 opacity-50 flex-shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-card text-foreground border border-border rounded-md shadow-md">
+          <div className="flex items-center px-2 py-1.5 border-b border-border">
+            <Search className="w-3.5 h-3.5 mr-2 opacity-50" />
+            <input autoFocus type="text" className="w-full bg-transparent text-sm focus:outline-none" 
+              placeholder="Search..." value={query} onChange={e => setQuery(e.target.value)} />
+          </div>
+          <div className="max-h-60 overflow-y-auto p-1">
+            {filtered.length === 0 && <div className="p-2 text-xs text-muted-foreground text-center">No results</div>}
+            {filtered.map(opt => (
+              <button key={opt.id} type="button" 
+                onClick={() => { onChange(String(opt.id)); setOpen(false); setQuery(""); }}
+                className={`w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-muted ${String(opt.id) === value ? "bg-muted font-medium" : ""}`}>
+                {opt.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function exportInventoryXlsx(batches: IngredientBatch[]) {
@@ -149,17 +201,12 @@ function QuickReceiptForm({
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Ingredient
             </label>
-            <select
+            <Combobox 
+              options={ingredients.map(i => ({ id: String(i.id), name: i.name }))}
               value={ingredientId}
-              onChange={e => setIngredientId(e.target.value)}
-              className="h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              {ingredients.map(i => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
-              ))}
-            </select>
+              onChange={setIngredientId}
+              placeholder="Select ingredient..."
+            />
           </div>
 
           <div className="flex flex-col gap-1 min-w-[120px] flex-1">
