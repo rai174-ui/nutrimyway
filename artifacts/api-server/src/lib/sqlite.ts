@@ -1216,17 +1216,21 @@ async function migrateAdminTables46(): Promise<void> {
   // Add category_id to ingredients
   await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES checkin_categories(id) ON DELETE SET NULL`);
   
-  // Data migration: copy existing relations
-  await pool.query(`
-    UPDATE ingredients 
-    SET category_id = (
-      SELECT category_id 
-      FROM checkin_category_ingredients 
-      WHERE checkin_category_ingredients.ingredient_id = ingredients.id 
-      LIMIT 1
-    )
-    WHERE category_id IS NULL
-  `);
+  try {
+    // Data migration: copy existing relations
+    await pool.query(`
+      UPDATE ingredients 
+      SET category_id = (
+        SELECT category_id 
+        FROM checkin_category_ingredients 
+        WHERE checkin_category_ingredients.ingredient_id = ingredients.id 
+        LIMIT 1
+      )
+      WHERE category_id IS NULL
+    `);
+  } catch (e) {
+    // Ignore error if checkin_category_ingredients was already dropped
+  }
 
   // Drop old mapping table
   await pool.query(`DROP TABLE IF EXISTS checkin_category_ingredients`);
