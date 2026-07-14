@@ -32,8 +32,7 @@ export default function OpenBatchesPage() {
     if (!centerId) return;
     try {
       const [ingsRes, batsRes, reqsRes] = await Promise.all([
-        
-        apiGet<Ingredient[]>("/admin/ingredients"),
+        apiGet<Ingredient[]>(`/admin/centers/${centerId}/ingredients`),
         apiGet<IngredientBatch[]>(`/admin/centers/${centerId}/ingredient-batches`),
         apiGet<IngredientRequirement[]>(`/admin/centers/${centerId}/ingredient-requirements`),
       ]);

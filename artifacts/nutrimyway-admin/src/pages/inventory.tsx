@@ -1044,7 +1044,7 @@ export default function InventoryPage() {
     setError(null);
     try {
       const [ings, bats, reqs, mems] = await Promise.all([
-        apiGet<Ingredient[]>("/admin/ingredients"),
+        apiGet<Ingredient[]>(`/admin/centers/${center.id}/ingredients`),
         apiGet<IngredientBatch[]>(`/admin/centers/${center.id}/ingredient-batches`),
         apiGet<IngredientRequirement[]>(`/admin/centers/${center.id}/ingredient-requirements`),
         apiGet<CenterMember[]>(`/admin/centers/${center.id}/members`),
