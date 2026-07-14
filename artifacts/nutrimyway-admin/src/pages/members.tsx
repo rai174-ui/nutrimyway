@@ -48,7 +48,6 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
   const [height, setHeight] = useState("");
-  const [weight, setWeight] = useState("");
   const [gender, setGender] = useState("");
   const [doj, setDoj] = useState("");
   const [membershipNo, setMembershipNo] = useState("");
@@ -78,7 +77,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 
   function reset() {
     setStep("search"); setQuery(""); setFound(null); setError("");
-    setName(""); setMobile(""); setEmail(""); setHeight(""); setWeight(""); setGender("");
+    setName(""); setMobile(""); setEmail(""); setHeight(""); setGender("");
     setDoj(""); setMembershipNo(""); setDobDay(""); setDobMonth("");
     setAgeAtJoining(""); setValidUntil(""); setMemberType("regular");
     setDailyKcal(""); setProteinTarget(""); setFiberTarget(""); setWaterTarget("");
@@ -115,11 +114,22 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
     try {
       await apiPost(`/admin/centers/${centerId}/members/link`, { member_id: found.id });
       setLinkedMemberId(found.id);
-      if (found.height_cm) setHeight(String(found.height_cm));
-      if (found.gender) setGender(found.gender);
-      // We don't have ageAtJoining readily available for existing members in the lookup response, 
-      // but height and gender are enough to prep for future calculations if we had it.
-      setStep("healthrecord");
+      
+      if (hrWeight && Number(hrWeight) > 0) {
+        await apiPost(`/admin/centers/${centerId}/members/${found.id}/health-records`, {
+          recorded_at: hrDate,
+          weight_kg: Number(hrWeight),
+          bmi: hrBmi ? Number(hrBmi) : undefined,
+          body_fat_pct: hrBodyFat ? Number(hrBodyFat) : undefined,
+          visceral_fat: hrVisceralFat ? Number(hrVisceralFat) : undefined,
+          muscle_mass_kg: hrMuscleMass ? Number(hrMuscleMass) : undefined,
+          metabolic_age: hrMetabolicAge ? Number(hrMetabolicAge) : undefined,
+          bmr: hrBmr ? Number(hrBmr) : undefined,
+          resting_hr: hrRestingHr ? Number(hrRestingHr) : undefined,
+          notes: hrNotes.trim() || undefined,
+        });
+      }
+      setOpen(false); reset(); onAdded();
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to link member"); }
     finally { setSaving(false); }
   }
@@ -143,35 +153,36 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
         water_target_ml: waterTarget ? Number(waterTarget) : null,
       });
       setLinkedMemberId(member.id);
-      if (weight) {
-        setHrWeight(weight);
-        if (height) {
-          const wNum = Number(weight);
-          const hNum = Number(height);
-          setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
-          if (ageAtJoining && gender) {
-            let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
-            if (gender.toLowerCase() === "male") bmrVal += 5;
-            else if (gender.toLowerCase() === "female") bmrVal -= 161;
-            setHrBmr(Math.round(bmrVal).toString());
-          }
-        }
+      
+      if (hrWeight && Number(hrWeight) > 0) {
+        await apiPost(`/admin/centers/${centerId}/members/${member.id}/health-records`, {
+          recorded_at: hrDate,
+          weight_kg: Number(hrWeight),
+          bmi: hrBmi ? Number(hrBmi) : undefined,
+          body_fat_pct: hrBodyFat ? Number(hrBodyFat) : undefined,
+          visceral_fat: hrVisceralFat ? Number(hrVisceralFat) : undefined,
+          muscle_mass_kg: hrMuscleMass ? Number(hrMuscleMass) : undefined,
+          metabolic_age: hrMetabolicAge ? Number(hrMetabolicAge) : undefined,
+          bmr: hrBmr ? Number(hrBmr) : undefined,
+          resting_hr: hrRestingHr ? Number(hrRestingHr) : undefined,
+          notes: hrNotes.trim() || undefined,
+        });
       }
-      setStep("healthrecord");
+      setOpen(false); reset(); onAdded();
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to add member"); }
     finally { setSaving(false); }
   }
 
   const [suggesting, setSuggesting] = useState(false);
   async function handleSuggestTargets() {
-    if (!weight || !height || !gender || !ageAtJoining) {
+    if (!hrWeight || !height || !gender || !ageAtJoining) {
       setError("Please fill in Weight, Height, Gender, and Age at Joining to get AI suggestions.");
       return;
     }
     setSuggesting(true); setError("");
     try {
       const res = await apiPost<{ daily_kcal: number, protein_target_g: number, fiber_target_g: number, water_target_ml: number }>("/admin/members/suggest-targets", {
-        weight_kg: Number(weight), height_cm: Number(height), gender, age: Number(ageAtJoining)
+        weight_kg: Number(hrWeight), height_cm: Number(height), gender, age: Number(ageAtJoining)
       });
       setDailyKcal(String(res.daily_kcal));
       setProteinTarget(String(res.protein_target_g));
@@ -209,6 +220,73 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary";
   const hrFieldCls = "w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50";
   const hrLabelCls = "block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1";
+
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -274,7 +352,8 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
               {found.membership_no && <p className="text-xs text-muted-foreground">Membership: {found.membership_no}</p>}
             </div>
           </div>
-          <div className="flex gap-2 justify-between">
+          {healthRecordSection}
+          <div className="flex gap-2 justify-between mt-4">
             <button onClick={() => { setFound(null); setStep("search"); setError(""); }} className="text-xs text-muted-foreground hover:text-foreground">← Search again</button>
             <button onClick={() => void handleLink()} disabled={saving}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
@@ -319,10 +398,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Height (cm)</label>
                 <input type="number" value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 165" className={inputCls} />
               </div>
-              <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Weight (kg)</label>
-                <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g. 70" className={inputCls} />
-              </div>
+
               <div>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Birth Day</label>
                 <input type="number" min="1" max="31" value={dobDay} onChange={e => setDobDay(e.target.value)} placeholder="1–31" className={inputCls} />
@@ -398,89 +474,21 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
             </div>
           </div>
 
+          {healthRecordSection}
+
           <p className="text-[10px] text-amber-600 font-medium pt-2">* Mobile or email is required (at least one)</p>
           <div className="flex gap-2 justify-between mt-2">
             <button onClick={() => { setStep("search"); setError(""); }} className="text-xs text-muted-foreground hover:text-foreground">← Back to search</button>
             <button onClick={() => void handleCreate()} disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
-              <UserPlus className="w-3.5 h-3.5" />{saving ? "Creating..." : "Create & Continue →"}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-sky-600 text-white font-medium hover:bg-sky-700 disabled:opacity-50 transition-colors">
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              {saving ? "Saving..." : "Save & Complete Onboarding"}
             </button>
           </div>
         </div>
       )}
 
-      {step === "healthrecord" && (
-        <form onSubmit={e => void handleHealthRecord(e)} className="space-y-3">
-          <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
-            <Activity className="w-3.5 h-3.5 flex-shrink-0" />
-            Record initial health measurements to complete registration.
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            <div>
-              <label className={hrLabelCls}>Date</label>
-              <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
-            </div>
-            <div>
-              <label className={hrLabelCls}>Weight (kg) *</label>
-              <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
-                const wStr = e.target.value;
-                setHrWeight(wStr);
-                if (wStr && height) {
-                  const wNum = Number(wStr);
-                  const hNum = Number(height);
-                  setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
-                  if (ageAtJoining && gender) {
-                    let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
-                    if (gender.toLowerCase() === "male") bmrVal += 5;
-                    else if (gender.toLowerCase() === "female") bmrVal -= 161;
-                    setHrBmr(Math.round(bmrVal).toString());
-                  }
-                }
-              }} className={hrFieldCls} placeholder="72.5" required />
-            </div>
-            <div>
-              <label className={hrLabelCls}>BMI</label>
-              <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
-            </div>
-            <div>
-              <label className={hrLabelCls}>Body Fat %</label>
-              <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
-            </div>
-            <div>
-              <label className={hrLabelCls}>Visceral Fat</label>
-              <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
-            </div>
-            <div>
-              <label className={hrLabelCls}>Muscle Mass (kg)</label>
-              <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
-            </div>
-            <div>
-              <label className={hrLabelCls}>Metabolic Age</label>
-              <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
-            </div>
-            <div>
-              <label className={hrLabelCls}>BMR (kcal)</label>
-              <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
-            </div>
-            <div>
-              <label className={hrLabelCls}>Resting HR (bpm)</label>
-              <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
-            </div>
-          </div>
-          <div>
-            <label className={hrLabelCls}>Notes</label>
-            <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
-              className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
-          </div>
-          <div className="flex justify-end">
-            <button type="submit" disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-sky-600 text-white font-medium hover:bg-sky-700 disabled:opacity-50 transition-colors">
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-              Save & Complete Registration
-            </button>
-          </div>
-        </form>
-      )}
+      
           </div>
         </div>
       )}
@@ -511,7 +519,74 @@ function VisitPanel({
   // Refresh time display every minute
   useEffect(() => {
     const t = setInterval(() => forceUpdate(n => n + 1), 60000);
-    return () => clearInterval(t);
+  
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
+  return () => clearInterval(t);
   }, []);
 
   const loadData = useCallback(async () => {
@@ -598,12 +673,146 @@ function VisitPanel({
   const selectionCount = flavourSelections.length;
 
   if (loading) {
-    return (
+  
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
+  return (
       <div className="flex items-center gap-2 px-5 py-3 text-xs text-muted-foreground">
         <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading visit options…
       </div>
     );
   }
+
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="border-t border-border/50 bg-muted/20 px-5 py-4 space-y-4">
@@ -646,14 +855,148 @@ function VisitPanel({
           grouped[key].push(opt);
         }
         const entries = Object.entries(grouped);
-        return (
+      
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
+  return (
           <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/60">
             {entries.map(([groupName, opts]) => {
               const isSingle = opts.length === 1;
               const selectedOpt = opts.find(o => selectedFlavourIngredientIds.has(o.id));
               const isAutoSelected = isSingle && selectedFlavourIngredientIds.has(opts[0].id);
 
-              return (
+            
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
+  return (
                 <div key={groupName} className="flex items-center gap-2 px-3 py-2 min-h-[40px]">
                   {/* Category label */}
                   <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 w-16 shrink-0 leading-tight truncate">{groupName}</span>
@@ -681,7 +1024,74 @@ function VisitPanel({
                       <div className="flex flex-wrap gap-1">
                         {opts.map(opt => {
                           const sel = selectedFlavourIngredientIds.has(opt.id);
-                          return (
+                        
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
+  return (
                             <button
                               key={opt.id}
                               onClick={() => void toggleFlavour(opt)}
@@ -806,7 +1216,6 @@ function HealthPanel({ memberId, centerId, onClose }: {
 }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(todayStr);
-  const [weight, setWeight] = useState("");
   const [bmi, setBmi] = useState("");
   const [bodyFat, setBodyFat] = useState("");
   const [visceralFat, setVisceralFat] = useState("");
@@ -848,7 +1257,7 @@ function HealthPanel({ memberId, centerId, onClose }: {
         notes: notes.trim() || undefined,
       });
       setSaveSuccess(true);
-      setWeight(""); setBmi(""); setBodyFat(""); setVisceralFat("");
+      setBmi(""); setBodyFat(""); setVisceralFat("");
       setMuscleMass(""); setMetabolicAge(""); setBmr(""); setRestingHr(""); setNotes("");
       setDate(todayStr);
       void loadRecords();
@@ -861,6 +1270,73 @@ function HealthPanel({ memberId, centerId, onClose }: {
 
   const fieldCls = "w-full h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50";
   const labelCls = "block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1";
+
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="border-t border-border/50 bg-sky-50/40 px-5 py-4 space-y-4">
@@ -996,19 +1472,220 @@ function validityBadge(valid_until: string | null) {
   const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   const label = fmtDateDMY(valid_until);
   if (daysLeft <= 0) {
-    return (
+  
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
+  return (
       <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-300 rounded-full px-2 py-0.5">
         <CalendarClock className="w-3 h-3" />Expired {label}
       </span>
     );
   }
   if (daysLeft <= 30) {
-    return (
+  
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
+  return (
       <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded-full px-2 py-0.5">
         <CalendarClock className="w-3 h-3" />Expires in {daysLeft}d · {label}
       </span>
     );
   }
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
   return (
     <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
       <CalendarClock className="w-3 h-3" />Valid to {label}
@@ -1173,6 +1850,73 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     finally { setBusy(false); }
   }
 
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
   return (
     <div className={`border-b border-border last:border-0 ${isCheckedIn ? "bg-green-50/30" : ""} ${!member.is_active ? "opacity-55 bg-muted/20" : ""}`}>
       <div className="flex items-center gap-4 px-5 py-4">
@@ -1289,7 +2033,74 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
           )}
           {showRenew && (() => {
             const effectiveRenewalDays = isTrial3Day ? 5 : 30;
-            return (
+          
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
+  return (
               <button
                 onClick={openRenewDialog}
                 disabled={busy}
@@ -1635,6 +2446,73 @@ function MemberMealsModal({ centerId, onClose }: { centerId: string; onClose: ()
 
   const totalKcal = filteredLogs.reduce((s, l) => s + (l.calories_kcal ?? 0), 0);
 
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col">
@@ -1889,7 +2767,74 @@ function HealthReportModal({ centerId, members, onClose }: {
         .catch(() => setRecords([]))
         .finally(() => setLoading(false));
     }, 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
+  return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [from, to, selectedIds, centerId, members.length]);
 
   function downloadCSV() {
@@ -1924,6 +2869,73 @@ function HealthReportModal({ centerId, members, onClose }: {
     : members;
 
   const uniqueMemberCount = new Set(records.map(r => r.member_id)).size;
+
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
@@ -2083,6 +3095,73 @@ function RenewalHistoryModal({ centerId, onClose }: {
   const uniqueMemberCount = new Set(records.map(r => r.member_id)).size;
   const totalAmount = records.reduce((sum, r) => sum + Number(r.amount || 0), 0);
 
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       {/* Header */}
@@ -2216,6 +3295,73 @@ function SellProductDialog({ centerId, memberId, onSuccess, onClose }: { centerI
       setSaving(false);
     }
   }
+
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -2365,6 +3511,73 @@ function ProductReturnDialog({ centerId, memberId, onSuccess, onClose }: { cente
     }
   }
 
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-background rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border border-border">
@@ -2477,6 +3690,73 @@ export default function MembersPage() {
 
   const checkedIn    = filtered.filter(m => m.checkin_id);
   const notCheckedIn = filtered.filter(m => !m.checkin_id);
+
+
+  const healthRecordSection = (
+    <div className="space-y-3 pt-4 border-t border-border mt-4">
+      <div className="flex items-center gap-2 text-xs bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2">
+        <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+        Record initial health measurements to complete registration.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div>
+          <label className={hrLabelCls}>Date</label>
+          <input type="date" value={hrDate} onChange={e => setHrDate(e.target.value)} className={hrFieldCls} required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Weight (kg) *</label>
+          <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+            const wStr = e.target.value;
+            setHrWeight(wStr);
+            if (wStr && height) {
+              const wNum = Number(wStr);
+              const hNum = Number(height);
+              setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+              if (ageAtJoining && gender) {
+                let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                if (gender.toLowerCase() === "male") bmrVal += 5;
+                else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                setHrBmr(Math.round(bmrVal).toString());
+              }
+            }
+          }} className={hrFieldCls} placeholder="72.5" required />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMI</label>
+          <input type="number" step="0.1" min="0" value={hrBmi} onChange={e => setHrBmi(e.target.value)} className={hrFieldCls} placeholder="24.5" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Body Fat %</label>
+          <input type="number" step="0.1" min="0" max="100" value={hrBodyFat} onChange={e => setHrBodyFat(e.target.value)} className={hrFieldCls} placeholder="22.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Visceral Fat</label>
+          <input type="number" step="0.5" min="0" value={hrVisceralFat} onChange={e => setHrVisceralFat(e.target.value)} className={hrFieldCls} placeholder="8" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Muscle Mass (kg)</label>
+          <input type="number" step="0.1" min="0" value={hrMuscleMass} onChange={e => setHrMuscleMass(e.target.value)} className={hrFieldCls} placeholder="28.0" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Metabolic Age</label>
+          <input type="number" min="0" value={hrMetabolicAge} onChange={e => setHrMetabolicAge(e.target.value)} className={hrFieldCls} placeholder="35" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>BMR (kcal)</label>
+          <input type="number" min="0" value={hrBmr} onChange={e => setHrBmr(e.target.value)} className={hrFieldCls} placeholder="1650" />
+        </div>
+        <div>
+          <label className={hrLabelCls}>Resting HR (bpm)</label>
+          <input type="number" min="0" value={hrRestingHr} onChange={e => setHrRestingHr(e.target.value)} className={hrFieldCls} placeholder="68" />
+        </div>
+      </div>
+      <div>
+        <label className={hrLabelCls}>Notes</label>
+        <textarea value={hrNotes} onChange={e => setHrNotes(e.target.value)} rows={2} placeholder="Any observations…"
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background">
