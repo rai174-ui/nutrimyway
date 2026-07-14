@@ -1162,172 +1162,178 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
 
   return (
     <div className={`border-b border-border last:border-0 ${isCheckedIn ? "bg-green-50/30" : ""} ${!member.is_active ? "opacity-55 bg-muted/20" : ""}`}>
-      <div className="flex items-center gap-4 px-5 py-4">
-        <div className="w-9 h-9 rounded-full bg-teal-pale flex items-center justify-center flex-shrink-0">
-          <span className="text-sm font-bold text-teal-dark">
-            {member.name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)}
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="font-medium text-sm text-foreground truncate">{member.name}</p>
-            {isCheckedIn && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide bg-green-100 text-green-700 rounded-full px-2 py-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                In
+      <div className="flex flex-col gap-3 px-5 py-4">
+        {/* Top Row: Avatar, Name, In-Status, and Action Buttons */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-9 h-9 rounded-full bg-teal-pale flex items-center justify-center flex-shrink-0">
+              <span className="text-sm font-bold text-teal-dark">
+                {member.name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)}
               </span>
-            )}
+            </div>
+            <div className="flex items-center gap-2 truncate">
+              <p className="font-medium text-sm text-foreground truncate">{member.name}</p>
+              {isCheckedIn && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide bg-green-100 text-green-700 rounded-full px-2 py-0.5 whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  In
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
-            <p className="text-xs text-muted-foreground">ID #{member.id}</p>
-            {(member as any).current_otp && (
-              <p className="text-[10px] font-mono font-bold tracking-widest bg-violet-100 text-violet-800 px-2 py-0.5 rounded border border-violet-200">OTP: {(member as any).current_otp}</p>
-            )}
-            {member.mobile && <p className="text-xs text-muted-foreground">{member.mobile}</p>}
-            {member.membership_no && <p className="text-xs text-muted-foreground">{member.membership_no}</p>}
-            {member.daily_kcal != null && (
-              <span className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-full px-2 py-0.5">
-                🔥 {Math.round((member as any).today_kcal || 0)} / {member.daily_kcal} kcal
-              </span>
-            )}
-            {(member as any).protein_target_g != null && (
-              <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
-                🍗 {Math.round((member as any).today_protein_g || 0)} / {(member as any).protein_target_g}g protein
-              </span>
-            )}
-            {(member as any).fiber_target_g != null && (
-              <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 border border-green-100 rounded-full px-2 py-0.5">
-                🌾 {Math.round((member as any).today_fiber_g || 0)} / {(member as any).fiber_target_g}g fiber
-              </span>
-            )}
-            {(member as any).water_target_ml != null && (
-              <span 
-                className="flex items-center gap-1 text-xs text-sky-600 bg-sky-50 border border-sky-100 rounded-full px-2 py-0.5 cursor-help"
-                title={`Today: ${(member as any).today_water_ml || 0}ml / ${(member as any).water_target_ml}ml\nYesterday: ${(member as any).yesterday_water_ml || 0}ml`}
-              >
-                {(() => {
-                  const target = Number((member as any).water_target_ml);
-                  const actual = Number((member as any).today_water_ml || 0);
-                  if (actual === 0) return "🥛";
-                  if (actual < target) return "🚰";
-                  return "💧";
-                })()} {((member as any).today_water_ml || 0)} / {(member as any).water_target_ml}ml water
-              </span>
-            )}
-            {validityBadge(member.valid_until)}
-            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5">
-              {MEMBER_TYPE_LABELS[member.member_type ?? "regular"]}
-            </span>
-            <span className={`inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5 border ${checkinsUsed >= effectiveCheckinCap ? "text-red-700 bg-red-50 border-red-300" : checkinsUsed >= effectiveCheckinCap - 7 ? "text-amber-700 bg-amber-50 border-amber-300" : "text-muted-foreground bg-muted/40 border-border"}`}>
-              {checkinsUsed}/{effectiveCheckinCap} check-ins{isTrial3Day ? " (trial cap)" : ""}
-            </span>
-            {isCheckedIn && member.checked_in_at && (
-              <p className={`text-xs flex items-center gap-1 ${mins >= 150 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
-                <Clock className="w-3 h-3" />
-                Since {formatTime(member.checked_in_at)} · {mins} min
-              </p>
-            )}
+          
+          <div className="flex flex-wrap justify-end items-center gap-1.5 flex-shrink-0">
             {!isCheckedIn && !showWeightForm && (
-              <p className="text-xs text-muted-foreground">Not checked in</p>
-            )}
-            {!isCheckedIn && showWeightForm && (
-              <p className="text-xs text-amber-700 font-medium">Enter today&apos;s weight to check in</p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {!isCheckedIn && !showWeightForm && (
-            <button
-              onClick={() => setShowWeightForm(true)}
-              disabled={busy}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              Check In
-            </button>
-          )}
-          {!isCheckedIn && showWeightForm && (
-            <>
-              <input
-                type="number"
-                value={weightKg}
-                onChange={e => setWeightKg(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && void handleCheckin()}
-                placeholder="kg"
-                min="20" max="300" step="0.1"
-                autoFocus
-                className="w-20 h-7 px-2 text-sm rounded-lg border border-green-300 bg-white focus:outline-none focus:ring-1 focus:ring-green-400"
-              />
               <button
-                onClick={() => void handleCheckin()}
-                disabled={!weightKg || Number(weightKg) <= 0 || busy}
-                className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-40"
+                onClick={() => setShowWeightForm(true)}
+                disabled={busy}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors"
               >
-                {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <LogIn className="w-3 h-3" />}
+                <LogIn className="w-3.5 h-3.5" />
                 Check In
               </button>
-              <button
-                onClick={() => { setShowWeightForm(false); setWeightKg(""); }}
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </>
+            )}
+            {!isCheckedIn && showWeightForm && (
+              <>
+                <input
+                  type="number"
+                  value={weightKg}
+                  onChange={e => setWeightKg(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && void handleCheckin()}
+                  placeholder="kg"
+                  min="20" max="300" step="0.1"
+                  autoFocus
+                  className="w-20 h-7 px-2 text-sm rounded-lg border border-green-300 bg-white focus:outline-none focus:ring-1 focus:ring-green-400"
+                />
+                <button
+                  onClick={() => void handleCheckin()}
+                  disabled={!weightKg || Number(weightKg) <= 0 || busy}
+                  className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-40"
+                >
+                  {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <LogIn className="w-3 h-3" />}
+                  Check In
+                </button>
+                <button
+                  onClick={() => { setShowWeightForm(false); setWeightKg(""); }}
+                  className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+            {showRenew && (() => {
+              const effectiveRenewalDays = isTrial3Day ? 5 : 30;
+              return (
+                <button
+                  onClick={openRenewDialog}
+                  disabled={busy}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-colors border border-emerald-200"
+                  title={`Renew Membership (+${effectiveRenewalDays} days, resets check-in cycle)`}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />Renew Membership
+                </button>
+              );
+            })()}
+            <button
+              onClick={() => setShowSellProductDialog(true)}
+              className="h-8 px-3 text-xs font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+              Sell Product
+            </button>
+            <button
+              onClick={() => setShowReturnProductDialog(true)}
+              className="h-8 px-3 text-xs font-semibold rounded-xl border border-amber-400 text-amber-700 hover:bg-amber-50 transition-colors"
+            >
+              Product Return
+            </button>
+            <button
+              onClick={toggleHistory}
+              className={`p-1.5 rounded-lg transition-colors ${showHistory ? "text-emerald-600 bg-emerald-100" : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"}`}
+              title="Renewal history"
+            >
+              <ClipboardList className="w-4 h-4" />
+            </button>
+            <button
+              onClick={openEdit}
+              className={`p-1.5 rounded-lg transition-colors ${showEditPanel ? "text-violet-600 bg-violet-100" : "text-muted-foreground hover:text-violet-600 hover:bg-violet-50"}`}
+              title="Edit member"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowHealthPanel(v => !v)}
+              className={`p-1.5 rounded-lg transition-colors ${showHealthPanel ? "text-sky-600 bg-sky-100" : "text-muted-foreground hover:text-sky-600 hover:bg-sky-50"}`}
+              title="Health records"
+            >
+              <Activity className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => void handleToggleStatus()}
+              disabled={busy}
+              className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${member.is_active ? "text-muted-foreground hover:text-amber-600 hover:bg-amber-50" : "text-amber-600 bg-amber-50 hover:bg-amber-100"}`}
+              title={member.is_active ? "Deactivate member" : "Activate member"}
+            >
+              {member.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom Row: Critical Data */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 sm:pl-12">
+          <p className="text-xs text-muted-foreground">ID #{member.id}</p>
+          {(member as any).current_otp && (
+            <p className="text-[10px] font-mono font-bold tracking-widest bg-violet-100 text-violet-800 px-2 py-0.5 rounded border border-violet-200">OTP: {(member as any).current_otp}</p>
           )}
-          {showRenew && (() => {
-            const effectiveRenewalDays = isTrial3Day ? 5 : 30;
-            return (
-              <button
-                onClick={openRenewDialog}
-                disabled={busy}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-colors border border-emerald-200"
-                title={`Renew Membership (+${effectiveRenewalDays} days, resets check-in cycle)`}
-              >
-                <RotateCcw className="w-3.5 h-3.5" />Renew Membership
-              </button>
-            );
-          })()}
-          <button
-            onClick={() => setShowSellProductDialog(true)}
-            className="h-8 px-3 text-xs font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-          >
-            Sell Product
-          </button>
-          <button
-            onClick={() => setShowReturnProductDialog(true)}
-            className="h-8 px-3 text-xs font-semibold rounded-xl border border-amber-400 text-amber-700 hover:bg-amber-50 transition-colors"
-          >
-            Product Return
-          </button>
-          <button
-            onClick={toggleHistory}
-            className={`p-1.5 rounded-lg transition-colors ${showHistory ? "text-emerald-600 bg-emerald-100" : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"}`}
-            title="Renewal history"
-          >
-            <ClipboardList className="w-4 h-4" />
-          </button>
-          <button
-            onClick={openEdit}
-            className={`p-1.5 rounded-lg transition-colors ${showEditPanel ? "text-violet-600 bg-violet-100" : "text-muted-foreground hover:text-violet-600 hover:bg-violet-50"}`}
-            title="Edit member"
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setShowHealthPanel(v => !v)}
-            className={`p-1.5 rounded-lg transition-colors ${showHealthPanel ? "text-sky-600 bg-sky-100" : "text-muted-foreground hover:text-sky-600 hover:bg-sky-50"}`}
-            title="Health records"
-          >
-            <Activity className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => void handleToggleStatus()}
-            disabled={busy}
-            className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${member.is_active ? "text-muted-foreground hover:text-amber-600 hover:bg-amber-50" : "text-amber-600 bg-amber-50 hover:bg-amber-100"}`}
-            title={member.is_active ? "Deactivate member" : "Activate member"}
-          >
-            {member.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-          </button>
+          {member.mobile && <p className="text-xs text-muted-foreground">{member.mobile}</p>}
+          {member.membership_no && <p className="text-xs text-muted-foreground">{member.membership_no}</p>}
+          {member.daily_kcal != null && (
+            <span className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-full px-2 py-0.5">
+              🔥 {Math.round((member as any).today_kcal || 0)} / {member.daily_kcal} kcal
+            </span>
+          )}
+          {(member as any).protein_target_g != null && (
+            <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
+              🍗 {Math.round((member as any).today_protein_g || 0)} / {(member as any).protein_target_g}g protein
+            </span>
+          )}
+          {(member as any).fiber_target_g != null && (
+            <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 border border-green-100 rounded-full px-2 py-0.5">
+              🌾 {Math.round((member as any).today_fiber_g || 0)} / {(member as any).fiber_target_g}g fiber
+            </span>
+          )}
+          {(member as any).water_target_ml != null && (
+            <span 
+              className="flex items-center gap-1 text-xs text-sky-600 bg-sky-50 border border-sky-100 rounded-full px-2 py-0.5 cursor-help"
+              title={`Today: ${(member as any).today_water_ml || 0}ml / ${(member as any).water_target_ml}ml\nYesterday: ${(member as any).yesterday_water_ml || 0}ml`}
+            >
+              {(() => {
+                const target = Number((member as any).water_target_ml);
+                const actual = Number((member as any).today_water_ml || 0);
+                if (actual === 0) return "🥛";
+                if (actual < target) return "🚰";
+                return "💧";
+              })()} {((member as any).today_water_ml || 0)} / {(member as any).water_target_ml}ml water
+            </span>
+          )}
+          {validityBadge(member.valid_until)}
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5">
+            {MEMBER_TYPE_LABELS[member.member_type ?? "regular"]}
+          </span>
+          <span className={`inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5 border ${checkinsUsed >= effectiveCheckinCap ? "text-red-700 bg-red-50 border-red-300" : checkinsUsed >= effectiveCheckinCap - 7 ? "text-amber-700 bg-amber-50 border-amber-300" : "text-muted-foreground bg-muted/40 border-border"}`}>
+            {checkinsUsed}/{effectiveCheckinCap} check-ins{isTrial3Day ? " (trial cap)" : ""}
+          </span>
+          {isCheckedIn && member.checked_in_at && (
+            <p className={`text-xs flex items-center gap-1 ${mins >= 150 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
+              <Clock className="w-3 h-3" />
+              Since {formatTime(member.checked_in_at)} · {mins} min
+            </p>
+          )}
+          {!isCheckedIn && !showWeightForm && (
+            <p className="text-xs text-muted-foreground">Not checked in</p>
+          )}
+          {!isCheckedIn && showWeightForm && (
+            <p className="text-xs text-amber-700 font-medium">Enter today&apos;s weight to check in</p>
+          )}
         </div>
       </div>
       {/* Expanded visit panel for checked-in members */}
