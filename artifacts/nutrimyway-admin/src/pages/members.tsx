@@ -341,7 +341,14 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Gender</label>
-                <select value={gender} onChange={e => setGender(e.target.value)} className={inputCls}>
+                <select value={gender} onChange={e => {
+                  const val = e.target.value;
+                  setGender(val);
+                  if (!dailyKcal || dailyKcal === "1800" || dailyKcal === "1500") {
+                    if (val === "male") setDailyKcal("1800");
+                    else if (val === "female") setDailyKcal("1500");
+                  }
+                }} className={inputCls}>
                   <option value="">Select gender</option>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
@@ -1358,7 +1365,14 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
             </div>
             <div>
               <label className="block text-[10px] font-medium text-muted-foreground mb-1">Gender</label>
-              <select value={editGender} onChange={e => setEditGender(e.target.value)}
+              <select value={editGender} onChange={e => {
+                const val = e.target.value;
+                setEditGender(val);
+                if (!editDailyKcal || editDailyKcal === "1800" || editDailyKcal === "1500") {
+                  if (val === "male") setEditDailyKcal("1800");
+                  else if (val === "female") setEditDailyKcal("1500");
+                }
+              }}
                 className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary">
                 <option value="">Select gender</option>
                 <option value="male">Male</option>
