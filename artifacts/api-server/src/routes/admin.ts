@@ -1154,7 +1154,7 @@ router.post("/admin/members/suggest-targets", requireAdmin, async (req, res) => 
   try {
     const { GoogleGenerativeAI } = await import("@google/generative-ai");
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
     const prompt = `You are a professional Indian nutritionist. Calculate the daily macro targets for a client based on the following details:
 Weight: ${weight_kg} kg
