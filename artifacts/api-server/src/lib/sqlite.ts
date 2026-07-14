@@ -703,6 +703,7 @@ export async function initDb(): Promise<void> {
     await migrateAdminTables45();
     await migrateAdminTables46();
     await migrateAdminTables47();
+    await migrateAdminTables48();
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
@@ -1236,4 +1237,11 @@ async function migrateAdminTables47(): Promise<void> {
   await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS fiber_per_serving REAL`);
   await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS carbs_per_serving REAL`);
   await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS fat_per_serving REAL`);
+}
+
+async function migrateAdminTables48(): Promise<void> {
+  await pool.query(`ALTER TABLE checkin_categories ADD COLUMN IF NOT EXISTS serving_qty REAL`);
+  await pool.query(`ALTER TABLE checkin_categories ADD COLUMN IF NOT EXISTS kcal_per_serve REAL`);
+  await pool.query(`ALTER TABLE checkin_categories ADD COLUMN IF NOT EXISTS protein_per_serve_g REAL`);
+  await pool.query(`ALTER TABLE checkin_categories ADD COLUMN IF NOT EXISTS fiber_per_serve_g REAL`);
 }

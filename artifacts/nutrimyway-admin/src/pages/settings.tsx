@@ -547,11 +547,19 @@ function MealCategories() {
   const [newName, setNewName] = useState("");
   const [newOrder, setNewOrder] = useState(0);
   const [newMandatory, setNewMandatory] = useState(true);
+  const [newServingQty, setNewServingQty] = useState("");
+  const [newKcalPerServe, setNewKcalPerServe] = useState("");
+  const [newProteinPerServe, setNewProteinPerServe] = useState("");
+  const [newFiberPerServe, setNewFiberPerServe] = useState("");
 
   const [editId, setEditId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editOrder, setEditOrder] = useState(0);
   const [editMandatory, setEditMandatory] = useState(true);
+  const [editServingQty, setEditServingQty] = useState("");
+  const [editKcalPerServe, setEditKcalPerServe] = useState("");
+  const [editProteinPerServe, setEditProteinPerServe] = useState("");
+  const [editFiberPerServe, setEditFiberPerServe] = useState("");
 
   async function load() {
     if (!center) return;
@@ -570,9 +578,14 @@ function MealCategories() {
       await apiPost(`/admin/centers/${center.id}/checkin-categories`, {
         name: newName.trim(),
         display_order: newOrder,
-        is_mandatory: newMandatory
+        is_mandatory: newMandatory,
+        serving_qty: newServingQty ? Number(newServingQty) : null,
+        kcal_per_serve: newKcalPerServe ? Number(newKcalPerServe) : null,
+        protein_per_serve_g: newProteinPerServe ? Number(newProteinPerServe) : null,
+        fiber_per_serve_g: newFiberPerServe ? Number(newFiberPerServe) : null
       });
       setNewName(""); setNewOrder(categories.length + 1); setAdding(false);
+      setNewServingQty(""); setNewKcalPerServe(""); setNewProteinPerServe(""); setNewFiberPerServe("");
       void load();
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -583,6 +596,10 @@ function MealCategories() {
     setEditName(c.name);
     setEditOrder(c.display_order);
     setEditMandatory(c.is_mandatory);
+    setEditServingQty(c.serving_qty ? String(c.serving_qty) : "");
+    setEditKcalPerServe(c.kcal_per_serve ? String(c.kcal_per_serve) : "");
+    setEditProteinPerServe(c.protein_per_serve_g ? String(c.protein_per_serve_g) : "");
+    setEditFiberPerServe(c.fiber_per_serve_g ? String(c.fiber_per_serve_g) : "");
   }
 
   async function saveEdit(id: number) {
@@ -592,7 +609,11 @@ function MealCategories() {
       await apiPut(`/admin/centers/${center.id}/checkin-categories/${id}`, {
         name: editName.trim(),
         display_order: editOrder,
-        is_mandatory: editMandatory
+        is_mandatory: editMandatory,
+        serving_qty: editServingQty ? Number(editServingQty) : null,
+        kcal_per_serve: editKcalPerServe ? Number(editKcalPerServe) : null,
+        protein_per_serve_g: editProteinPerServe ? Number(editProteinPerServe) : null,
+        fiber_per_serve_g: editFiberPerServe ? Number(editFiberPerServe) : null
       });
       setEditId(null);
       void load();
@@ -649,10 +670,11 @@ function MealCategories() {
 
       {adding && (
         <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-3">
-                    <div className="flex items-center gap-2 mb-1 px-1">
-            <label className="flex-1 min-w-[200px] text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
-            <label className="w-36 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
-            <label className="w-32 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
+          <div className="flex items-center gap-2 mb-1 px-1">
+            <label className="flex-1 min-w-[200px] text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category Name</label>
+            <label className="w-20 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Order</label>
+            <label className="w-24 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Options</label>
+            <div className="w-20"></div>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -670,20 +692,40 @@ function MealCategories() {
               placeholder="Order"
               className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-sky-500"
             />
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer w-24">
               <input type="checkbox" checked={newMandatory} onChange={e => setNewMandatory(e.target.checked)} className="w-3.5 h-3.5 accent-sky-600" />
               Mandatory
             </label>
-            <button
-              onClick={() => void addCategory()}
-              disabled={!newName.trim() || saving}
-              className="h-9 px-3 rounded-lg bg-sky-600 text-white text-xs font-medium disabled:opacity-40 ml-2"
-            >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
-            </button>
-            <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2 w-20">
+              <button
+                onClick={() => void addCategory()}
+                disabled={!newName.trim() || saving}
+                className="flex-1 h-9 px-3 rounded-lg bg-sky-600 text-white text-xs font-medium disabled:opacity-40"
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
+              </button>
+              <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <div className="flex-1">
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Serving qty</label>
+              <input type="number" step="0.01" value={newServingQty} onChange={e => setNewServingQty(e.target.value)} className="w-full h-8 px-2 text-sm rounded border border-input" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">kcal/serve</label>
+              <input type="number" step="0.1" value={newKcalPerServe} onChange={e => setNewKcalPerServe(e.target.value)} className="w-full h-8 px-2 text-sm rounded border border-input" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Protein/serve (g)</label>
+              <input type="number" step="0.1" value={newProteinPerServe} onChange={e => setNewProteinPerServe(e.target.value)} className="w-full h-8 px-2 text-sm rounded border border-input" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Fiber/serve (g)</label>
+              <input type="number" step="0.1" value={newFiberPerServe} onChange={e => setNewFiberPerServe(e.target.value)} className="w-full h-8 px-2 text-sm rounded border border-input" />
+            </div>
           </div>
         </div>
       )}
@@ -701,28 +743,48 @@ function MealCategories() {
           {categories.map(c => (
             <div key={c.id} className="px-5 py-3 hover:bg-muted/20 transition-colors">
               {editId === c.id ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    className="flex-1 h-8 px-2 text-sm rounded border border-input focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  />
-                  <input
-                    type="number"
-                    value={editOrder}
-                    onChange={e => setEditOrder(Number(e.target.value))}
-                    className="w-16 h-8 px-2 text-sm rounded border border-input focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  />
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
-                    <input type="checkbox" checked={editMandatory} onChange={e => setEditMandatory(e.target.checked)} className="w-3.5 h-3.5 accent-sky-600" />
-                    Mandatory
-                  </label>
-                  <button onClick={() => void saveEdit(c.id)} disabled={saving} className="text-sky-600 hover:text-sky-700 disabled:opacity-40 ml-2">
-                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  </button>
-                  <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground">
-                    <X className="w-4 h-4" />
-                  </button>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className="flex-1 h-8 px-2 text-sm rounded border border-input focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    <input
+                      type="number"
+                      value={editOrder}
+                      onChange={e => setEditOrder(Number(e.target.value))}
+                      className="w-16 h-8 px-2 text-sm rounded border border-input focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+                      <input type="checkbox" checked={editMandatory} onChange={e => setEditMandatory(e.target.checked)} className="w-3.5 h-3.5 accent-sky-600" />
+                      Mandatory
+                    </label>
+                    <button onClick={() => void saveEdit(c.id)} disabled={saving} className="text-sky-600 hover:text-sky-700 disabled:opacity-40 ml-2">
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-medium text-muted-foreground mb-1">Serving qty</label>
+                      <input type="number" step="0.01" value={editServingQty} onChange={e => setEditServingQty(e.target.value)} className="w-full h-8 px-2 text-sm rounded border border-input" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-medium text-muted-foreground mb-1">kcal/serve</label>
+                      <input type="number" step="0.1" value={editKcalPerServe} onChange={e => setEditKcalPerServe(e.target.value)} className="w-full h-8 px-2 text-sm rounded border border-input" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-medium text-muted-foreground mb-1">Protein/serve (g)</label>
+                      <input type="number" step="0.1" value={editProteinPerServe} onChange={e => setEditProteinPerServe(e.target.value)} className="w-full h-8 px-2 text-sm rounded border border-input" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-medium text-muted-foreground mb-1">Fiber/serve (g)</label>
+                      <input type="number" step="0.1" value={editFiberPerServe} onChange={e => setEditFiberPerServe(e.target.value)} className="w-full h-8 px-2 text-sm rounded border border-input" />
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-start justify-between gap-4">
@@ -732,6 +794,12 @@ function MealCategories() {
                       {c.is_mandatory && <span className="text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">Mandatory</span>}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Order: {c.display_order}</p>
+                    <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                      {c.serving_qty != null && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">Qty: {c.serving_qty}</span>}
+                      {c.kcal_per_serve != null && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">Kcal: {c.kcal_per_serve}</span>}
+                      {c.protein_per_serve_g != null && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">Protein: {c.protein_per_serve_g}g</span>}
+                      {c.fiber_per_serve_g != null && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">Fiber: {c.fiber_per_serve_g}g</span>}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => startEdit(c)} className="text-muted-foreground hover:text-sky-600 p-1">
@@ -932,7 +1000,19 @@ function ItemMaster() {
             />
             <select
               value={newCategory}
-              onChange={e => setNewCategory(e.target.value)}
+              onChange={e => {
+                const val = e.target.value;
+                setNewCategory(val);
+                if (val) {
+                  const cat = categories.find(c => String(c.id) === val);
+                  if (cat) {
+                    if (cat.serving_qty != null) setNewServingQty(String(cat.serving_qty));
+                    if (cat.kcal_per_serve != null) setNewKcalPerServe(String(cat.kcal_per_serve));
+                    if (cat.protein_per_serve_g != null) setNewProteinPerServe(String(cat.protein_per_serve_g));
+                    if (cat.fiber_per_serve_g != null) setNewFiberPerServe(String(cat.fiber_per_serve_g));
+                  }
+                }
+              }}
               className="w-36 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">— Category —</option>
@@ -1094,7 +1174,19 @@ function ItemMaster() {
                         />
                         <select
                           value={editCategory}
-                          onChange={e => setEditCategory(e.target.value)}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setEditCategory(val);
+                            if (val) {
+                              const cat = categories.find(c => String(c.id) === val);
+                              if (cat) {
+                                if (cat.serving_qty != null) setEditServingQty(String(cat.serving_qty));
+                                if (cat.kcal_per_serve != null) setEditKcalPerServe(String(cat.kcal_per_serve));
+                                if (cat.protein_per_serve_g != null) setEditProteinPerServe(String(cat.protein_per_serve_g));
+                                if (cat.fiber_per_serve_g != null) setEditFiberPerServe(String(cat.fiber_per_serve_g));
+                              }
+                            }
+                          }}
                           className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                         >
                           <option value="">— Category —</option>

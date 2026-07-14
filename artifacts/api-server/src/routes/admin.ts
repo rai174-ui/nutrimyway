@@ -3278,16 +3278,17 @@ export default router;
     const adminReq = req as AdminRequest;
     if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
     
-    const { name, is_mandatory, display_order } = req.body as {
+    const { name, is_mandatory, display_order, serving_qty, kcal_per_serve, protein_per_serve_g, fiber_per_serve_g } = req.body as {
       name: string; is_mandatory?: boolean; display_order?: number;
+      serving_qty?: number | null; kcal_per_serve?: number | null; protein_per_serve_g?: number | null; fiber_per_serve_g?: number | null;
     };
     if (!name?.trim()) { res.status(400).json({ error: "Name is required" }); return; }
     
     try {
       await pool.query("BEGIN");
       const { rows } = await pool.query(
-        `INSERT INTO checkin_categories (center_id, name, is_mandatory, display_order) VALUES ($1, $2, $3, $4) RETURNING *`,
-        [centerId, name.trim(), is_mandatory ?? true, display_order ?? 0]
+        `INSERT INTO checkin_categories (center_id, name, is_mandatory, display_order, serving_qty, kcal_per_serve, protein_per_serve_g, fiber_per_serve_g) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [centerId, name.trim(), is_mandatory ?? true, display_order ?? 0, serving_qty ?? null, kcal_per_serve ?? null, protein_per_serve_g ?? null, fiber_per_serve_g ?? null]
       );
       
       await pool.query("COMMIT");
@@ -3303,8 +3304,9 @@ export default router;
     const adminReq = req as AdminRequest;
     if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
     
-    const { name, is_mandatory, display_order } = req.body as {
+    const { name, is_mandatory, display_order, serving_qty, kcal_per_serve, protein_per_serve_g, fiber_per_serve_g } = req.body as {
       name?: string; is_mandatory?: boolean; display_order?: number;
+      serving_qty?: number | null; kcal_per_serve?: number | null; protein_per_serve_g?: number | null; fiber_per_serve_g?: number | null;
     };
     
     try {
@@ -3315,6 +3317,10 @@ export default router;
       if (name !== undefined) { updates.push(`name = $${values.length + 1}`); values.push(name.trim()); }
       if (is_mandatory !== undefined) { updates.push(`is_mandatory = $${values.length + 1}`); values.push(Boolean(is_mandatory)); }
       if (display_order !== undefined) { updates.push(`display_order = $${values.length + 1}`); values.push(Number(display_order)); }
+      if (serving_qty !== undefined) { updates.push(`serving_qty = $${values.length + 1}`); values.push(serving_qty); }
+      if (kcal_per_serve !== undefined) { updates.push(`kcal_per_serve = $${values.length + 1}`); values.push(kcal_per_serve); }
+      if (protein_per_serve_g !== undefined) { updates.push(`protein_per_serve_g = $${values.length + 1}`); values.push(protein_per_serve_g); }
+      if (fiber_per_serve_g !== undefined) { updates.push(`fiber_per_serve_g = $${values.length + 1}`); values.push(fiber_per_serve_g); }
       
       let updatedCat = null;
       if (updates.length > 0) {

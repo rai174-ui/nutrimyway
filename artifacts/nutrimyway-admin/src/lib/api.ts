@@ -434,5 +434,9 @@ export interface CheckinCategory {
   is_mandatory: boolean;
   display_order: number;
   created_at: string;
+  serving_qty?: number | null;
+  kcal_per_serve?: number | null;
+  protein_per_serve_g?: number | null;
+  fiber_per_serve_g?: number | null;
   ingredients: CategoryIngredient[];
 }
