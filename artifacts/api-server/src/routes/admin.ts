@@ -66,6 +66,26 @@ router.get("/push-diagnostic", async (_req, res) => {
   });
 });
 
+router.get("/debug/analyze", async (req, res) => {
+  try {
+    const missingMembers = await pool.query("SELECT id, name, center_id FROM members WHERE membership_no IS NULL OR membership_no = ''");
+    const missingEmails = await pool.query("SELECT id, name, center_id FROM members WHERE email IS NULL OR email = ''");
+    const duplicateEmails = await pool.query("SELECT email, COUNT(*) as count FROM members WHERE email IS NOT NULL AND email != '' GROUP BY email HAVING COUNT(*) > 1");
+    const duplicateMemberships = await pool.query("SELECT membership_no, COUNT(*) as count FROM members WHERE membership_no IS NOT NULL AND membership_no != '' GROUP BY membership_no HAVING COUNT(*) > 1");
+    const authMismatches = await pool.query("SELECT m.id, m.email as member_email, u.email as auth_email FROM members m JOIN user_auth u ON m.id = u.member_id WHERE m.email != u.email OR (m.email IS NULL AND u.email IS NOT NULL) OR (m.email IS NOT NULL AND u.email IS NULL)");
+    
+    res.json({
+      missing_members: missingMembers.rows,
+      missing_emails: missingEmails.rows,
+      duplicate_emails: duplicateEmails.rows,
+      duplicate_memberships: duplicateMemberships.rows,
+      auth_mismatches: authMismatches.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 async function getCenterLimits(centerId: string): Promise<{ checkinCap: number; renewalDays: number }> {
   const { rows } = await pool.query("SELECT checkin_cap, renewal_days FROM centers WHERE id = $1", [centerId]);
   return {
