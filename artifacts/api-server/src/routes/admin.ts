@@ -1169,13 +1169,13 @@ Return ONLY a raw JSON object (without any markdown formatting or backticks) wit
 - "water_target_ml" (number)
 Make sure the output is strictly valid JSON.`;
 
-    // Prioritized list of models. If a newer/lighter model is discontinued or unsupported by the key, it falls back to older/alternative ones.
+    // Prioritized list of models. Updated with the latest models available in 2026.
     const modelsToTry = [
+      "gemini-2.5-flash",
+      "gemini-flash-latest",
+      "gemini-2.0-flash",
       "gemini-1.5-flash-latest",
-      "gemini-1.5-flash",
-      "gemini-1.5-pro-latest",
-      "gemini-1.5-pro",
-      "gemini-pro"
+      "gemini-1.5-flash"
     ];
 
     let result;
