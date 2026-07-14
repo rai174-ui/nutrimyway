@@ -219,6 +219,21 @@ router.get("/admin/debug/db-error", async (req, res) => {
   }
 });
 
+// GET /api/admin/debug/columns
+router.get("/admin/debug/columns", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'checkin_categories'"
+    );
+    const { rows: ingRows } = await pool.query(
+      "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'ingredients'"
+    );
+    res.json({ checkin_categories: rows, ingredients: ingRows });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 // GET /api/admin/super/centers — all centers with active status and validity (super admin only)
 router.get("/admin/super/centers", requireSuperAdmin, async (_req, res) => {
   const { rows } = await pool.query(`
