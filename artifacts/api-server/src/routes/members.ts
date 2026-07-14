@@ -447,26 +447,24 @@ router.post("/members/:id/checkin", async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
-// POST /api/members/:id/checkout — self check-out
-router.post("/members/:id/checkout", async (req, res) => {
+// POST /api/members/:id/cancel-checkin
+router.post("/members/:id/cancel-checkin", async (req, res) => {
   const memberId = Number(req.params.id);
 
-  // Fetch active check-in first so we can deduct flavour consumption before closing
   const { rows: ciRows } = await pool.query(
     `SELECT id, center_id FROM member_check_ins
      WHERE member_id = $1 AND checked_out_at IS NULL LIMIT 1`,
     [memberId]
   );
   if (!ciRows[0]) { res.status(404).json({ error: "No active check-in found" }); return; }
-  const checkin = ciRows[0] as { id: number; center_id: string };
+  const checkinId = (ciRows[0] as { id: number }).id;
 
-  await bookAndCheckout(checkin.id, memberId, checkin.center_id);
-
-  const { rows } = await pool.query(
-    `SELECT * FROM member_check_ins WHERE id = $1`,
-    [checkin.id]
+  await pool.query(`DELETE FROM visit_ingredient_selections WHERE checkin_id = $1`, [checkinId]);
+  await pool.query(
+    `UPDATE member_check_ins SET checked_out_at = NOW(), cancelled = TRUE WHERE id = $1`,
+    [checkinId]
   );
-  res.json(rows[0]);
+  res.json({ cancelled: true, checkin_id: checkinId });
 });
 
 // GET /api/members/:id/checkin-menu
@@ -487,10 +485,11 @@ router.get("/members/:id/checkin-menu", async (req, res) => {
   );
   
   const { rows: mappings } = await pool.query(
-    `SELECT i.category_id, i.id as ingredient_id, i.name, i.flavour 
+    `SELECT DISTINCT i.category_id, i.id as ingredient_id, i.name, i.flavour 
      FROM ingredients i
      JOIN checkin_categories c ON c.id = i.category_id
-     WHERE c.center_id = $1`,
+     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
+     WHERE c.center_id = $1 AND ib.center_id = $1 AND ib.status IN ('open', 'new')`,
     [centerId]
   );
   

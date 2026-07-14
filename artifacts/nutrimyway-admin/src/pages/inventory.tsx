@@ -91,9 +91,12 @@ function QuickReceiptForm({
   const [error, setError] = useState<string | null>(null);
   const [lastReceived, setLastReceived] = useState<{ batch: string; count: number } | null>(null);
 
+  const [manualSkuId, setManualSkuId] = useState<number | null>(null);
+
   const selectedIngredient = ingredients.find(i => String(i.id) === ingredientId);
-  const skuId = selectedIngredient?.skus?.[0]?.id;
-  const receivedUnit = selectedIngredient?.skus?.[0]?.pack_unit ?? "g";
+  const skus = selectedIngredient?.skus || [];
+  const skuId = manualSkuId && skus.some(s => s.id === manualSkuId) ? manualSkuId : (skus[0]?.id ?? null);
+  const receivedUnit = skus.find(s => s.id === skuId)?.pack_unit ?? "g";
 
   async function receive() {
     if (!skuId || !batchNumber.trim()) return;
@@ -156,6 +159,25 @@ function QuickReceiptForm({
                   {i.name}
                 </option>
               ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1 min-w-[120px] flex-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Pack Size
+            </label>
+            <select
+              value={skuId || ""}
+              onChange={e => setManualSkuId(Number(e.target.value))}
+              disabled={skus.length <= 1}
+              className="h-9 px-2.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+            >
+              {skus.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.pack_size} {s.pack_unit}
+                </option>
+              ))}
+              {skus.length === 0 && <option value="">No SKUs</option>}
             </select>
           </div>
 

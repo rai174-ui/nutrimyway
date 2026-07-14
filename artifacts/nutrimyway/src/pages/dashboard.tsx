@@ -263,7 +263,7 @@ function CheckInCard({ memberId, checkin, onRefresh }: {
   async function handleCheckout() {
     setBusy(true);
     try {
-      await apiFetch(`/members/${memberId}/checkout`, { method: "POST" });
+      await apiFetch(`/members/${memberId}/cancel-checkin`, { method: "POST" });
       onRefresh();
     } catch { /* ignore */ } finally { setBusy(false); }
   }
@@ -293,8 +293,8 @@ function CheckInCard({ memberId, checkin, onRefresh }: {
             disabled={busy}
             className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
           >
-            <LogOut className="w-3.5 h-3.5" />
-            Check Out
+            <X className="w-3.5 h-3.5" />
+            Cancel Check-in
           </button>
         </div>
       </section>
