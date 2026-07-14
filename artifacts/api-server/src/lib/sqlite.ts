@@ -60,6 +60,58 @@ async function migrateColumns(): Promise<void> {
   for (const sql of newCols) {
     await pool.query(sql);
   }
+  
+  // Clean up empty strings
+  await pool.query(`UPDATE members SET email = NULL WHERE email = ''`);
+  await pool.query(`UPDATE user_auth SET email = NULL WHERE email = ''`);
+  
+  // Deduplicate emails before creating unique indexes
+  await pool.query(`
+    UPDATE members 
+    SET email = email || '-' || id 
+    WHERE id IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY email ORDER BY id) as rn
+        FROM members WHERE email IS NOT NULL
+      ) t WHERE rn > 1
+    )
+  `);
+  
+  await pool.query(`
+    UPDATE user_auth 
+    SET email = email || '-' || id 
+    WHERE id IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY email ORDER BY id) as rn
+        FROM user_auth WHERE email IS NOT NULL
+      ) t WHERE rn > 1
+    )
+  `);
+
+  await pool.query(`UPDATE members SET mobile = NULL WHERE mobile = ''`);
+  await pool.query(`
+    UPDATE members 
+    SET mobile = mobile || '-' || id 
+    WHERE id IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY mobile ORDER BY id) as rn
+        FROM members WHERE mobile IS NOT NULL
+      ) t WHERE rn > 1
+    )
+  `);
+
+  await pool.query(`UPDATE members SET membership_no = NULL WHERE membership_no = ''`);
+  await pool.query(`
+    UPDATE members 
+    SET membership_no = membership_no || '-' || id 
+    WHERE id IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY membership_no ORDER BY id) as rn
+        FROM members WHERE membership_no IS NOT NULL
+      ) t WHERE rn > 1
+    )
+  `);
+
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS members_mobile_uidx ON members (mobile) WHERE mobile IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS members_email_uidx ON members (email) WHERE email IS NOT NULL;
