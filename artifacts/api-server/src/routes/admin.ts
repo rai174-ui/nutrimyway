@@ -1736,8 +1736,10 @@ router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
 
 // POST /api/admin/ingredients
 router.post("/admin/ingredients", requireAdmin, async (req, res) => {
-  const { name, flavour, serving_qty, kcal_per_serving, trial_eligible, category_id, skus } = req.body as {
-    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean; category_id?: number | null;
+  const { name, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible, category_id, skus } = req.body as {
+    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
+    protein_per_serving?: number | null; fiber_per_serving?: number | null;
+    trial_eligible?: boolean; category_id?: number | null;
     skus?: { material_code: string; pack_size: number; pack_unit: string }[];
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
@@ -1748,8 +1750,8 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
   try {
     await pool.query("BEGIN");
     const { rows } = await pool.query(
-      "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, flavour, serving_qty, kcal_per_serving, trial_eligible, category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
-      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false, category_id ?? null]
+      "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible, category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
+      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, protein_per_serving ?? null, fiber_per_serving ?? null, trial_eligible ?? false, category_id ?? null]
     );
     const ingredientId = rows[0].id;
     const insertedSkus = [];
@@ -1771,8 +1773,10 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
 // PUT /api/admin/ingredients/:ingredientId
 router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
   const { ingredientId } = req.params;
-  const { name, flavour, serving_qty, kcal_per_serving, trial_eligible, category_id, skus } = req.body as {
-    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null; trial_eligible?: boolean; category_id?: number | null;
+  const { name, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible, category_id, skus } = req.body as {
+    name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
+    protein_per_serving?: number | null; fiber_per_serving?: number | null;
+    trial_eligible?: boolean; category_id?: number | null;
     skus?: { material_code: string; pack_size: number; pack_unit: string }[];
   };
   if (!name?.trim()) { res.status(400).json({ error: "name is required" }); return; }
@@ -1783,8 +1787,8 @@ router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) =>
   try {
     await pool.query("BEGIN");
     const { rows } = await pool.query(
-      "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, flavour=$5, serving_qty=$6, kcal_per_serving=$7, trial_eligible=$8, category_id=$9 WHERE id=$10 RETURNING *",
-      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, trial_eligible ?? false, category_id ?? null, Number(ingredientId)]
+      "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, flavour=$5, serving_qty=$6, kcal_per_serving=$7, protein_per_serving=$8, fiber_per_serving=$9, trial_eligible=$10, category_id=$11 WHERE id=$12 RETURNING *",
+      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, protein_per_serving ?? null, fiber_per_serving ?? null, trial_eligible ?? false, category_id ?? null, Number(ingredientId)]
     );
     if (!rows[0]) {
       await pool.query("ROLLBACK");

@@ -772,6 +772,8 @@ function ItemMaster() {
   const [newFlavour, setNewFlavour] = useState("");
   const [newServingQty, setNewServingQty] = useState("1");
   const [newKcalPerServing, setNewKcalPerServing] = useState("");
+  const [newProteinPerServing, setNewProteinPerServing] = useState("");
+  const [newFiberPerServing, setNewFiberPerServing] = useState("");
   const [newTrialEligible, setNewTrialEligible] = useState(false);
   const [newCategory, setNewCategory] = useState<string>("");
 
@@ -782,6 +784,8 @@ function ItemMaster() {
   const [editFlavour, setEditFlavour] = useState("");
   const [editServingQty, setEditServingQty] = useState("1");
   const [editKcalPerServing, setEditKcalPerServing] = useState("");
+  const [editProteinPerServing, setEditProteinPerServing] = useState("");
+  const [editFiberPerServing, setEditFiberPerServing] = useState("");
   const [editTrialEligible, setEditTrialEligible] = useState(false);
   const [editCategory, setEditCategory] = useState<string>("");
 
@@ -813,12 +817,14 @@ function ItemMaster() {
         flavour: newFlavour.trim() || null,
         serving_qty: Number(newServingQty) || 1,
         kcal_per_serving: newKcalPerServing.trim() ? Number(newKcalPerServing) : null,
+        protein_per_serving: newProteinPerServing.trim() ? Number(newProteinPerServing) : null,
+        fiber_per_serving: newFiberPerServing.trim() ? Number(newFiberPerServing) : null,
         trial_eligible: newTrialEligible,
         category_id: newCategory ? Number(newCategory) : null,
       });
       setNewName("");
       setNewSkus([{ material_code: "", pack_size: 1, pack_unit: "g" }]);
-      setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing(""); setNewTrialEligible(false); setNewCategory("");
+      setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing(""); setNewProteinPerServing(""); setNewFiberPerServing(""); setNewTrialEligible(false); setNewCategory("");
       setAdding(false);
       void load();
     } catch (e) { setError((e as Error).message); }
@@ -838,6 +844,8 @@ function ItemMaster() {
         flavour: editFlavour.trim() || null,
         serving_qty: Number(editServingQty) || 1,
         kcal_per_serving: editKcalPerServing.trim() ? Number(editKcalPerServing) : null,
+        protein_per_serving: editProteinPerServing.trim() ? Number(editProteinPerServing) : null,
+        fiber_per_serving: editFiberPerServing.trim() ? Number(editFiberPerServing) : null,
         trial_eligible: editTrialEligible,
         category_id: editCategory ? Number(editCategory) : null,
       });
@@ -862,6 +870,8 @@ function ItemMaster() {
     setEditFlavour(ing.flavour ?? "");
     setEditServingQty(String(ing.serving_qty ?? 1));
     setEditKcalPerServing(ing.kcal_per_serving != null ? String(ing.kcal_per_serving) : "");
+    setEditProteinPerServing(ing.protein_per_serving != null ? String(ing.protein_per_serving) : "");
+    setEditFiberPerServing(ing.fiber_per_serving != null ? String(ing.fiber_per_serving) : "");
     setEditTrialEligible(ing.trial_eligible ?? false);
     setEditCategory(ing.category_id ? String(ing.category_id) : "");
   }
@@ -1002,6 +1012,26 @@ function ItemMaster() {
                 type="number" min="0" step="1"
                 value={newKcalPerServing}
                 onChange={e => setNewKcalPerServing(e.target.value)}
+                placeholder="—"
+                className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-muted-foreground whitespace-nowrap">Protein/serve (g)</label>
+              <input
+                type="number" min="0" step="0.1"
+                value={newProteinPerServing}
+                onChange={e => setNewProteinPerServing(e.target.value)}
+                placeholder="—"
+                className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-muted-foreground whitespace-nowrap">Fiber/serve (g)</label>
+              <input
+                type="number" min="0" step="0.1"
+                value={newFiberPerServing}
+                onChange={e => setNewFiberPerServing(e.target.value)}
                 placeholder="—"
                 className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               />
@@ -1148,6 +1178,26 @@ function ItemMaster() {
                             className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                           />
                         </div>
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap">Protein/serve (g)</label>
+                          <input
+                            type="number" min="0" step="0.1"
+                            value={editProteinPerServing}
+                            onChange={e => setEditProteinPerServing(e.target.value)}
+                            placeholder="—"
+                            className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap">Fiber/serve (g)</label>
+                          <input
+                            type="number" min="0" step="0.1"
+                            value={editFiberPerServing}
+                            onChange={e => setEditFiberPerServing(e.target.value)}
+                            placeholder="—"
+                            className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
                         <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
                           <input type="checkbox" checked={editTrialEligible} onChange={e => setEditTrialEligible(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
                           Trial-eligible
@@ -1197,6 +1247,12 @@ function ItemMaster() {
                         <span className="text-xs bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">{ing.serving_qty} /serve</span>
                         {ing.kcal_per_serving != null && (
                           <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">{ing.kcal_per_serving} kcal</span>
+                        )}
+                        {ing.protein_per_serving != null && (
+                          <span className="text-xs bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full">{ing.protein_per_serving}g prot</span>
+                        )}
+                        {ing.fiber_per_serving != null && (
+                          <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">{ing.fiber_per_serving}g fiber</span>
                         )}
                         {ing.trial_eligible && (
                           <span className="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">Trial-eligible</span>
