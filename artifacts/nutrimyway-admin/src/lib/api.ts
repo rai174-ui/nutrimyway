@@ -36,6 +36,21 @@ export function apiGet<T>(path: string): Promise<T> {
   return apiFetch<T>(path);
 }
 
+export async function apiDownloadBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: {
+      ...authHeaders(),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = `Request failed (${res.status})`;
+    try { msg = (JSON.parse(text) as { error: string }).error ?? msg; } catch { /* */ }
+    throw new Error(msg);
+  }
+  return res.blob();
+}
+
 export function apiPut<T>(path: string, body: unknown): Promise<T> {
   return apiFetch<T>(path, { method: "PUT", body: JSON.stringify(body) });
 }

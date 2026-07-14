@@ -9,7 +9,7 @@ import {
 import { Nav } from "@/components/nav";
 import * as XLSX from "xlsx";
 import {
-  apiGet, apiPost, apiPatch, apiDelete, getAdminCenter,
+  apiGet, apiPost, apiPatch, apiDelete, getAdminCenter, apiDownloadBlob,
   type CenterMember, type CenterSettings, type MemberLookup, type HealthRecord, type SelfLogEntry,
   type MemberType, type MemberRenewal, type MemberRenewalReportRow, MEMBER_TYPE_LABELS, CHECKIN_CAP, type Ingredient,
 } from "@/lib/api";
@@ -2506,6 +2506,27 @@ export default function MembersPage() {
                 className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
               >
                 <CalendarClock className="w-4 h-4 text-emerald-600" />Download Renewal History
+              </button>
+            )}
+            {center && (
+              <button
+                onClick={async () => {
+                  try {
+                    const blob = await apiDownloadBlob(`/admin/members/export`);
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `members_export_${center.id}.xlsx`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                  } catch (e) {
+                    console.error("Export failed:", e);
+                    alert("Failed to export members.");
+                  }
+                }}
+                className="flex items-center gap-2 border border-border bg-card text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted/50 transition-colors"
+              >
+                <FileDown className="w-4 h-4 text-primary" />Export Members (XLSX)
               </button>
             )}
             {center && <AddMemberForm centerId={center.id} onAdded={load} />}

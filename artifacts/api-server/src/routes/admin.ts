@@ -66,25 +66,55 @@ router.get("/push-diagnostic", async (_req, res) => {
   });
 });
 
-router.get("/debug/analyze", async (req, res) => {
+import * as XLSX from "xlsx";
+
+router.get("/admin/members/export", requireAdmin, async (req, res) => {
+  const adminReq = req as AdminRequest;
   try {
-    const missingMembers = await pool.query("SELECT id, name FROM members WHERE membership_no IS NULL OR membership_no = ''");
-    const missingEmails = await pool.query("SELECT id, name FROM members WHERE email IS NULL OR email = ''");
-    const duplicateEmails = await pool.query("SELECT email, COUNT(*) as count FROM members WHERE email IS NOT NULL AND email != '' GROUP BY email HAVING COUNT(*) > 1");
-    const duplicateMemberships = await pool.query("SELECT membership_no, COUNT(*) as count FROM members WHERE membership_no IS NOT NULL AND membership_no != '' GROUP BY membership_no HAVING COUNT(*) > 1");
-    const authMismatches = await pool.query("SELECT m.id, m.email as member_email, u.email as auth_email FROM members m JOIN user_auth u ON m.id = u.member_id WHERE m.email != u.email OR (m.email IS NULL AND u.email IS NOT NULL) OR (m.email IS NOT NULL AND u.email IS NULL)");
-    
-    res.json({
-      missing_members: missingMembers.rows,
-      missing_emails: missingEmails.rows,
-      duplicate_emails: duplicateEmails.rows,
-      duplicate_memberships: duplicateMemberships.rows,
-      auth_mismatches: authMismatches.rows,
-    });
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
+    const { rows } = await pool.query(`
+      SELECT 
+        m.id as "Member ID", 
+        m.name as "Name", 
+        m.email as "Email", 
+        m.mobile as "Mobile", 
+        m.membership_no as "Membership No", 
+        m.date_of_joining as "Date of Joining",
+        m.member_type as "Membership Type",
+        m.height_cm as "Height (cm)",
+        hr.weight_kg as "Weight (kg)",
+        hr.body_fat_pct as "Body Fat %",
+        hr.visceral_fat as "Visceral Fat",
+        hr.bmr as "BMR",
+        hr.bmi as "BMI",
+        hr.metabolic_age as "Metabolic Age",
+        hr.muscle_mass_kg as "Muscle Mass (kg)",
+        hr.resting_hr as "Resting HR"
+      FROM members m
+      JOIN member_center_mapping mcm ON mcm.member_id = m.id
+      LEFT JOIN LATERAL (
+        SELECT * FROM health_records
+        WHERE member_id = m.id
+        ORDER BY recorded_at ASC
+        LIMIT 1
+      ) hr ON true
+      WHERE mcm.center_id = $1
+      ORDER BY m.id DESC
+    `, [adminReq.adminCenterId]);
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Members");
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Disposition", `attachment; filename="members_export_${adminReq.adminCenterId}.xlsx"`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.send(buffer);
+  } catch (e) {
+    logger.error({ err: e }, "Failed to export members");
+    res.status(500).json({ error: "Failed to export members" });
   }
 });
+
 
 async function getCenterLimits(centerId: string): Promise<{ checkinCap: number; renewalDays: number }> {
   const { rows } = await pool.query("SELECT checkin_cap, renewal_days FROM centers WHERE id = $1", [centerId]);
