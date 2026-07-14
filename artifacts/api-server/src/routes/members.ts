@@ -489,7 +489,7 @@ router.get("/members/:id/checkin-menu", async (req, res) => {
      FROM ingredients i
      JOIN checkin_categories c ON c.id = i.category_id
      JOIN ingredient_batches ib ON ib.ingredient_id = i.id
-     WHERE c.center_id = $1 AND ib.center_id = $1 AND ib.status IN ('open', 'new')`,
+     WHERE c.center_id = $1 AND ib.center_id = $1 AND ib.status = 'open'`,
     [centerId]
   );
   
