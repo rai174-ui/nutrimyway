@@ -1014,10 +1014,10 @@ function ItemMaster() {
                 if (val) {
                   const cat = categories.find(c => String(c.id) === val);
                   if (cat) {
-                    if (cat.serving_qty != null) setNewServingQty(String(cat.serving_qty));
-                    if (cat.kcal_per_serve != null) setNewKcalPerServing(String(cat.kcal_per_serve));
-                    if (cat.protein_per_serve_g != null) setNewProteinPerServing(String(cat.protein_per_serve_g));
-                    if (cat.fiber_per_serve_g != null) setNewFiberPerServing(String(cat.fiber_per_serve_g));
+                    setNewServingQty(cat.serving_qty != null ? String(cat.serving_qty) : "1");
+                    setNewKcalPerServing(cat.kcal_per_serve != null ? String(cat.kcal_per_serve) : "");
+                    setNewProteinPerServing(cat.protein_per_serve_g != null ? String(cat.protein_per_serve_g) : "");
+                    setNewFiberPerServing(cat.fiber_per_serve_g != null ? String(cat.fiber_per_serve_g) : "");
                   }
                 }
               }}
@@ -1188,10 +1188,10 @@ function ItemMaster() {
                             if (val) {
                               const cat = categories.find(c => String(c.id) === val);
                               if (cat) {
-                                if (cat.serving_qty != null) setEditServingQty(String(cat.serving_qty));
-                                if (cat.kcal_per_serve != null) setEditKcalPerServing(String(cat.kcal_per_serve));
-                                if (cat.protein_per_serve_g != null) setEditProteinPerServing(String(cat.protein_per_serve_g));
-                                if (cat.fiber_per_serve_g != null) setEditFiberPerServing(String(cat.fiber_per_serve_g));
+                                setEditServingQty(cat.serving_qty != null ? String(cat.serving_qty) : "1");
+                                setEditKcalPerServing(cat.kcal_per_serve != null ? String(cat.kcal_per_serve) : "");
+                                setEditProteinPerServing(cat.protein_per_serve_g != null ? String(cat.protein_per_serve_g) : "");
+                                setEditFiberPerServing(cat.fiber_per_serve_g != null ? String(cat.fiber_per_serve_g) : "");
                               }
                             }
                           }}
