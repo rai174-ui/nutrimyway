@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ChevronLeft, Loader2, Mail, Hash } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -41,6 +41,17 @@ export function Login() {
   const [otpPreview, setOtpPreview] = useState<string | null>(null);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
+  const [resendTimer, setResendTimer] = useState(0);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   const cleanEmail = email.trim().toLowerCase();
   const canSubmitContact = isValidEmail(email) && membershipNo.trim().length > 0 && !loading;
@@ -60,6 +71,7 @@ export function Login() {
       setOtpToken(d.otp_token);
       if (d.otp_preview) setOtpPreview(d.otp_preview);
       setStep("otp");
+      setResendTimer(60);
     } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
     finally { setLoading(false); }
   }
@@ -199,10 +211,10 @@ export function Login() {
 
               <button
                 onClick={requestOtp}
-                disabled={loading}
+                disabled={loading || resendTimer > 0}
                 className="text-center text-sm text-primary font-medium hover:underline underline-offset-2 disabled:opacity-50"
               >
-                Resend code
+                {resendTimer > 0 ? `Resend code in ${resendTimer}s` : "Resend code"}
               </button>
             </motion.div>
           )}
