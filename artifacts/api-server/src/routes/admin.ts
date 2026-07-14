@@ -1171,11 +1171,10 @@ Make sure the output is strictly valid JSON.`;
 
     // Prioritized list of models. Updated with the latest models available in 2026.
     const modelsToTry = [
-      "gemini-2.5-flash",
+      "gemini-3.5-flash",
+      "gemini-3.1-pro-preview",
       "gemini-flash-latest",
-      "gemini-2.0-flash",
-      "gemini-1.5-flash-latest",
-      "gemini-1.5-flash"
+      "gemini-2.5-pro"
     ];
 
     let result;
