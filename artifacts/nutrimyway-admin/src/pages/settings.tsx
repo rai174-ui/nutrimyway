@@ -858,6 +858,7 @@ function ItemMaster() {
   const [editCategory, setEditCategory] = useState<string>("");
 
   async function load() {
+    if (!center) return;
     try {
       const [ingData, flavData, catData] = await Promise.all([
         apiGet<Ingredient[]>(`/admin/centers/${center.id}/ingredients`),
@@ -873,7 +874,7 @@ function ItemMaster() {
   useEffect(() => { void load(); }, [center?.id]);
 
   async function addIngredient() {
-    if (!newName.trim()) return;
+    if (!newName.trim() || !center) return;
     if (newSkus.some(s => !s.material_code.trim())) { setError("Material Code is required for all SKUs"); return; }
     if (newSkus.length === 0) { setError("At least one SKU is required"); return; }
     
@@ -892,7 +893,13 @@ function ItemMaster() {
       });
       setNewName("");
       setNewSkus([{ material_code: "", pack_size: 1, pack_unit: "g" }]);
-      setNewFlavour(""); setNewServingQty("1"); setNewKcalPerServing(""); setNewProteinPerServing(""); setNewFiberPerServing(""); setNewTrialEligible(false); setNewCategory("");
+      setNewFlavour("");
+      setNewServingQty("1");
+      setNewKcalPerServing("");
+      setNewProteinPerServing("");
+      setNewFiberPerServing("");
+      setNewTrialEligible(false);
+      setNewCategory("");
       setAdding(false);
       void load();
     } catch (e) { setError((e as Error).message); }
@@ -900,7 +907,7 @@ function ItemMaster() {
   }
 
   async function saveEdit(id: number) {
-    if (!editName.trim()) return;
+    if (!editName.trim() || !center) return;
     if (editSkus.some(s => !s.material_code.trim())) { setError("Material Code is required for all SKUs"); return; }
     if (editSkus.length === 0) { setError("At least one SKU is required"); return; }
 
@@ -924,6 +931,7 @@ function ItemMaster() {
   }
 
   async function deleteIngredient(id: number) {
+    if (!center) return;
     if (!confirm("Delete this item? All batch records for it will also be removed.")) return;
     try {
       await apiDelete(`/admin/centers/${center.id}/ingredients/${id}`);
@@ -1007,9 +1015,9 @@ function ItemMaster() {
                   const cat = categories.find(c => String(c.id) === val);
                   if (cat) {
                     if (cat.serving_qty != null) setNewServingQty(String(cat.serving_qty));
-                    if (cat.kcal_per_serve != null) setNewKcalPerServe(String(cat.kcal_per_serve));
-                    if (cat.protein_per_serve_g != null) setNewProteinPerServe(String(cat.protein_per_serve_g));
-                    if (cat.fiber_per_serve_g != null) setNewFiberPerServe(String(cat.fiber_per_serve_g));
+                    if (cat.kcal_per_serve != null) setNewKcalPerServing(String(cat.kcal_per_serve));
+                    if (cat.protein_per_serve_g != null) setNewProteinPerServing(String(cat.protein_per_serve_g));
+                    if (cat.fiber_per_serve_g != null) setNewFiberPerServing(String(cat.fiber_per_serve_g));
                   }
                 }
               }}
@@ -1181,9 +1189,9 @@ function ItemMaster() {
                               const cat = categories.find(c => String(c.id) === val);
                               if (cat) {
                                 if (cat.serving_qty != null) setEditServingQty(String(cat.serving_qty));
-                                if (cat.kcal_per_serve != null) setEditKcalPerServe(String(cat.kcal_per_serve));
-                                if (cat.protein_per_serve_g != null) setEditProteinPerServe(String(cat.protein_per_serve_g));
-                                if (cat.fiber_per_serve_g != null) setEditFiberPerServe(String(cat.fiber_per_serve_g));
+                                if (cat.kcal_per_serve != null) setEditKcalPerServing(String(cat.kcal_per_serve));
+                                if (cat.protein_per_serve_g != null) setEditProteinPerServing(String(cat.protein_per_serve_g));
+                                if (cat.fiber_per_serve_g != null) setEditFiberPerServing(String(cat.fiber_per_serve_g));
                               }
                             }
                           }}
