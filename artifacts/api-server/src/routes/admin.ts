@@ -1213,7 +1213,7 @@ Make sure the output is strictly valid JSON.`;
 });
 
 // GET /api/admin/debug/gemini-models - debug endpoint to list available models
-router.get("/admin/debug/gemini-models", requireAdmin, async (req, res) => {
+router.get("/admin/debug/gemini-models", async (req, res) => {
   if (!process.env.GEMINI_API_KEY) {
     res.status(500).json({ error: "No GEMINI_API_KEY" }); return;
   }
