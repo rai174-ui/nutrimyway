@@ -8,7 +8,7 @@
 set -euo pipefail
 
 # Limit Node memory to prevent OOM on Railway 500MB instances
-export NODE_OPTIONS="--max_old_space_size=300"
+export NODE_OPTIONS="--max_old_space_size=410"
 echo "==> Installing dependencies"
 pnpm install --frozen-lockfile
 

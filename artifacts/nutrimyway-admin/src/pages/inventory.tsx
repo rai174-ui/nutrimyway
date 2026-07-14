@@ -283,6 +283,7 @@ function QuickReceiptForm({
             Receive
           </button>
         </div>
+        </div>
       )}
     </section>
   );
