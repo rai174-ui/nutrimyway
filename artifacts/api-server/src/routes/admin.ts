@@ -1885,12 +1885,20 @@ router.delete("/admin/centers/:centerId/flavours/:flavourId", requireAdmin, asyn
   res.status(204).end();
 });
 
-// GET /api/admin/ingredients
-router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
+// GET /api/admin/centers/:centerId/ingredients
+router.get("/admin/centers/:centerId/ingredients", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
   const { rows } = await pool.query(
-    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible, category_id, created_at FROM ingredients ORDER BY name"
+    "SELECT id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, carbs_per_serving, fat_per_serving, trial_eligible, category_id, created_at FROM ingredients WHERE center_id = $1 ORDER BY name",
+    [centerId]
   );
-  const { rows: skus } = await pool.query("SELECT * FROM ingredient_skus");
+  const { rows: skus } = await pool.query(
+    "SELECT ingredient_skus.* FROM ingredient_skus JOIN ingredients ON ingredients.id = ingredient_skus.ingredient_id WHERE ingredients.center_id = $1",
+    [centerId]
+  );
   const result = rows.map((ing) => {
     return {
       ...ing,
@@ -1900,8 +1908,12 @@ router.get("/admin/ingredients", requireAdmin, async (_req, res) => {
   res.json(result);
 });
 
-// POST /api/admin/ingredients
-router.post("/admin/ingredients", requireAdmin, async (req, res) => {
+// POST /api/admin/centers/:centerId/ingredients
+router.post("/admin/centers/:centerId/ingredients", requireAdmin, async (req, res) => {
+  const { centerId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
   const { name, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible, category_id, skus } = req.body as {
     name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
     protein_per_serving?: number | null; fiber_per_serving?: number | null;
@@ -1916,8 +1928,8 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
   try {
     await pool.query("BEGIN");
     const { rows } = await pool.query(
-      "INSERT INTO ingredients (name, pack_size, pack_unit, material_code, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible, category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
-      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, protein_per_serving ?? null, fiber_per_serving ?? null, trial_eligible ?? false, category_id ?? null]
+      "INSERT INTO ingredients (center_id, name, pack_size, pack_unit, material_code, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible, category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",
+      [centerId, name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, protein_per_serving ?? null, fiber_per_serving ?? null, trial_eligible ?? false, category_id ?? null]
     );
     const ingredientId = rows[0].id;
     const insertedSkus = [];
@@ -1936,9 +1948,12 @@ router.post("/admin/ingredients", requireAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/ingredients/:ingredientId
-router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
-  const { ingredientId } = req.params;
+// PUT /api/admin/centers/:centerId/ingredients/:ingredientId
+router.put("/admin/centers/:centerId/ingredients/:ingredientId", requireAdmin, async (req, res) => {
+  const { centerId, ingredientId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
   const { name, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible, category_id, skus } = req.body as {
     name?: string; flavour?: string; serving_qty?: number; kcal_per_serving?: number | null;
     protein_per_serving?: number | null; fiber_per_serving?: number | null;
@@ -1953,8 +1968,8 @@ router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) =>
   try {
     await pool.query("BEGIN");
     const { rows } = await pool.query(
-      "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, flavour=$5, serving_qty=$6, kcal_per_serving=$7, protein_per_serving=$8, fiber_per_serving=$9, trial_eligible=$10, category_id=$11 WHERE id=$12 RETURNING *",
-      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, protein_per_serving ?? null, fiber_per_serving ?? null, trial_eligible ?? false, category_id ?? null, Number(ingredientId)]
+      "UPDATE ingredients SET name=$1, pack_size=$2, pack_unit=$3, material_code=$4, flavour=$5, serving_qty=$6, kcal_per_serving=$7, protein_per_serving=$8, fiber_per_serving=$9, trial_eligible=$10, category_id=$11 WHERE id=$12 AND center_id=$13 RETURNING *",
+      [name.trim(), fallbackSku.pack_size, fallbackSku.pack_unit, fallbackSku.material_code, flavour?.trim() || null, serving_qty ?? 1, kcal_per_serving ?? null, protein_per_serving ?? null, fiber_per_serving ?? null, trial_eligible ?? false, category_id ?? null, Number(ingredientId), centerId]
     );
     if (!rows[0]) {
       await pool.query("ROLLBACK");
@@ -1980,11 +1995,19 @@ router.put("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) =>
   }
 });
 
-// DELETE /api/admin/ingredients/:ingredientId
-router.delete("/admin/ingredients/:ingredientId", requireAdmin, async (req, res) => {
-  const { ingredientId } = req.params;
-  await pool.query("DELETE FROM ingredients WHERE id=$1", [Number(ingredientId)]);
-  res.status(204).end();
+// DELETE /api/admin/centers/:centerId/ingredients/:ingredientId
+router.delete("/admin/centers/:centerId/ingredients/:ingredientId", requireAdmin, async (req, res) => {
+  const { centerId, ingredientId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  try {
+    const { rowCount } = await pool.query("DELETE FROM ingredients WHERE id = $1 AND center_id = $2", [Number(ingredientId), centerId]);
+    if (rowCount === 0) { res.status(404).json({ error: "Not found" }); return; }
+    res.status(204).end();
+  } catch(e) {
+    res.status(400).json({ error: "Cannot delete ingredient currently in use" });
+  }
 });
 
 // ── Ingredient Batches ──────────────────────────────────────────────────────
@@ -3295,7 +3318,8 @@ export default router;
       res.status(201).json({ ...rows[0], ingredients: [] });
     } catch(e) {
       await pool.query("ROLLBACK");
-      res.status(500).json({ error: "Failed to create category" });
+      console.error("Create category error:", e);
+      res.status(500).json({ error: "Failed to create category: " + (e as Error).message });
     }
   });
 

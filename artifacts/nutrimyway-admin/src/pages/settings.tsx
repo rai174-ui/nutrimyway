@@ -860,7 +860,7 @@ function ItemMaster() {
   async function load() {
     try {
       const [ingData, flavData, catData] = await Promise.all([
-        apiGet<Ingredient[]>("/admin/ingredients"),
+        apiGet<Ingredient[]>(`/admin/centers/${center.id}/ingredients`),
         center ? apiGet<CenterFlavour[]>(`/admin/centers/${center.id}/flavours`) : Promise.resolve([]),
         center ? apiGet<any[]>(`/admin/centers/${center.id}/checkin-categories`) : Promise.resolve([]),
       ]);
@@ -879,7 +879,7 @@ function ItemMaster() {
     
     setSaving(true); setError(null);
     try {
-      await apiPost<Ingredient>("/admin/ingredients", {
+      await apiPost<Ingredient>(`/admin/centers/${center.id}/ingredients`, {
         name: newName.trim(),
         skus: newSkus.map(s => ({ ...s, material_code: s.material_code.trim() })),
         flavour: newFlavour.trim() || null,
@@ -906,7 +906,7 @@ function ItemMaster() {
 
     setSaving(true); setError(null);
     try {
-      await apiPut<Ingredient>(`/admin/ingredients/${id}`, {
+      await apiPut<Ingredient>(`/admin/centers/${center.id}/ingredients/${id}`, {
         name: editName.trim(),
         skus: editSkus.map(s => ({ ...s, material_code: s.material_code.trim() })),
         flavour: editFlavour.trim() || null,
@@ -926,7 +926,7 @@ function ItemMaster() {
   async function deleteIngredient(id: number) {
     if (!confirm("Delete this item? All batch records for it will also be removed.")) return;
     try {
-      await apiDelete(`/admin/ingredients/${id}`);
+      await apiDelete(`/admin/centers/${center.id}/ingredients/${id}`);
       void load();
     } catch (e) { setError((e as Error).message); }
   }

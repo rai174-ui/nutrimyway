@@ -704,6 +704,7 @@ export async function initDb(): Promise<void> {
     await migrateAdminTables46();
     await migrateAdminTables47();
     await migrateAdminTables48();
+    await migrateAdminTables49();
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
@@ -1248,4 +1249,40 @@ async function migrateAdminTables48(): Promise<void> {
   await pool.query(`ALTER TABLE checkin_categories ADD COLUMN IF NOT EXISTS kcal_per_serve REAL`);
   await pool.query(`ALTER TABLE checkin_categories ADD COLUMN IF NOT EXISTS protein_per_serve_g REAL`);
   await pool.query(`ALTER TABLE checkin_categories ADD COLUMN IF NOT EXISTS fiber_per_serve_g REAL`);
+}
+
+async function migrateAdminTables49(): Promise<void> {
+  // Make ingredients center-specific
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS center_id TEXT REFERENCES centers(id) ON DELETE CASCADE`);
+  await pool.query(`UPDATE ingredients SET center_id = 'testcenter' WHERE center_id IS NULL`);
+
+  try {
+    await pool.query(`
+      DO $$
+      DECLARE
+          const_name text;
+      BEGIN
+          SELECT constraint_name INTO const_name
+          FROM information_schema.key_column_usage
+          WHERE table_name = 'ingredients' AND column_name = 'name'
+          AND constraint_name IN (
+              SELECT constraint_name 
+              FROM information_schema.table_constraints 
+              WHERE table_name = 'ingredients' AND constraint_type = 'UNIQUE'
+          );
+          
+          IF const_name IS NOT NULL THEN
+              EXECUTE 'ALTER TABLE ingredients DROP CONSTRAINT ' || const_name;
+          END IF;
+      END $$;
+    `);
+  } catch (e) {
+    // Ignore if constraint already dropped
+  }
+
+  try {
+    await pool.query(`ALTER TABLE ingredients ADD CONSTRAINT ingredients_center_id_name_key UNIQUE(center_id, name)`);
+  } catch (e) {
+    // Ignore if constraint already exists
+  }
 }
