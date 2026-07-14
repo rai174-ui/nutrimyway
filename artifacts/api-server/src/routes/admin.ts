@@ -1257,10 +1257,35 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
     }
   }
 
+  const cleanEmail = email?.trim();
+  if (cleanEmail) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      res.status(400).json({ error: "Invalid e-mail id structure" }); return;
+    }
+    const { rows: existing } = await pool.query("SELECT id FROM members WHERE email = $1", [cleanEmail]);
+    if (existing.length > 0) {
+      res.status(400).json({ error: "Duplicate E-mail ID found." }); return;
+    }
+  }
+
+  let finalMobile: string | null = null;
+  if (mobile?.trim()) {
+    let digits = mobile.replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('91')) digits = digits.substring(2);
+    if (digits.length !== 10 || !/^[6789]/.test(digits)) {
+      res.status(400).json({ error: "Invalid Indian mobile number structure. Must be 10 digits starting with 6-9." }); return;
+    }
+    finalMobile = digits;
+    const { rows: existing } = await pool.query("SELECT id FROM members WHERE mobile = $1", [finalMobile]);
+    if (existing.length > 0) {
+      res.status(400).json({ error: "Duplicate Mobile Number found." }); return;
+    }
+  }
+
   const { rows: memberRows } = await pool.query(
     `INSERT INTO members (name, height_cm, gender, date_of_joining, mobile, email, membership_no, dob, age_at_joining, valid_until, member_type, cycle_started_at, daily_kcal, protein_target_g, fiber_target_g, water_target_ml)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),$12,$13,$14,$15) RETURNING *`,
-    [name.trim(), height_cm ?? null, gender?.trim() || null, date_of_joining ?? null, mobile?.trim() || null, email?.trim() || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null, member_type ?? "regular", daily_kcal ?? null, protein_target_g ?? null, fiber_target_g ?? null, water_target_ml ?? null]
+    [name.trim(), height_cm ?? null, gender?.trim() || null, date_of_joining ?? null, finalMobile, cleanEmail || null, membership_no?.trim() || null, dob?.trim() || null, age_at_joining ?? null, valid_until ?? null, member_type ?? "regular", daily_kcal ?? null, protein_target_g ?? null, fiber_target_g ?? null, water_target_ml ?? null]
   );
   const member = memberRows[0];
   await pool.query(
@@ -1305,11 +1330,39 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
     }
   }
 
+  const cleanEmail = email?.trim();
+  if (cleanEmail) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      res.status(400).json({ error: "Invalid e-mail id structure" }); return;
+    }
+    const { rows: existing } = await pool.query("SELECT id FROM members WHERE email = $1 AND id != $2", [cleanEmail, Number(memberId)]);
+    if (existing.length > 0) {
+      res.status(400).json({ error: "Duplicate E-mail ID found." }); return;
+    }
+  }
+
+  let finalMobile: string | null = null;
+  // Use existing mobile if not updating it (if patching selectively)
+  if (mobile !== undefined) {
+    if (mobile?.trim()) {
+      let digits = mobile.replace(/\D/g, '');
+      if (digits.length === 12 && digits.startsWith('91')) digits = digits.substring(2);
+      if (digits.length !== 10 || !/^[6789]/.test(digits)) {
+        res.status(400).json({ error: "Invalid Indian mobile number structure. Must be 10 digits starting with 6-9." }); return;
+      }
+      finalMobile = digits;
+      const { rows: existing } = await pool.query("SELECT id FROM members WHERE mobile = $1 AND id != $2", [finalMobile, Number(memberId)]);
+      if (existing.length > 0) {
+        res.status(400).json({ error: "Duplicate Mobile Number found." }); return;
+      }
+    }
+  }
+
   const { rows } = await pool.query(
     `UPDATE members SET
        name           = COALESCE($1, name),
-       mobile         = $2,
-       email          = $3,
+       mobile         = COALESCE($2, mobile),
+       email          = COALESCE($3, email),
        membership_no  = $4,
        height_cm      = $5,
        gender         = $6,
@@ -1325,8 +1378,8 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
      WHERE id = $16 RETURNING *`,
     [
       name?.trim() ?? null,
-      mobile?.trim() || null,
-      email?.trim() || null,
+      mobile === undefined ? null : finalMobile,
+      email === undefined ? null : (cleanEmail || null),
       membership_no?.trim() || null,
       height_cm ?? null,
       gender?.trim() || null,
