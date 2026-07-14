@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
 import { randomBytes } from "crypto";
-import { pool } from "../lib/sqlite";
+import { pool, initDbError } from "../lib/sqlite";
 import { logger } from "../lib/logger";
 import { bookAndCheckout } from "../lib/checkout";
 import { sendPushNotification, isFirebaseInitialized, getFirebaseInitError } from "../lib/push";
@@ -208,6 +208,15 @@ router.post("/admin/super/login", async (req, res) => {
   const ok = await bcrypt.compare(password, rows[0].password_hash as string);
   if (!ok) { res.status(401).json({ error: "Invalid password" }); return; }
   res.json({ token: signSuperAdminToken() });
+});
+
+// GET /api/admin/debug/db-error
+router.get("/admin/debug/db-error", async (req, res) => {
+  if (initDbError) {
+    res.json({ error: initDbError.message, stack: initDbError.stack });
+  } else {
+    res.json({ error: null });
+  }
 });
 
 // GET /api/admin/super/centers — all centers with active status and validity (super admin only)

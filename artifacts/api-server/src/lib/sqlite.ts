@@ -5,12 +5,16 @@ import { logger } from "./logger";
 
 const { Pool } = pg;
 
+export let initDbError: Error | null = null;
+
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
 }
 
+const connectionString = process.env.DATABASE_URL;
+
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: connectionString,
   ssl: (process.env.DATABASE_URL?.includes("supabase.co") ||
          process.env.DATABASE_URL?.includes("rlwy.net") ||
          process.env.DATABASE_URL?.includes("railway.app"))
@@ -708,6 +712,7 @@ export async function initDb(): Promise<void> {
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
+    initDbError = e as Error;
     logger.error(e);
   }
 }
