@@ -115,6 +115,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
     try {
       await apiPost(`/admin/centers/${centerId}/members/link`, { member_id: found.id });
       setLinkedMemberId(found.id);
+      if (found.height_cm) setHeight(String(found.height_cm));
+      if (found.gender) setGender(found.gender);
+      // We don't have ageAtJoining readily available for existing members in the lookup response, 
+      // but height and gender are enough to prep for future calculations if we had it.
       setStep("healthrecord");
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to link member"); }
     finally { setSaving(false); }
@@ -139,6 +143,20 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
         water_target_ml: waterTarget ? Number(waterTarget) : null,
       });
       setLinkedMemberId(member.id);
+      if (weight) {
+        setHrWeight(weight);
+        if (height) {
+          const wNum = Number(weight);
+          const hNum = Number(height);
+          setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+          if (ageAtJoining && gender) {
+            let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+            if (gender.toLowerCase() === "male") bmrVal += 5;
+            else if (gender.toLowerCase() === "female") bmrVal -= 161;
+            setHrBmr(Math.round(bmrVal).toString());
+          }
+        }
+      }
       setStep("healthrecord");
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to add member"); }
     finally { setSaving(false); }
@@ -404,7 +422,21 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
             </div>
             <div>
               <label className={hrLabelCls}>Weight (kg) *</label>
-              <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => setHrWeight(e.target.value)} className={hrFieldCls} placeholder="72.5" required />
+              <input type="number" step="0.1" min="0" value={hrWeight} onChange={e => {
+                const wStr = e.target.value;
+                setHrWeight(wStr);
+                if (wStr && height) {
+                  const wNum = Number(wStr);
+                  const hNum = Number(height);
+                  setHrBmi((wNum / Math.pow(hNum / 100, 2)).toFixed(1));
+                  if (ageAtJoining && gender) {
+                    let bmrVal = 10 * wNum + 6.25 * hNum - 5 * Number(ageAtJoining);
+                    if (gender.toLowerCase() === "male") bmrVal += 5;
+                    else if (gender.toLowerCase() === "female") bmrVal -= 161;
+                    setHrBmr(Math.round(bmrVal).toString());
+                  }
+                }
+              }} className={hrFieldCls} placeholder="72.5" required />
             </div>
             <div>
               <label className={hrLabelCls}>BMI</label>
