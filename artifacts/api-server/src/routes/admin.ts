@@ -244,6 +244,16 @@ router.get("/admin/debug/run-initDb", async (req, res) => {
   }
 });
 
+// GET /api/admin/debug/ingredients-dump
+router.get("/admin/debug/ingredients-dump", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM ingredients`);
+    res.json({ count: rows.length, rows });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 // GET /api/admin/super/centers — all centers with active status and validity (super admin only)
 router.get("/admin/super/centers", requireSuperAdmin, async (_req, res) => {
   const { rows } = await pool.query(`
