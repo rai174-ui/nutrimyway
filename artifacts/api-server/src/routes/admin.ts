@@ -1004,13 +1004,25 @@ router.post("/admin/centers/:centerId/members/link", requireAdmin, async (req, r
   const { member_id } = req.body as { member_id?: number };
   if (!member_id) { res.status(400).json({ error: "member_id is required" }); return; }
 
-  const { rows: member } = await pool.query("SELECT id, name FROM members WHERE id = $1", [member_id]);
+  const { rows: member } = await pool.query("SELECT id, name, is_active FROM members WHERE id = $1", [member_id]);
   if (!member[0]) { res.status(404).json({ error: "Member not found" }); return; }
+
+  if (member[0].is_active) {
+    const { rows: activeCenters } = await pool.query(`
+      SELECT c.name FROM centers c
+      JOIN member_center_mapping mcm ON mcm.center_id = c.id
+      WHERE mcm.member_id = $1
+    `, [member_id]);
+    const centerNames = activeCenters.map(c => c.name).join(", ") || "Unknown";
+    res.status(400).json({ error: `Member is currently active in another center (${centerNames}). They must be deactivated there first.` });
+    return;
+  }
 
   await pool.query(
     `INSERT INTO member_center_mapping (member_id, center_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
     [member_id, centerId]
   );
+  await pool.query(`UPDATE members SET is_active = TRUE WHERE id = $1`, [member_id]);
   res.status(201).json(member[0]);
 });
 
@@ -1128,6 +1140,53 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
   res.json(withEffectiveLimits);
 });
 
+// POST /api/admin/members/suggest-targets — suggest macro targets using AI
+router.post("/admin/members/suggest-targets", requireAdmin, async (req, res) => {
+  const { weight_kg, height_cm, gender, age } = req.body as { weight_kg?: number; height_cm?: number; gender?: string; age?: number; };
+  if (!weight_kg || !height_cm || !gender || !age) {
+    res.status(400).json({ error: "Weight, height, gender, and age are required for suggestions" }); return;
+  }
+  
+  if (!process.env.GEMINI_API_KEY) {
+    res.status(500).json({ error: "Gemini API key is not configured on the server." }); return;
+  }
+
+  try {
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt = `You are a professional Indian nutritionist. Calculate the daily macro targets for a client based on the following details:
+Weight: ${weight_kg} kg
+Height: ${height_cm} cm
+Gender: ${gender}
+Age: ${age} years
+
+The diet should be tailored for an Indian demographic, keeping in mind typical Indian dietary habits, ICMR guidelines, and a balanced approach for general fitness and healthy maintenance.
+Return ONLY a raw JSON object (without any markdown formatting or backticks) with exactly the following keys:
+- "daily_kcal" (number)
+- "protein_target_g" (number)
+- "fiber_target_g" (number)
+- "water_target_ml" (number)
+Make sure the output is strictly valid JSON.`;
+
+    const result = await model.generateContent(prompt);
+    let text = result.response.text();
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const data = JSON.parse(text);
+
+    res.json({
+      daily_kcal: Math.round(data.daily_kcal || 2000),
+      protein_target_g: Math.round(data.protein_target_g || 60),
+      fiber_target_g: Math.round(data.fiber_target_g || 30),
+      water_target_ml: Math.round(data.water_target_ml || 2500),
+    });
+  } catch (e) {
+    console.error("Failed to suggest targets via Gemini:", e);
+    res.status(500).json({ error: "Failed to generate AI suggestions" });
+  }
+});
+
 // POST /api/admin/centers/:centerId/members — create & onboard new member
 router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) => {
   const { centerId } = req.params;
@@ -1148,6 +1207,14 @@ router.post("/admin/centers/:centerId/members", requireAdmin, async (req, res) =
   }
   if (member_type != null && !VALID_MEMBER_TYPES.has(member_type)) {
     res.status(400).json({ error: "invalid member_type" }); return;
+  }
+
+  if (membership_no?.trim()) {
+    const { rows: existing } = await pool.query("SELECT id FROM members WHERE membership_no = $1", [membership_no.trim()]);
+    if (existing.length > 0) {
+      res.status(400).json({ error: "Member Number/ Reg. No already in use. Please provide a unique number" });
+      return;
+    }
   }
 
   const { rows: memberRows } = await pool.query(
@@ -1188,6 +1255,14 @@ router.patch("/admin/centers/:centerId/members/:memberId", requireAdmin, async (
   }
   if (member_type != null && !VALID_MEMBER_TYPES.has(member_type)) {
     res.status(400).json({ error: "invalid member_type" }); return;
+  }
+
+  if (membership_no?.trim()) {
+    const { rows: existing } = await pool.query("SELECT id FROM members WHERE membership_no = $1 AND id != $2", [membership_no.trim(), Number(memberId)]);
+    if (existing.length > 0) {
+      res.status(400).json({ error: "Member Number/ Reg. No already in use. Please provide a unique number" });
+      return;
+    }
   }
 
   const { rows } = await pool.query(

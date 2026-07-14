@@ -4,7 +4,7 @@ import {
   UserPlus, LogIn, LogOut, Users, Clock,
   Search, Phone, Mail, UserCheck, UserX,
   Lock, CheckCircle2, XCircle, AlertTriangle, Loader2, X, Activity, Plus, Hash, RotateCcw, CalendarClock, Pencil, Save,
-  FileDown, ClipboardList, Flame,
+  FileDown, ClipboardList, Flame, Sparkles,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import * as XLSX from "xlsx";
@@ -48,6 +48,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
   const [height, setHeight] = useState("");
+  const [weight, setWeight] = useState("");
   const [gender, setGender] = useState("");
   const [doj, setDoj] = useState("");
   const [membershipNo, setMembershipNo] = useState("");
@@ -77,7 +78,7 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 
   function reset() {
     setStep("search"); setQuery(""); setFound(null); setError("");
-    setName(""); setMobile(""); setEmail(""); setHeight(""); setGender("");
+    setName(""); setMobile(""); setEmail(""); setHeight(""); setWeight(""); setGender("");
     setDoj(""); setMembershipNo(""); setDobDay(""); setDobMonth("");
     setAgeAtJoining(""); setValidUntil(""); setMemberType("regular");
     setDailyKcal(""); setProteinTarget(""); setFiberTarget(""); setWaterTarget("");
@@ -141,6 +142,28 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
       setStep("healthrecord");
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to add member"); }
     finally { setSaving(false); }
+  }
+
+  const [suggesting, setSuggesting] = useState(false);
+  async function handleSuggestTargets() {
+    if (!weight || !height || !gender || !ageAtJoining) {
+      setError("Please fill in Weight, Height, Gender, and Age at Joining to get AI suggestions.");
+      return;
+    }
+    setSuggesting(true); setError("");
+    try {
+      const res = await apiPost<{ daily_kcal: number, protein_target_g: number, fiber_target_g: number, water_target_ml: number }>("/admin/members/suggest-targets", {
+        weight_kg: Number(weight), height_cm: Number(height), gender, age: Number(ageAtJoining)
+      });
+      setDailyKcal(String(res.daily_kcal));
+      setProteinTarget(String(res.protein_target_g));
+      setFiberTarget(String(res.fiber_target_g));
+      setWaterTarget(String(res.water_target_ml));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to get AI suggestions");
+    } finally {
+      setSuggesting(false);
+    }
   }
 
   async function handleHealthRecord(e: React.FormEvent) {
@@ -279,6 +302,10 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
                 <input type="number" value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 165" className={inputCls} />
               </div>
               <div>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Weight (kg)</label>
+                <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g. 70" className={inputCls} />
+              </div>
+              <div>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Birth Day</label>
                 <input type="number" min="1" max="31" value={dobDay} onChange={e => setDobDay(e.target.value)} placeholder="1–31" className={inputCls} />
               </div>
@@ -327,7 +354,12 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
 
           {/* Nutrition Targets */}
           <div className="space-y-3">
-            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">Nutrition Targets</h4>
+            <div className="flex items-center justify-between border-b border-border pb-1">
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Nutrition Targets</h4>
+              <button type="button" onClick={() => void handleSuggestTargets()} disabled={suggesting} className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline disabled:opacity-50">
+                <Sparkles className="w-3 h-3" /> {suggesting ? "Generating..." : "Auto-Suggest Targets (AI)"}
+              </button>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1">Daily Kcal Target</label>
