@@ -364,6 +364,7 @@ export function Log() {
           carbs_g: null,
           fat_g: null,
           photo_url: photoUrl,
+          logged_at: todayLocal(),
         }
       },
       {

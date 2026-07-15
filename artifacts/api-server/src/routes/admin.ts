@@ -1028,6 +1028,38 @@ router.get("/admin/centers/:centerId/member-self-logs", requireAdmin, async (req
      UNION ALL
      
      SELECT 
+        -vis.id as id, 
+        mci.member_id, 
+        m.name AS member_name,
+        CASE WHEN i.flavour IS NOT NULL THEN i.name || ' (' || i.flavour || ')' ELSE i.name END as food_item,
+        CASE 
+          WHEN EXTRACT(HOUR FROM mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') < 12 THEN 'Breakfast'
+          WHEN EXTRACT(HOUR FROM mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') < 15 THEN 'Lunch'
+          WHEN EXTRACT(HOUR FROM mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') < 18 THEN 'Snack'
+          ELSE 'Dinner'
+        END as meal_slot,
+        NULL as quantity_g, 
+        i.kcal_per_serving as calories_kcal, 
+        i.protein_per_serving as protein_g, 
+        i.fiber_per_serving as fiber_g, 
+        mci.checked_out_at as logged_at,
+        NULL as photo_url,
+        mci.id as checkin_id
+     FROM visit_ingredient_selections vis
+     JOIN member_check_ins mci ON mci.id = vis.checkin_id
+     JOIN members m ON m.id = mci.member_id
+     JOIN ingredients i ON i.id = vis.ingredient_id
+     WHERE mci.center_id = $1
+       AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+       AND mci.checked_out_at IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM consumption_logs cl 
+         WHERE cl.checkin_id = mci.id AND cl.food_item LIKE i.name || '%'
+       )
+
+     UNION ALL
+
+     SELECT 
         -vfs.id as id, 
         mci.member_id, 
         m.name AS member_name,

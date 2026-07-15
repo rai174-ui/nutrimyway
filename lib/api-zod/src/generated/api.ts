@@ -69,6 +69,7 @@ export const GetMemberResponse = zod.object({
   "membership_no": zod.string().nullish().describe('The human-readable membership number shown to the member'),
   "name": zod.string(),
   "date_of_joining": zod.string().nullish(),
+  "gender": zod.string().nullish().describe('Member gender: male, female, or other'),
   "height_cm": zod.number().nullish(),
   "daily_kcal": zod.number().nullish()
 })
@@ -173,6 +174,7 @@ export const GetConsumptionLogsResponseItem = zod.object({
   "protein_g": zod.number().nullish(),
   "carbs_g": zod.number().nullish(),
   "fat_g": zod.number().nullish(),
+  "fiber_g": zod.number().nullish(),
   "photo_url": zod.string().nullish(),
   "photo_uploaded_at": zod.string().nullish()
 })
@@ -194,7 +196,9 @@ export const CreateConsumptionLogBody = zod.object({
   "protein_g": zod.number().nullish(),
   "carbs_g": zod.number().nullish(),
   "fat_g": zod.number().nullish(),
-  "photo_url": zod.string().nullish()
+  "fiber_g": zod.number().nullish(),
+  "photo_url": zod.string().nullish(),
+  "logged_at": zod.string().nullish()
 })
 
 export const CreateConsumptionLogResponse = zod.object({
@@ -208,6 +212,7 @@ export const CreateConsumptionLogResponse = zod.object({
   "protein_g": zod.number().nullish(),
   "carbs_g": zod.number().nullish(),
   "fat_g": zod.number().nullish(),
+  "fiber_g": zod.number().nullish(),
   "photo_url": zod.string().nullish(),
   "photo_uploaded_at": zod.string().nullish()
 })
@@ -228,6 +233,7 @@ export const GetDailySummaryResponse = zod.object({
   "date": zod.string(),
   "total_calories": zod.number(),
   "total_protein": zod.number(),
+  "total_fiber": zod.number().optional(),
   "total_carbs": zod.number(),
   "total_fat": zod.number(),
   "target_calories": zod.number().optional(),
@@ -242,6 +248,7 @@ export const GetDailySummaryResponse = zod.object({
   "protein_g": zod.number().nullish(),
   "carbs_g": zod.number().nullish(),
   "fat_g": zod.number().nullish(),
+  "fiber_g": zod.number().nullish(),
   "photo_url": zod.string().nullish(),
   "photo_uploaded_at": zod.string().nullish()
 }))).optional()

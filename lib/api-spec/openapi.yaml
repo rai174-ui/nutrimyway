@@ -477,6 +477,8 @@ components:
           type: ["number", "null"]
         fat_g:
           type: ["number", "null"]
+        fiber_g:
+          type: ["number", "null"]
         photo_url:
           type: ["string", "null"]
         photo_uploaded_at:
@@ -504,7 +506,11 @@ components:
           type: ["number", "null"]
         fat_g:
           type: ["number", "null"]
+        fiber_g:
+          type: ["number", "null"]
         photo_url:
+          type: ["string", "null"]
+        logged_at:
           type: ["string", "null"]
       required:
         - meal_slot
@@ -518,6 +524,8 @@ components:
         total_calories:
           type: number
         total_protein:
+          type: number
+        total_fiber:
           type: number
         total_carbs:
           type: number

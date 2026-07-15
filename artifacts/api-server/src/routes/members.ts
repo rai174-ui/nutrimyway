@@ -188,12 +188,13 @@ router.get("/members/:id/consumption", async (req, res) => {
 // POST /api/members/:id/consumption
 router.post("/members/:id/consumption", async (req, res) => {
   const memberId = Number(req.params.id);
-  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, fiber_g, menu_item_id, photo_url } = req.body as {
+  const { meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, fiber_g, menu_item_id, photo_url, logged_at } = req.body as {
     meal_slot: string; food_item: string;
     quantity_g?: number | null; calories_kcal?: number | null;
     protein_g?: number | null; carbs_g?: number | null; fat_g?: number | null; fiber_g?: number | null;
     menu_item_id?: number | null;
     photo_url?: string | null;
+    logged_at?: string | null;
   };
   if (!meal_slot || !food_item) { res.status(400).json({ error: "meal_slot and food_item are required" }); return; }
 
@@ -212,10 +213,10 @@ router.post("/members/:id/consumption", async (req, res) => {
   const { rows } = await pool.query(
     `INSERT INTO consumption_logs
        (member_id, logged_at, meal_slot, food_item, quantity_g, calories_kcal, protein_g, carbs_g, fat_g, fiber_g, menu_item_id, photo_url, photo_uploaded_at)
-     VALUES ($1,NOW(),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+     VALUES ($1, COALESCE($13::timestamptz, NOW()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
     [memberId, meal_slot, food_item, quantity_g ?? null, calories_kcal ?? null,
      protein_g ?? null, carbs_g ?? null, fat_g ?? null, fiber_g ?? null, menu_item_id ?? null,
-     photo_url ?? null, photo_url ? new Date().toISOString() : null]
+     photo_url ?? null, photo_url ? new Date().toISOString() : null, logged_at ?? null]
   );
   res.status(201).json(rows[0]);
 });
@@ -235,6 +236,36 @@ router.get("/members/:id/summary", async (req, res) => {
      
      UNION ALL
      
+     SELECT 
+        -vis.id as id, 
+        mci.member_id, 
+        mci.checked_out_at as logged_at,
+        CASE 
+          WHEN EXTRACT(HOUR FROM mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') < 12 THEN 'Breakfast'
+          WHEN EXTRACT(HOUR FROM mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') < 15 THEN 'Lunch'
+          WHEN EXTRACT(HOUR FROM mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') < 18 THEN 'Snack'
+          ELSE 'Dinner'
+        END as meal_slot,
+        CASE WHEN i.flavour IS NOT NULL THEN i.name || ' (' || i.flavour || ')' ELSE i.name END as food_item,
+        NULL as quantity_g, 
+        i.kcal_per_serving as calories_kcal, 
+        i.protein_per_serving as protein_g, 
+        i.carbs_per_serving as carbs_g, 
+        i.fat_per_serving as fat_g, 
+        i.fiber_per_serving as fiber_g
+     FROM visit_ingredient_selections vis
+     JOIN member_check_ins mci ON mci.id = vis.checkin_id
+     JOIN ingredients i ON i.id = vis.ingredient_id
+     WHERE mci.member_id = $1 
+       AND DATE(mci.checked_out_at AT TIME ZONE 'Asia/Kolkata') = $2
+       AND mci.checked_out_at IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM consumption_logs cl 
+         WHERE cl.checkin_id = mci.id AND cl.food_item LIKE i.name || '%'
+       )
+
+     UNION ALL
+
      SELECT 
         -vfs.id as id, 
         mci.member_id, 
