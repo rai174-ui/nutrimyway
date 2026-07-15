@@ -1031,6 +1031,9 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
   const [editSaving, setEditSaving]           = useState(false);
   const [editError, setEditError]             = useState("");
   const [showRenewDialog, setShowRenewDialog] = useState(false);
+  const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [showSellProductDialog, setShowSellProductDialog] = useState(false);
   const [showReturnProductDialog, setShowReturnProductDialog] = useState(false);
   const [renewPaymentMethod, setRenewPaymentMethod] = useState<"cash" | "online">("cash");
@@ -1147,6 +1150,24 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     if (next) void loadHistory();
   }
 
+  async function handleResetPassword() {
+    if (newPassword.length < 4) {
+      alert("Password must be at least 4 characters");
+      return;
+    }
+    setResettingPassword(true);
+    try {
+      await apiPost(`/admin/centers/${centerId}/members/${member.id}/reset-password`, { password: newPassword });
+      alert("Password reset successfully");
+      setShowResetPasswordDialog(false);
+      setNewPassword("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to reset password");
+    } finally {
+      setResettingPassword(false);
+    }
+  }
+
   async function handleCheckin() {
     const w = Number(weightKg);
     if (!w || w <= 0) return;
@@ -1234,6 +1255,12 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
                 </button>
               );
             })()}
+            <button
+              onClick={() => setShowResetPasswordDialog(true)}
+              className="h-8 px-3 text-xs font-semibold rounded-xl border border-muted-foreground/30 text-muted-foreground hover:bg-muted transition-colors"
+            >
+              Reset Password
+            </button>
             <button
               onClick={() => setShowSellProductDialog(true)}
               className="h-8 px-3 text-xs font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors"
@@ -1537,6 +1564,37 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
           )}
         </div>
       )}
+      {/* Reset Password Dialog */}
+      {showResetPasswordDialog && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowResetPasswordDialog(false)}>
+          <div className="bg-background rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-border bg-muted/30">
+              <h3 className="font-semibold text-[15px]">Reset Password for {member.name}</h3>
+              <button onClick={() => setShowResetPasswordDialog(false)} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="At least 4 characters"
+                  className="w-full h-11 px-3 rounded-lg border border-input bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-border bg-muted/10 flex justify-end gap-2">
+              <button onClick={() => setShowResetPasswordDialog(false)} disabled={resettingPassword} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button>
+              <button onClick={() => void handleResetPassword()} disabled={resettingPassword || newPassword.length < 4} className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg disabled:opacity-50 flex items-center gap-1">
+                {resettingPassword && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Reset Password
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showRenewDialog && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowRenewDialog(false)}>
           <div className="bg-card border border-border rounded-2xl p-5 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>

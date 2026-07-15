@@ -56,6 +56,7 @@ async function migrateColumns(): Promise<void> {
     // Allow mobile to be NULL so email-only OTPs/registrations work
     "ALTER TABLE otps ALTER COLUMN mobile DROP NOT NULL",
     "ALTER TABLE user_auth ALTER COLUMN mobile DROP NOT NULL",
+    "ALTER TABLE user_auth ADD COLUMN IF NOT EXISTS password_hash TEXT",
   ];
   for (const sql of newCols) {
     await pool.query(sql);
@@ -221,6 +222,7 @@ async function createTables(): Promise<void> {
       id SERIAL PRIMARY KEY,
       mobile TEXT,
       email TEXT,
+      password_hash TEXT,
       member_id INTEGER REFERENCES members(id),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );

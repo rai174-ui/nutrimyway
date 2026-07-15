@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { randomBytes } from "crypto";
+import bcrypt from "bcryptjs";
 import { pool } from "../lib/sqlite";
 import { logger } from "../lib/logger";
 
@@ -50,17 +51,18 @@ export function requireMember(
 }
 
 
-async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
+// Replace OTP functions with Password logic
+// Helper for sending reset password emails
+async function sendResetEmail(to: string, resetLink: string): Promise<boolean> {
   const htmlContent = `<div style="font-family:sans-serif;max-width:480px;margin:auto">
-        <h2 style="color:#0d9488">Login Code</h2>
-        <p>Use the following 6-digit code to log in to your NutriMyWay account:</p>
-        <div style="font-size:32px;font-weight:700;letter-spacing:0.2em;color:#0d9488;padding:16px 24px;background:#f0fdfa;border-radius:8px;display:inline-block;margin:8px 0">${otp}</div>
-        <p style="color:#6b7280;font-size:13px;margin-top:16px">This code expires in ${OTP_TTL_MIN} minutes.</p>
-        <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this code, please ignore this email.</p>
+        <h2 style="color:#0d9488">Reset Password</h2>
+        <p>You have requested to reset your NutriMyWay password. Click the link below to set a new password:</p>
+        <p><a href="${resetLink}" style="font-size:16px;font-weight:bold;color:#0d9488;">Reset Password</a></p>
+        <p style="color:#6b7280;font-size:13px;margin-top:16px">This link expires in 1 hour.</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:16px">If you did not request this, please ignore this email.</p>
       </div>`;
-  const subject = "Your NutriMyWay Login Code";
+  const subject = "Reset your NutriMyWay Password";
 
-  // 1. Try SMTP first if configured
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     try {
       const transporter = nodemailer.createTransport({
@@ -72,239 +74,200 @@ async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
           pass: process.env.SMTP_PASS,
         },
       });
-
       await transporter.sendMail({
         from: `"${process.env.SMTP_FROM_NAME || "NutriMyWay"}" <${process.env.SMTP_USER}>`,
         to,
         subject,
         html: htmlContent,
       });
-
       return true;
     } catch (err) {
-      logger.error({ err }, "Error sending OTP via SMTP");
+      logger.error({ err }, "Error sending reset email via SMTP");
       return false;
     }
   }
 
-  // 2. Fall back to Resend if configured
   if (process.env.RESEND_API_KEY) {
     try {
-      const { data, error } = await resend.emails.send({
+      const { error } = await resend.emails.send({
         from: "NutriMyWay <onboarding@resend.dev>",
         to: [to],
         subject,
         html: htmlContent,
       });
-
       if (error) {
-        logger.warn(
-          { to, error },
-          "Resend API returned an error processing the email",
-        );
+        logger.warn({ to, error }, "Resend API error");
         return false;
       }
-
       return true;
     } catch (err) {
-      logger.error({ err }, "Error sending OTP via Resend");
+      logger.error({ err }, "Error sending reset email via Resend");
       return false;
     }
   }
-
-  // 3. Fall back to DEV MODE preview
-  logger.warn({ to }, "No SMTP or RESEND_API_KEY configured — OTP email skipped");
+  
+  logger.warn({ to, resetLink }, "No email provider configured — reset email skipped. Preview link provided in logs.");
   return false;
 }
 
-// POST /api/auth/request-otp
-// Body: { email: string, membership_no: string }
-router.post("/auth/request-otp", async (req, res) => {
+// POST /api/auth/login
+// Body: { email: string, password: string }
+router.post("/auth/login", async (req, res) => {
   const body = req.body as Record<string, unknown>;
-  const email =
-    typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const membershipNo =
-    typeof body.membership_no === "string" ? body.membership_no.trim() : "";
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body.password === "string" ? body.password : "";
 
+  if (!email || !password) {
+    res.status(400).json({ error: "Email and password are required" });
+    return;
+  }
+
+  // 1. Fetch member details
+  const { rows: memberRows } = await pool.query(
+    "SELECT m.id, m.name, m.email, m.membership_no, m.is_active, m.valid_until, u.password_hash FROM members m LEFT JOIN user_auth u ON u.member_id = m.id WHERE m.email = $1",
+    [email],
+  );
+
+  if (!memberRows[0]) {
+    res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+
+  const member = memberRows[0] as {
+    id: number;
+    email: string;
+    membership_no: string;
+    is_active: boolean;
+    valid_until: string | null;
+    password_hash: string | null;
+  };
+
+  if (!member.is_active) {
+    res.status(403).json({ error: "Your membership is inactive. Please contact your wellness center." });
+    return;
+  }
+  if (member.valid_until && new Date(member.valid_until) < new Date()) {
+    res.status(403).json({ error: "Your membership has expired. Please contact your wellness center to renew." });
+    return;
+  }
+
+  // 2. Verify Password
+  let passwordMatched = false;
+  if (email === "reviewer@nutrimyway.in") {
+    passwordMatched = password === "123456";
+  } else if (!member.password_hash) {
+    // Default password logic: if user_auth doesn't have a hash, check if password matches membership_no
+    if (password === member.membership_no) {
+      passwordMatched = true;
+      // Hash it and save it immediately
+      const hashed = await bcrypt.hash(password, 10);
+      const { rowCount } = await pool.query("UPDATE user_auth SET password_hash = $1 WHERE member_id = $2", [hashed, member.id]);
+      if (rowCount === 0) {
+        await pool.query("INSERT INTO user_auth (member_id, email, password_hash, created_at) VALUES ($1,$2,$3,NOW())", [member.id, email, hashed]);
+      }
+    }
+  } else {
+    // Normal bcrypt compare
+    passwordMatched = await bcrypt.compare(password, member.password_hash);
+  }
+
+  if (!passwordMatched) {
+    res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+
+  // 3. Ensure user_auth record exists (if reviewer or edge case)
+  const { rows: authRows } = await pool.query("SELECT id, terms_accepted_at FROM user_auth WHERE member_id = $1", [member.id]);
+  let needsTermsAcceptance = true;
+  if (!authRows[0]) {
+    await pool.query("INSERT INTO user_auth (member_id, email, created_at) VALUES ($1,$2,NOW())", [member.id, email]);
+  } else {
+    needsTermsAcceptance = !authRows[0].terms_accepted_at;
+  }
+
+  const token = signToken(member.id, email);
+  res.json({ token, member_id: member.id, needs_terms_acceptance: needsTermsAcceptance });
+});
+
+// POST /api/auth/forgot-password
+// Body: { email: string }
+router.post("/auth/forgot-password", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     res.status(400).json({ error: "A valid email address is required" });
     return;
   }
-  if (!membershipNo) {
-    res.status(400).json({ error: "Membership number is required" });
-    return;
-  }
 
-  // Find member by membership_no (unique) and verify email + validity
-  const { rows: memberRows } = await pool.query(
-    "SELECT id, name, email, membership_no, is_active, valid_until FROM members WHERE membership_no = $1",
-    [membershipNo],
-  );
+  const { rows: memberRows } = await pool.query("SELECT id, is_active, valid_until FROM members WHERE email = $1", [email]);
   if (!memberRows[0]) {
-    res
-      .status(404)
-      .json({
-        error:
-          "No member found with this membership number. Please contact your wellness center.",
-      });
+    // Don't leak whether email exists
+    res.json({ message: "If the email exists and is active, a reset link has been sent." });
     return;
   }
-  const member = memberRows[0] as {
-    id: number;
-    name: string;
-    email: string | null;
-    membership_no: string;
-    is_active: boolean;
-    valid_until: string | null;
-  };
-  if (!member.is_active) {
-    res
-      .status(403)
-      .json({
-        error:
-          "Your membership is inactive. Please contact your wellness center.",
-      });
-    return;
-  }
-  if (member.valid_until && new Date(member.valid_until) < new Date()) {
-    res
-      .status(403)
-      .json({
-        error:
-          "Your membership has expired. Please contact your wellness center to renew.",
-      });
-    return;
-  }
-  if (member.email !== email) {
-    res
-      .status(401)
-      .json({
-        error:
-          "Email does not match the membership number. Please contact your wellness center.",
-      });
+  
+  const member = memberRows[0];
+  if (!member.is_active || (member.valid_until && new Date(member.valid_until) < new Date())) {
+    res.json({ message: "If the email exists and is active, a reset link has been sent." });
     return;
   }
 
-  const otp = email === "reviewer@nutrimyway.in" ? "123456" : generateOtp();
-  const otpToken = generateOtpToken();
-
-  // Invalidate any previous unused OTPs for this member
+  const resetToken = randomBytes(32).toString("hex");
+  
+  // Reuse otps table for reset tokens (otp_token = resetToken, otp = 'RESET')
   await pool.query(
-    "UPDATE otps SET used = TRUE WHERE member_id = $1 AND used = FALSE",
-    [member.id],
-  );
-  // Store new OTP
-  await pool.query(
-    `INSERT INTO otps (member_id, email, otp, otp_token, expires_at) VALUES ($1,$2,$3,$4, NOW() + INTERVAL '${OTP_TTL_MIN} minutes')`,
-    [member.id, email, otp, otpToken],
+    `INSERT INTO otps (member_id, email, otp, otp_token, expires_at) VALUES ($1,$2,'RESET',$3, NOW() + INTERVAL '1 hour')`,
+    [member.id, email, resetToken]
   );
 
+  const appUrl = process.env.APP_URL || "http://localhost:8080";
+  const resetLink = \`\${appUrl}/reset-password?token=\${resetToken}\`;
+  
   if (process.env.NODE_ENV === "development") {
-    logger.info({ email, otp }, "DEV MODE: OTP generated");
+    logger.info({ email, resetLink }, "DEV MODE: Reset link generated");
   }
 
-  // If no email providers are configured, use Dev Mode fallback immediately
-  if (!process.env.SMTP_HOST && !process.env.RESEND_API_KEY) {
-    logger.warn({ email }, "No email provider configured — returning OTP preview in response");
-    res.json({ message: "OTP sent", otp_token: otpToken, otp_preview: otp });
-    return;
-  }
-
-  if (email === "reviewer@nutrimyway.in") {
-    logger.info("Reviewer login: skipping email dispatch");
-    res.json({ message: "OTP sent", otp_token: otpToken });
-    return;
-  }
-
-  // Otherwise, send the email in the background without blocking the HTTP response.
-  // This prevents the frontend from timing out if the SMTP connection is slow (e.g., Gmail on Railway).
-  sendOtpEmail(email, otp).catch(err => {
-    logger.error({ err, email }, "Failed to send OTP email in background");
+  sendResetEmail(email, resetLink).catch(err => {
+    logger.error({ err, email }, "Failed to send reset email");
   });
 
-  res.json({ message: "OTP sent", otp_token: otpToken });
+  res.json({ message: "If the email exists and is active, a reset link has been sent." });
 });
 
-// POST /api/auth/verify-otp
-// Body: { otp_token: string, otp: string }
-router.post("/auth/verify-otp", async (req, res) => {
+// POST /api/auth/reset-password
+// Body: { token: string, password: string }
+router.post("/auth/reset-password", async (req, res) => {
   const body = req.body as Record<string, unknown>;
-  const otpToken =
-    typeof body.otp_token === "string" ? body.otp_token.trim() : "";
-  const otp = typeof body.otp === "string" ? body.otp.trim() : "";
+  const token = typeof body.token === "string" ? body.token.trim() : "";
+  const password = typeof body.password === "string" ? body.password : "";
 
-  if (!otpToken || !otp) {
-    res.status(400).json({ error: "OTP token and OTP are required" });
+  if (!token || !password) {
+    res.status(400).json({ error: "Token and password are required" });
     return;
   }
 
   const { rows } = await pool.query(
-    `SELECT * FROM otps
-     WHERE otp_token = $1 AND otp = $2 AND used = FALSE AND expires_at > NOW()
-     ORDER BY id DESC LIMIT 1`,
-    [otpToken, otp],
+    `SELECT * FROM otps WHERE otp_token = $1 AND otp = 'RESET' AND used = FALSE AND expires_at > NOW() ORDER BY id DESC LIMIT 1`,
+    [token]
   );
+
   if (!rows[0]) {
-    res.status(401).json({ error: "Invalid or expired OTP" });
-    return;
-  }
-  const otpRow = rows[0] as { id: number; member_id: number; email: string };
-  await pool.query("UPDATE otps SET used = TRUE WHERE id = $1", [otpRow.id]);
-
-  const memberId = otpRow.member_id;
-  const email = otpRow.email;
-
-  // Re-check member validity before issuing token
-  const { rows: memberRows } = await pool.query(
-    "SELECT is_active, valid_until FROM members WHERE id = $1",
-    [memberId],
-  );
-  const member = memberRows[0] as
-    | { is_active: boolean; valid_until: string | null }
-    | undefined;
-  if (!member?.is_active) {
-    res
-      .status(403)
-      .json({
-        error:
-          "Your membership is inactive. Please contact your wellness center.",
-      });
-    return;
-  }
-  if (member.valid_until && new Date(member.valid_until) < new Date()) {
-    res
-      .status(403)
-      .json({
-        error:
-          "Your membership has expired. Please contact your wellness center to renew.",
-      });
+    res.status(401).json({ error: "Invalid or expired reset token" });
     return;
   }
 
-  // Ensure user_auth record exists for this member
-  const { rows: authRows } = await pool.query(
-    "SELECT id FROM user_auth WHERE member_id = $1",
-    [memberId],
-  );
-  if (!authRows[0]) {
-    await pool.query(
-      "INSERT INTO user_auth (member_id, email, created_at) VALUES ($1,$2,NOW())",
-      [memberId, email],
-    );
+  const resetRow = rows[0] as { id: number; member_id: number; email: string };
+  await pool.query("UPDATE otps SET used = TRUE WHERE id = $1", [resetRow.id]);
+
+  const hashed = await bcrypt.hash(password, 10);
+  const { rowCount } = await pool.query("UPDATE user_auth SET password_hash = $1 WHERE member_id = $2", [hashed, resetRow.member_id]);
+  
+  if (rowCount === 0) {
+    await pool.query("INSERT INTO user_auth (member_id, email, password_hash, created_at) VALUES ($1,$2,$3,NOW())", [resetRow.member_id, resetRow.email, hashed]);
   }
 
-  const { rows: consentRows } = await pool.query(
-    "SELECT terms_accepted_at FROM user_auth WHERE member_id = $1",
-    [memberId],
-  );
-  const needsTermsAcceptance = !consentRows[0]?.terms_accepted_at;
-
-  const token = signToken(memberId, email);
-  res.json({
-    token,
-    member_id: memberId,
-    needs_terms_acceptance: needsTermsAcceptance,
-  });
+  res.json({ message: "Password updated successfully" });
 });
 
 // POST /api/auth/accept-terms — record first-login consent acceptance for the authenticated member

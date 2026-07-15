@@ -12,6 +12,8 @@ import { Login } from "@/pages/login";
 import { About } from "@/pages/about";
 import { Home } from "@/pages/home";
 import { Privacy } from "@/pages/privacy";
+import { ForgotPassword } from "@/pages/forgot-password";
+import { ResetPassword } from "@/pages/reset-password";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ConsentModal } from "@/components/consent-modal";
 import { initApiBase } from "@/lib/api-base";
@@ -109,6 +111,8 @@ function MainRouter() {
       <Route path="/" component={() => (isAuthenticated ? <Redirect to="/dashboard" /> : <Home />)} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/login" component={() => (isAuthenticated ? <Redirect to="/dashboard" /> : <Login />)} />
+      <Route path="/forgot-password" component={() => (isAuthenticated ? <Redirect to="/dashboard" /> : <ForgotPassword />)} />
+      <Route path="/reset-password" component={() => (isAuthenticated ? <Redirect to="/dashboard" /> : <ResetPassword />)} />
       <Route path="/:rest*">
         <ProtectedRouter />
       </Route>

@@ -1551,6 +1551,42 @@ router.patch("/admin/centers/:centerId/members/:memberId/status", requireAdmin, 
   res.json(rows[0]);
 });
 
+// POST /api/admin/centers/:centerId/members/:memberId/reset-password
+router.post("/admin/centers/:centerId/members/:memberId/reset-password", requireAdmin, async (req, res) => {
+  const { centerId, memberId } = req.params;
+  const adminReq = req as AdminRequest;
+  if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const body = req.body as Record<string, unknown>;
+  const password = typeof body.password === "string" ? body.password : "";
+
+  if (!password || password.length < 4) {
+    res.status(400).json({ error: "Password must be at least 4 characters long" });
+    return;
+  }
+
+  const { rows: membership } = await pool.query(
+    `SELECT m.email FROM member_center_mapping mcm JOIN members m ON m.id = mcm.member_id WHERE mcm.member_id = $1 AND mcm.center_id = $2`,
+    [Number(memberId), centerId]
+  );
+  if (!membership[0]) { res.status(404).json({ error: "Member not found in this center" }); return; }
+
+  const hashed = await bcrypt.hash(password, 10);
+  const { rowCount } = await pool.query(
+    `UPDATE user_auth SET password_hash = $1 WHERE member_id = $2`,
+    [hashed, Number(memberId)]
+  );
+
+  if (rowCount === 0) {
+    await pool.query(
+      `INSERT INTO user_auth (member_id, email, password_hash, created_at) VALUES ($1,$2,$3,NOW())`,
+      [Number(memberId), membership[0].email, hashed]
+    );
+  }
+
+  res.json({ message: "Password updated successfully" });
+});
+
 // DELETE /api/admin/centers/:centerId/members/:memberId/hard-delete — permanently delete member
 router.delete("/admin/centers/:centerId/members/:memberId/hard-delete", requireAdmin, async (req, res) => {
   const { centerId, memberId } = req.params;
