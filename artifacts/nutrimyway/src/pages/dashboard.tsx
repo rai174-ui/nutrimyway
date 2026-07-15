@@ -149,7 +149,7 @@ function QrScannerModal({ onScanned, onClose }: { onScanned: (centerId: string) 
             <input
               type="text"
               id="manual-code"
-              placeholder="e.g. CI-1"
+              placeholder="e.g. DWK-1"
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
               className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm"

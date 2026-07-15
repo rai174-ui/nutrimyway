@@ -36,7 +36,7 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const CENTERS = [
-  { center_id: "CI-1",  password: "Center@CI1"  },
+  { center_id: "DWK-1",  password: "Center@DWK1"  },
   { center_id: "CI-2",  password: "Center@CI2"  },
   { center_id: "Home",  password: "Center@Home" },
 ];

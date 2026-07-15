@@ -416,8 +416,8 @@ async function seedFromXlsx(): Promise<void> {
     logger.warn({ path: XLSX_PATH }, "composition.xlsx not found, inserting defaults");
     await pool.query(`
       INSERT INTO members (id, name, date_of_joining, height_cm) VALUES (1, 'Demo Member', '2024-01-01', 170) ON CONFLICT DO NOTHING;
-      INSERT INTO centers (id, name) VALUES ('CI-1', 'Center CI-1'), ('CI-2', 'Center CI-2'), ('Home', 'Home') ON CONFLICT DO NOTHING;
-      INSERT INTO member_center_mapping (member_id, center_id) VALUES (1, 'CI-1'), (1, 'Home') ON CONFLICT DO NOTHING;
+      INSERT INTO centers (id, name) VALUES ('DWK-1', 'Center DWK-1'), ('CI-2', 'Center CI-2'), ('Home', 'Home') ON CONFLICT DO NOTHING;
+      INSERT INTO member_center_mapping (member_id, center_id) VALUES (1, 'DWK-1'), (1, 'Home') ON CONFLICT DO NOTHING;
       INSERT INTO _seed_done (done) VALUES (1) ON CONFLICT DO NOTHING;
     `);
     return;
@@ -452,7 +452,7 @@ async function seedFromXlsx(): Promise<void> {
     for (const row of rows) {
       const memberId = toNum(row["Member ID"] ?? row["member_id"] ?? row["id"]);
       const memberName = String(row["Member Name"] ?? row["name"] ?? row["Member"] ?? "Unknown");
-      const centerId = String(row["Center ID"] ?? row["center_id"] ?? "CI-1");
+      const centerId = String(row["Center ID"] ?? row["center_id"] ?? "DWK-1");
       const centerName = String(row["Center Name"] ?? row["center"] ?? centerId);
       const doj = toDateStr(row["Date of Joining"] ?? row["date_of_joining"]);
       const height = toNum(row["Height (cm)"] ?? row["height_cm"] ?? row["Height"]);
@@ -559,8 +559,8 @@ async function seedFromXlsx(): Promise<void> {
   if (Number(rows[0].c) === 0) {
     await pool.query(`
       INSERT INTO members (id, name, date_of_joining, height_cm) VALUES (1, 'Demo Member', '2024-01-01', 170) ON CONFLICT DO NOTHING;
-      INSERT INTO centers (id, name) VALUES ('CI-1', 'Center CI-1'), ('CI-2', 'Center CI-2'), ('Home', 'Home') ON CONFLICT DO NOTHING;
-      INSERT INTO member_center_mapping (member_id, center_id) VALUES (1, 'CI-1') ON CONFLICT DO NOTHING;
+      INSERT INTO centers (id, name) VALUES ('DWK-1', 'Center DWK-1'), ('CI-2', 'Center CI-2'), ('Home', 'Home') ON CONFLICT DO NOTHING;
+      INSERT INTO member_center_mapping (member_id, center_id) VALUES (1, 'DWK-1') ON CONFLICT DO NOTHING;
     `);
   }
 
