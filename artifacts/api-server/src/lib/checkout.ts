@@ -34,8 +34,9 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
 
   const mealSlot = slotForNowIST();
 
-  await pool.query("BEGIN");
+  const client = await pool.connect();
   try {
+    await client.query("BEGIN");
     for (const sel of selections) {
       const serveQty = Number(sel.serving_qty) || 1;
       const kcal = Number(sel.kcal_per_serving) || 0;
@@ -45,7 +46,7 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
       const fat = Number(sel.fat_per_serving) || 0;
 
       // Deduct from ingredient batch stock if an open batch exists
-      const { rows: batches } = await pool.query(
+      const { rows: batches } = await client.query(
         `SELECT ib.id, COALESCE(ib.received_qty, i.pack_size) AS pack_size
          FROM ingredient_batches ib
          JOIN ingredients i ON i.id = ib.ingredient_id
@@ -57,29 +58,21 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
       if (batches[0]) {
         const batchRow = batches[0] as { id: number; pack_size: number };
 
-        await pool.query(
+        await client.query(
           `INSERT INTO batch_consumption_logs (batch_id, quantity, notes, recorded_at)
            VALUES ($1, $2, 'auto: member visit', NOW())`,
           [batchRow.id, serveQty]
         );
 
-        // Recalculate consumed total and update batch
-        await pool.query(
+        // Auto-close batch if fully consumed
+        await client.query(
           `WITH consumption AS (
              SELECT COALESCE(SUM(quantity), 0) AS used
              FROM batch_consumption_logs WHERE batch_id = $1
            )
            UPDATE ingredient_batches
-           SET consumed_qty = (SELECT used FROM consumption)
-           WHERE id = $1`,
-          [batchRow.id]
-        );
-
-        // Auto-close batch if fully consumed
-        await pool.query(
-          `UPDATE ingredient_batches
            SET status = 'consumed', consumed_at = NOW()
-           WHERE id = $1 AND consumed_qty >= $2 AND status = 'open'`,
+           WHERE id = $1 AND (SELECT used FROM consumption) >= $2 AND status = 'open'`,
           [batchRow.id, batchRow.pack_size]
         );
       }
@@ -89,7 +82,7 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
         ? `${sel.name as string} (${sel.flavour as string})`
         : (sel.name as string);
 
-      await pool.query(
+      await client.query(
         `INSERT INTO consumption_logs
            (member_id, meal_slot, food_item, calories_kcal, protein_g, fiber_g, carbs_g, fat_g, selected_flavour, checkin_id, logged_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
@@ -102,21 +95,22 @@ export async function bookAndCheckout(checkinId: number, memberId: number, cente
           fiber > 0 ? fiber : null,
           carbs > 0 ? carbs : null,
           fat > 0 ? fat : null,
-          (sel.flavour as string | null) ?? null,
-          checkinId,
+          sel.flavour || null,
+          checkinId
         ]
       );
     }
 
-    // Mark check-in as checked out
-    await pool.query(
+    await client.query(
       `UPDATE member_check_ins SET checked_out_at = NOW() WHERE id = $1`,
       [checkinId]
     );
 
-    await pool.query("COMMIT");
+    await client.query("COMMIT");
   } catch (e) {
-    await pool.query("ROLLBACK");
+    await client.query("ROLLBACK").catch(() => {});
     throw e;
+  } finally {
+    client.release();
   }
 }
