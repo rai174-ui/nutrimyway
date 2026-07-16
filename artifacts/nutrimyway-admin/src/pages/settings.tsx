@@ -1160,239 +1160,222 @@ function ItemMaster() {
           No items yet. Add one above — BOM and inventory can only use items from this list.
         </p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border/60 bg-muted/40">
-              <th className="py-2 pl-5 pr-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Item Name</th>
-              <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Category</th>
-              <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Flavour</th>
-              <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">SKUs & Sizes</th>
-              <th className="py-2 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Serving Info</th>
-              <th className="py-2 pl-3 pr-5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/40">
-            {ingredients.map(ing => (
-              <tr key={ing.id} className="hover:bg-muted/30 transition-colors">
-                {editId === ing.id ? (
-                  <td colSpan={6} className="px-5 py-4 bg-muted/10 border-b border-border/50">
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
+        <div className="divide-y divide-border/40">
+          {ingredients.map(ing => (
+            <div key={ing.id} className="hover:bg-muted/30 transition-colors">
+              {editId === ing.id ? (
+                <div className="px-5 py-4 bg-muted/10 border-b border-border/50">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
+                        <input
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder="Item name *"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
+                        <select
+                          value={editCategory}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setEditCategory(val);
+                            if (val) {
+                              const cat = categories.find(c => String(c.id) === val);
+                              if (cat) {
+                                setEditServingQty(cat.serving_qty != null ? String(cat.serving_qty) : "1");
+                                setEditKcalPerServing(cat.kcal_per_serve != null ? String(cat.kcal_per_serve) : "");
+                                setEditProteinPerServing(cat.protein_per_serve_g != null ? String(cat.protein_per_serve_g) : "");
+                                setEditFiberPerServing(cat.fiber_per_serve_g != null ? String(cat.fiber_per_serve_g) : "");
+                              }
+                            }
+                          }}
+                          className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          <option value="">— Category —</option>
+                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
+                        <select
+                          value={editFlavour}
+                          onChange={e => setEditFlavour(e.target.value)}
+                          className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          <option value="">— Flavour —</option>
+                          {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 border-l-2 border-primary/20 pl-3 ml-1">
+                      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">SKUs (Pack Sizes)</label>
+                      {editSkus.map((sku, idx) => (
+                        <div key={idx} className="flex items-center gap-2 flex-wrap">
                           <input
-                            value={editName}
-                            onChange={e => setEditName(e.target.value)}
+                            value={sku.material_code}
+                            onChange={e => {
+                              const arr = [...editSkus];
+                              arr[idx].material_code = e.target.value;
+                              setEditSkus(arr);
+                            }}
+                            className="w-40 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                            placeholder="Material Code *"
+                          />
+                          <input
+                            type="number" min="0" step="any"
+                            value={sku.pack_size}
+                            onChange={e => {
+                              const arr = [...editSkus];
+                              arr[idx].pack_size = Number(e.target.value) || 1;
+                              setEditSkus(arr);
+                            }}
+                            className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                            placeholder="Pack Size"
+                          />
+                          <select
+                            value={sku.pack_unit}
+                            onChange={e => {
+                              const arr = [...editSkus];
+                              arr[idx].pack_unit = e.target.value;
+                              setEditSkus(arr);
+                            }}
+                            className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          >
+                            {UNITS.map(u => <option key={u}>{u}</option>)}
+                          </select>
+                          {editSkus.length > 1 && (
+                            <button onClick={() => setEditSkus(editSkus.filter((_, i) => i !== idx))} className="p-1 text-muted-foreground hover:text-destructive">
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <button onClick={() => setEditSkus([...editSkus, { material_code: "", pack_size: 1, pack_unit: "g" }])} className="text-[11px] font-medium text-primary hover:underline">
+                        + Add another SKU
+                      </button>
+                    </div>
+
+                    <div className="pt-2 border-t border-border/50">
+                      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Serving Info</label>
+                      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground">Serving qty</label>
+                          <input
+                            type="number" min="0.1" step="0.1"
+                            value={editServingQty}
+                            onChange={e => setEditServingQty(e.target.value)}
                             className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                            placeholder="Item name *"
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
-                          <select
-                            value={editCategory}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setEditCategory(val);
-                              if (val) {
-                                const cat = categories.find(c => String(c.id) === val);
-                                if (cat) {
-                                  setEditServingQty(cat.serving_qty != null ? String(cat.serving_qty) : "1");
-                                  setEditKcalPerServing(cat.kcal_per_serve != null ? String(cat.kcal_per_serve) : "");
-                                  setEditProteinPerServing(cat.protein_per_serve_g != null ? String(cat.protein_per_serve_g) : "");
-                                  setEditFiberPerServing(cat.fiber_per_serve_g != null ? String(cat.fiber_per_serve_g) : "");
-                                }
-                              }
-                            }}
+                          <label className="text-xs text-muted-foreground">kcal/serve</label>
+                          <input
+                            type="number" min="0" step="1"
+                            value={editKcalPerServing}
+                            onChange={e => setEditKcalPerServing(e.target.value)}
+                            placeholder="—"
                             className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                          >
-                            <option value="">— Category —</option>
-                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
+                          />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
-                          <select
-                            value={editFlavour}
-                            onChange={e => setEditFlavour(e.target.value)}
+                          <label className="text-xs text-muted-foreground">Protein/serve (g)</label>
+                          <input
+                            type="number" min="0" step="0.1"
+                            value={editProteinPerServing}
+                            onChange={e => setEditProteinPerServing(e.target.value)}
+                            placeholder="—"
                             className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                          >
-                            <option value="">— Flavour —</option>
-                            {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
-                          </select>
+                          />
                         </div>
-                      </div>
-
-                      <div className="space-y-2 border-l-2 border-primary/20 pl-3 ml-1">
-                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">SKUs (Pack Sizes)</label>
-                        {editSkus.map((sku, idx) => (
-                          <div key={idx} className="flex items-center gap-2 flex-wrap">
-                            <input
-                              value={sku.material_code}
-                              onChange={e => {
-                                const arr = [...editSkus];
-                                arr[idx].material_code = e.target.value;
-                                setEditSkus(arr);
-                              }}
-                              className="w-40 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                              placeholder="Material Code *"
-                            />
-                            <input
-                              type="number" min="0" step="any"
-                              value={sku.pack_size}
-                              onChange={e => {
-                                const arr = [...editSkus];
-                                arr[idx].pack_size = Number(e.target.value) || 1;
-                                setEditSkus(arr);
-                              }}
-                              className="w-24 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                              placeholder="Pack Size"
-                            />
-                            <select
-                              value={sku.pack_unit}
-                              onChange={e => {
-                                const arr = [...editSkus];
-                                arr[idx].pack_unit = e.target.value;
-                                setEditSkus(arr);
-                              }}
-                              className="w-20 h-8 px-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                            >
-                              {UNITS.map(u => <option key={u}>{u}</option>)}
-                            </select>
-                            {editSkus.length > 1 && (
-                              <button onClick={() => setEditSkus(editSkus.filter((_, i) => i !== idx))} className="p-1 text-muted-foreground hover:text-destructive">
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                        <button onClick={() => setEditSkus([...editSkus, { material_code: "", pack_size: 1, pack_unit: "g" }])} className="text-[11px] font-medium text-primary hover:underline">
-                          + Add another SKU
-                        </button>
-                      </div>
-
-                      <div className="pt-2 border-t border-border/50">
-                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Serving Info</label>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-muted-foreground">Serving qty</label>
-                            <input
-                              type="number" min="0.1" step="0.1"
-                              value={editServingQty}
-                              onChange={e => setEditServingQty(e.target.value)}
-                              className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-muted-foreground">kcal/serve</label>
-                            <input
-                              type="number" min="0" step="1"
-                              value={editKcalPerServing}
-                              onChange={e => setEditKcalPerServing(e.target.value)}
-                              placeholder="—"
-                              className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-muted-foreground">Protein/serve (g)</label>
-                            <input
-                              type="number" min="0" step="0.1"
-                              value={editProteinPerServing}
-                              onChange={e => setEditProteinPerServing(e.target.value)}
-                              placeholder="—"
-                              className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-muted-foreground">Fiber/serve (g)</label>
-                            <input
-                              type="number" min="0" step="0.1"
-                              value={editFiberPerServing}
-                              onChange={e => setEditFiberPerServing(e.target.value)}
-                              placeholder="—"
-                              className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                            />
-                          </div>
-                          <div className="flex items-center gap-3 h-9">
-                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer flex-1">
-                              <input type="checkbox" checked={editTrialEligible} onChange={e => setEditTrialEligible(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
-                              Trial-eligible
-                            </label>
-                            <button onClick={() => void saveEdit(ing.id)} disabled={saving} className="h-9 px-3 rounded text-primary hover:bg-primary/10 disabled:opacity-40 font-medium text-xs flex items-center justify-center">
-                              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
-                            </button>
-                            <button onClick={() => setEditId(null)} className="h-9 w-9 rounded flex items-center justify-center text-muted-foreground hover:bg-muted">
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground">Fiber/serve (g)</label>
+                          <input
+                            type="number" min="0" step="0.1"
+                            value={editFiberPerServing}
+                            onChange={e => setEditFiberPerServing(e.target.value)}
+                            placeholder="—"
+                            className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                        <div className="flex items-center h-9">
+                          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer flex-1">
+                            <input type="checkbox" checked={editTrialEligible} onChange={e => setEditTrialEligible(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
+                            Trial-eligible
+                          </label>
+                        </div>
+                        
+                        <div className="flex items-center justify-end gap-2 h-9 md:col-span-6 border-t pt-3 mt-1 border-border/50">
+                          <button onClick={() => setEditId(null)} className="h-9 px-4 rounded-lg border border-input bg-background hover:bg-muted text-foreground text-xs font-medium">
+                            Cancel
+                          </button>
+                          <button onClick={() => void saveEdit(ing.id)} disabled={saving} className="h-9 px-6 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40 flex items-center justify-center">
+                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Changes"}
+                          </button>
                         </div>
                       </div>
                     </div>
-                  </td>
-                ) : (
-                  <>
-                    <td className="py-3 pl-5 pr-3 font-semibold text-foreground align-top">
-                      {ing.name}
-                    </td>
-                                        <td className="py-3 px-3 align-top">
-                      {ing.category_id ? (
-                        <span className="text-xs bg-sky-100 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-full inline-block">
+                  </div>
+                </div>
+              ) : (
+                <div className="px-5 py-3 flex items-start sm:items-center justify-between gap-4 flex-col sm:flex-row">
+                  <div className="flex-1 space-y-1">
+                    {/* Line 1 */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-foreground text-sm">{ing.name}</span>
+                      {ing.category_id && (
+                        <span className="text-[10px] bg-sky-100 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded-full">
                           {categories.find(c => c.id === ing.category_id)?.name || ing.category_id}
                         </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
                       )}
-                    </td>
-<td className="py-3 px-3 align-top">
-                      {ing.flavour ? (
-                        <span className="text-xs bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full inline-block">{ing.flavour}</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                      {ing.flavour && (
+                        <span className="text-[10px] bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full">
+                          {ing.flavour}
+                        </span>
                       )}
-                    </td>
-                    <td className="py-3 px-3 align-top">
-                      <div className="flex flex-wrap gap-1.5">
-                        {(ing.skus || []).map(s => (
-                          <div key={s.id ?? s.material_code} className="flex items-center gap-1">
-                            <span className="text-[11px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded border">{s.material_code}</span>
-                            <span className="text-xs text-foreground font-medium whitespace-nowrap">{s.pack_size} {s.pack_unit}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 align-top max-w-[200px]">
-                      <div className="flex flex-wrap gap-1.5 items-start">
-                        <span className="text-[11px] bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">{ing.serving_qty} /serve</span>
-                        {ing.kcal_per_serving != null && (
-                          <span className="text-[11px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">{ing.kcal_per_serving} kcal</span>
-                        )}
-                        {ing.protein_per_serving != null && (
-                          <span className="text-[11px] bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full">{ing.protein_per_serving}g prot</span>
-                        )}
-                        {ing.fiber_per_serving != null && (
-                          <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">{ing.fiber_per_serving}g fiber</span>
-                        )}
-                        {ing.trial_eligible && (
-                          <span className="text-[11px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">Trial-eligible</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 pl-3 pr-5 align-top text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => startEdit(ing)} className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => void deleteIngredient(ing.id)} className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      
+                      {((ing.skus || []).length > 0) && <div className="w-px h-3 bg-border/60 hidden sm:block"></div>}
+                      
+                      {(ing.skus || []).map(s => (
+                        <span key={s.id ?? s.material_code} className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border/50">
+                          {s.material_code} <span className="font-sans">({s.pack_size}{s.pack_unit})</span>
+                        </span>
+                      ))}
+                    </div>
+                    
+                    {/* Line 2 */}
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                      <span className="font-medium text-foreground">{ing.serving_qty} /serve</span>
+                      {ing.kcal_per_serving != null && <span>• {ing.kcal_per_serving} kcal</span>}
+                      {ing.protein_per_serving != null && <span>• {ing.protein_per_serving}g prot</span>}
+                      {ing.fiber_per_serving != null && <span>• {ing.fiber_per_serving}g fiber</span>}
+                      {ing.trial_eligible && (
+                        <>
+                          <span>•</span>
+                          <span className="text-teal-600 font-medium">Trial-eligible</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    <button onClick={() => startEdit(ing)} className="h-7 px-3 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
+                      Edit
+                    </button>
+                    <button onClick={() => void deleteIngredient(ing.id)} className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       )}
       </>
       )}
