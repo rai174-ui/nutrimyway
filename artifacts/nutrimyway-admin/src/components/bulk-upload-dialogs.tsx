@@ -522,19 +522,19 @@ export function UploadItemsDialog({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-foreground">Bulk Upload Items</h3>
-            <p className="text-xs text-muted-foreground">Item Master applies across all centers</p>
+            <p className="text-xs text-muted-foreground">Item Master applies to specific centers</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">&#10005;</button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Upload an XLSX or CSV with columns: <strong>name</strong>, <strong>material_code</strong>, pack_size, pack_unit, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible (yes/no)
+          Upload an XLSX or CSV with columns: <strong>name</strong>, <strong>center</strong> (required on every row — a center ID or name), <strong>material_code</strong>, pack_size, pack_unit, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible (yes/no)
         </p>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => {
-            const headers = ["name", "material_code", "pack_size", "pack_unit", "description", "flavour", "serving_qty", "kcal_per_serving", "protein_per_serving", "fiber_per_serving", "trial_eligible"];
+            const headers = ["name", "center", "material_code", "pack_size", "pack_unit", "description", "flavour", "serving_qty", "kcal_per_serving", "protein_per_serving", "fiber_per_serving", "trial_eligible"];
             const sample = [
-              ["Almonds", "MAT-001", 100, "g", "Raw almonds", "nut", 10, 58, 2, 1.2, "no"],
-              ["Whey Protein", "MAT-002", 500, "g", "Vanilla whey", "vanilla", 1, 120, 24, 0, "yes"],
+              ["Almonds", "DWK-1", "MAT-001", 100, "g", "Raw almonds", "nut", 10, 58, 2, 1.2, "no"],
+              ["Whey Protein", "DWK-1", "MAT-002", 500, "g", "Vanilla whey", "vanilla", 1, 120, 24, 0, "yes"],
             ];
             const ws = XLSX.utils.aoa_to_sheet([headers, ...sample]);
             const wb = XLSX.utils.book_new();

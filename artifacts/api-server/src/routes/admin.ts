@@ -3228,8 +3228,15 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
   try {
     await client.query("BEGIN");
 
-    const { rows: existingNamesRows } = await client.query("SELECT name FROM ingredients");
-    const existingNames = new Set<string>(existingNamesRows.map((r: { name: string }) => r.name.toLowerCase()));
+    const { rows: allCenterRows } = await client.query("SELECT id, name FROM centers");
+    const centerIds = new Set<string>(allCenterRows.map((r: { id: string }) => String(r.id).trim()));
+    const centerNameMap = new Map<string, string>();
+    for (const r of allCenterRows as { id: string; name: string }[]) {
+      centerNameMap.set(String(r.name).trim().toLowerCase(), String(r.id).trim());
+    }
+
+    const { rows: existingNamesRows } = await client.query("SELECT center_id, name FROM ingredients");
+    const existingNames = new Set<string>(existingNamesRows.map((r: { center_id: string, name: string }) => `${r.center_id}:${r.name.toLowerCase()}`));
     
     const { rows: existingCodesRows } = await client.query("SELECT material_code FROM ingredient_skus");
     const existingCodes = new Set<string>(
@@ -3246,7 +3253,19 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
       if (!name) { results.errors.push(`Row ${rowNum}: name is required`); continue; }
       if (!materialCode) { results.errors.push(`Row ${rowNum}: material_code is required`); continue; }
 
-      if (existingNames.has(name.toLowerCase()) || existingCodes.has(materialCode.toLowerCase())) {
+      const centerRaw = String(row.center ?? row.Center ?? row.CenterID ?? "").trim();
+      let centerId: string;
+      if (!centerRaw) {
+        results.errors.push(`Row ${rowNum}: center is required`); continue;
+      } else if (centerIds.has(centerRaw)) {
+        centerId = centerRaw;
+      } else if (centerNameMap.has(centerRaw.toLowerCase())) {
+        centerId = centerNameMap.get(centerRaw.toLowerCase())!;
+      } else {
+        results.errors.push(`Row ${rowNum}: Unknown center "${centerRaw}"`); continue;
+      }
+
+      if (existingNames.has(`${centerId}:${name.toLowerCase()}`) || existingCodes.has(materialCode.toLowerCase())) {
         results.skipped++;
         continue;
       }
@@ -3263,9 +3282,9 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
       const trialEligible = trialEligibleRaw === "yes" || trialEligibleRaw === "true";
 
       const { rows: insertedRows } = await client.query(
-        `INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-        [name, packSize, packUnit, materialCode, description, flavour, servingQty, kcalPerServing, proteinPerServing, fiberPerServing, trialEligible]
+        `INSERT INTO ingredients (center_id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+        [centerId, name, packSize, packUnit, materialCode, description, flavour, servingQty, kcalPerServing, proteinPerServing, fiberPerServing, trialEligible]
       );
       
       const ingredientId = insertedRows[0].id;
@@ -3276,7 +3295,7 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
         [ingredientId, materialCode, packSize, packUnit]
       );
 
-      existingNames.add(name.toLowerCase());
+      existingNames.add(`${centerId}:${name.toLowerCase()}`);
       existingCodes.add(materialCode.toLowerCase());
       results.created++;
     }
