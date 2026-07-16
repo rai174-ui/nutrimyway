@@ -3240,6 +3240,12 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
     for (const r of existingNamesRows as { id: number; center_id: string; name: string }[]) {
       existingNamesMap.set(`${r.center_id}:${r.name.toLowerCase()}`, r.id);
     }
+
+    const { rows: categoriesRows } = await client.query("SELECT id, center_id, name FROM checkin_categories");
+    const categoryMap = new Map<string, number>();
+    for (const c of categoriesRows as { id: number; center_id: string; name: string }[]) {
+      categoryMap.set(`${c.center_id}:${c.name.toLowerCase()}`, c.id);
+    }
     
     const { rows: existingCodesRows } = await client.query(`
       SELECT i.center_id, s.material_code 
@@ -3288,16 +3294,35 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
       const trialEligibleRaw = String(row.trial_eligible ?? "").trim().toLowerCase();
       const trialEligible = trialEligibleRaw === "yes" || trialEligibleRaw === "true";
 
+      const categoryName = String(row.category ?? row.meal_category ?? "").trim();
+      let categoryId: number | null = null;
+      if (categoryName) {
+        const catKey = `${centerId}:${categoryName.toLowerCase()}`;
+        if (categoryMap.has(catKey)) {
+          categoryId = categoryMap.get(catKey)!;
+        } else {
+          const { rows: catInsert } = await client.query(
+            `INSERT INTO checkin_categories (center_id, name, is_mandatory, display_order) VALUES ($1,$2,$3,$4) RETURNING id`,
+            [centerId, categoryName, false, 0]
+          );
+          categoryId = catInsert[0].id;
+          categoryMap.set(catKey, categoryId);
+        }
+      }
+
       const nameKey = `${centerId}:${name.toLowerCase()}`;
       let ingredientId: number;
 
       if (existingNamesMap.has(nameKey)) {
         ingredientId = existingNamesMap.get(nameKey)!;
+        if (categoryId !== null) {
+          await client.query(`UPDATE ingredients SET category_id = $1 WHERE id = $2`, [categoryId, ingredientId]);
+        }
       } else {
         const { rows: insertedRows } = await client.query(
-          `INSERT INTO ingredients (center_id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-          [centerId, name, packSize, packUnit, materialCode, description, flavour, servingQty, kcalPerServing, proteinPerServing, fiberPerServing, trialEligible]
+          `INSERT INTO ingredients (center_id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible, category_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+          [centerId, name, packSize, packUnit, materialCode, description, flavour, servingQty, kcalPerServing, proteinPerServing, fiberPerServing, trialEligible, categoryId]
         );
         ingredientId = insertedRows[0].id;
         existingNamesMap.set(nameKey, ingredientId);
