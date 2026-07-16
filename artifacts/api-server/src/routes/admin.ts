@@ -3228,10 +3228,12 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
   try {
     await client.query("BEGIN");
 
-    const { rows: existing } = await client.query("SELECT name, material_code FROM ingredients");
-    const existingNames = new Set<string>(existing.map((r: { name: string }) => r.name.toLowerCase()));
+    const { rows: existingNamesRows } = await client.query("SELECT name FROM ingredients");
+    const existingNames = new Set<string>(existingNamesRows.map((r: { name: string }) => r.name.toLowerCase()));
+    
+    const { rows: existingCodesRows } = await client.query("SELECT material_code FROM ingredient_skus");
     const existingCodes = new Set<string>(
-      existing
+      existingCodesRows
         .filter((r: { material_code: string | null }) => r.material_code)
         .map((r: { material_code: string }) => r.material_code.toLowerCase())
     );
@@ -3255,14 +3257,25 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
       const flavour = String(row.flavour ?? "").trim() || null;
       const servingQty = Number(row.serving_qty ?? 1) || 1;
       const kcalPerServing = row.kcal_per_serving != null && row.kcal_per_serving !== "" ? Number(row.kcal_per_serving) : null;
+      const proteinPerServing = row.protein_per_serving != null && row.protein_per_serving !== "" ? Number(row.protein_per_serving) : null;
+      const fiberPerServing = row.fiber_per_serving != null && row.fiber_per_serving !== "" ? Number(row.fiber_per_serving) : null;
       const trialEligibleRaw = String(row.trial_eligible ?? "").trim().toLowerCase();
       const trialEligible = trialEligibleRaw === "yes" || trialEligibleRaw === "true";
 
-      await client.query(
-        `INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, trial_eligible)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [name, packSize, packUnit, materialCode, description, flavour, servingQty, kcalPerServing, trialEligible]
+      const { rows: insertedRows } = await client.query(
+        `INSERT INTO ingredients (name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+        [name, packSize, packUnit, materialCode, description, flavour, servingQty, kcalPerServing, proteinPerServing, fiberPerServing, trialEligible]
       );
+      
+      const ingredientId = insertedRows[0].id;
+      
+      await client.query(
+        `INSERT INTO ingredient_skus (ingredient_id, material_code, pack_size, pack_unit)
+         VALUES ($1,$2,$3,$4)`,
+        [ingredientId, materialCode, packSize, packUnit]
+      );
+
       existingNames.add(name.toLowerCase());
       existingCodes.add(materialCode.toLowerCase());
       results.created++;
