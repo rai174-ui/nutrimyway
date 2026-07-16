@@ -2644,6 +2644,81 @@ router.delete("/admin/flavour-selections/:selId", requireAdmin, async (req, res)
   res.status(204).end();
 });
 
+// GET /api/admin/checkins/:checkinId/menu — get category menu and selections for a checkin
+router.get("/admin/checkins/:checkinId/menu", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req as AdminRequest;
+  const { rows: ciRows } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE id = $1`,
+    [Number(checkinId)]
+  );
+  if (!ciRows[0]) { res.status(404).json({ error: "Check-in not found" }); return; }
+  if ((ciRows[0] as { center_id: string }).center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const centerId = adminReq.adminCenterId;
+
+  const { rows: categories } = await pool.query(
+    `SELECT * FROM checkin_categories WHERE center_id = $1 ORDER BY display_order ASC, id ASC`,
+    [centerId]
+  );
+  
+  const { rows: mappings } = await pool.query(
+    `SELECT DISTINCT i.category_id, i.id as ingredient_id, i.name, i.flavour 
+     FROM ingredients i
+     JOIN checkin_categories c ON c.id = i.category_id
+     JOIN ingredient_batches ib ON ib.ingredient_id = i.id
+     WHERE c.center_id = $1 AND ib.center_id = $1 AND ib.status = 'open'`,
+    [centerId]
+  );
+  
+  const { rows: selections } = await pool.query(
+    `SELECT category_id, ingredient_id FROM visit_ingredient_selections WHERE checkin_id = $1`,
+    [Number(checkinId)]
+  );
+
+  const result = categories.map(cat => ({
+    ...cat,
+    ingredients: mappings.filter(m => m.category_id === cat.id)
+  }));
+  
+  res.json({ categories: result, selections });
+});
+
+// POST /api/admin/checkins/:checkinId/selections — update member selections from center admin
+router.post("/admin/checkins/:checkinId/selections", requireAdmin, async (req, res) => {
+  const { checkinId } = req.params;
+  const adminReq = req as AdminRequest;
+  
+  const { rows: ciRows } = await pool.query(
+    `SELECT center_id FROM member_check_ins WHERE id = $1 AND checked_out_at IS NULL`,
+    [Number(checkinId)]
+  );
+  if (!ciRows[0]) { res.status(409).json({ error: "No active check-in" }); return; }
+  if ((ciRows[0] as { center_id: string }).center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { items } = req.body as { items?: { category_id?: number; ingredient_id: number }[] };
+  
+  if (!Array.isArray(items)) { res.status(400).json({ error: "items array required" }); return; }
+
+  await pool.query("BEGIN");
+  try {
+    await pool.query(`DELETE FROM visit_ingredient_selections WHERE checkin_id = $1`, [Number(checkinId)]);
+    for (const item of items) {
+      if (item.ingredient_id) {
+        await pool.query(
+          `INSERT INTO visit_ingredient_selections (checkin_id, category_id, ingredient_id) VALUES ($1, $2, $3)`,
+          [Number(checkinId), item.category_id ?? null, item.ingredient_id]
+        );
+      }
+    }
+    await pool.query("COMMIT");
+    res.json({ success: true, count: items.length });
+  } catch (e) {
+    await pool.query("ROLLBACK");
+    res.status(500).json({ error: "Failed to save selections" });
+  }
+});
+
 // DELETE /api/admin/checkin-selections/:selectionId
 router.delete("/admin/checkin-selections/:selectionId", requireAdmin, async (req, res) => {
   const { selectionId } = req.params;

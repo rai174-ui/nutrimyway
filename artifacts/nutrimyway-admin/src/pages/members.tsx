@@ -17,6 +17,22 @@ import {
 interface FlavourOption { id: number; name: string; flavour: string; unit: string; category_id: number | null; category_name: string | null; }
 interface FlavourSelection { id: number; checkin_id: number; ingredient_id: number; flavour: string; }
 
+interface MenuCategory {
+  id: number;
+  name: string;
+  display_order: number;
+  is_mandatory: boolean;
+  ingredients: {
+    ingredient_id: number;
+    name: string;
+    flavour: string | null;
+  }[];
+}
+interface IngredientSelection {
+  category_id: number | null;
+  ingredient_id: number;
+}
+
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
@@ -486,8 +502,8 @@ function VisitPanel({
   onCheckout: () => void;
 }) {
   const checkinId = member.checkin_id!;
-  const [flavourOptions, setFlavourOptions] = useState<FlavourOption[]>([]);
-  const [flavourSelections, setFlavourSelections] = useState<FlavourSelection[]>([]);
+  const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
+  const [selections, setSelections] = useState<IngredientSelection[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
@@ -503,61 +519,69 @@ function VisitPanel({
 
   const loadData = useCallback(async () => {
     try {
-      const [fOpts, fSels] = await Promise.all([
-        apiGet<FlavourOption[]>(`/admin/checkins/${checkinId}/flavour-options`),
-        apiGet<FlavourSelection[]>(`/admin/checkins/${checkinId}/flavour-selections`),
-      ]);
-
-      // Group by category (use category_name if available, fall back to ingredient name)
-      const grouped: Record<string, FlavourOption[]> = {};
-      for (const opt of fOpts) {
-        const key = opt.category_name ?? opt.name;
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(opt);
-      }
+      const data = await apiGet<{ categories: MenuCategory[], selections: IngredientSelection[] }>(`/admin/checkins/${checkinId}/menu`);
+      
+      const cats = data.categories;
+      let sels = data.selections;
 
       // Auto-select single-item groups not already selected
-      const alreadySelectedIds = new Set(fSels.map(f => f.ingredient_id));
-      const toAutoSelect = Object.values(grouped)
-        .filter(g => g.length === 1)
-        .map(g => g[0])
-        .filter(opt => !alreadySelectedIds.has(opt.id));
-
-      const newSels = [...fSels];
-      for (const opt of toAutoSelect) {
-        try {
-          const created = await apiPost<FlavourSelection>(`/admin/checkins/${checkinId}/flavour-selections`, {
-            ingredient_id: opt.id,
-            flavour: opt.flavour,
-          });
-          newSels.push(created);
-        } catch { /* non-fatal */ }
+      let needsSave = false;
+      for (const cat of cats) {
+        if (cat.ingredients.length === 1) {
+          const ingId = cat.ingredients[0].ingredient_id;
+          if (!sels.some(s => s.category_id === cat.id && s.ingredient_id === ingId)) {
+            // Remove any other selection in this category just in case
+            sels = sels.filter(s => s.category_id !== cat.id);
+            sels.push({ category_id: cat.id, ingredient_id: ingId });
+            needsSave = true;
+          }
+        }
       }
 
-      setFlavourOptions(fOpts);
-      setFlavourSelections(newSels);
+      setMenuCategories(cats);
+      setSelections(sels);
+      
+      if (needsSave) {
+        // Save the auto-selections silently in the background
+        apiPost(`/admin/checkins/${checkinId}/selections`, { items: sels }).catch(() => {});
+      }
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }, [centerId, checkinId]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
-  async function toggleFlavour(opt: FlavourOption) {
+  function isIngredientSelected(categoryId: number, ingredientId: number) {
+    return selections.some(s => s.category_id === categoryId && s.ingredient_id === ingredientId);
+  }
+
+  async function handleIngredientSelect(categoryId: number, ingredientId: number, isMandatory: boolean) {
     setBusy(true); setError(null);
-    try {
-      const existing = flavourSelections.find(f => f.ingredient_id === opt.id);
-      if (existing) {
-        await apiDelete(`/admin/flavour-selections/${existing.id}`);
-        setFlavourSelections(prev => prev.filter(f => f.id !== existing.id));
+    let newSels = [...selections];
+    
+    if (isIngredientSelected(categoryId, ingredientId)) {
+      if (!isMandatory) {
+        newSels = newSels.filter(s => !(s.category_id === categoryId && s.ingredient_id === ingredientId));
       } else {
-        const created = await apiPost<FlavourSelection>(`/admin/checkins/${checkinId}/flavour-selections`, {
-          ingredient_id: opt.id,
-          flavour: opt.flavour,
-        });
-        setFlavourSelections(prev => [...prev, created]);
+        setBusy(false);
+        return; // mandatory category, can't deselect the only option
       }
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
+    } else {
+      const filtered = newSels.filter(s => s.category_id !== categoryId);
+      newSels = [...filtered, { category_id: categoryId, ingredient_id: ingredientId }];
+    }
+    
+    setSelections(newSels);
+
+    try {
+      await apiPost(`/admin/checkins/${checkinId}/selections`, { items: newSels });
+    } catch (e) { 
+      setError((e as Error).message);
+      // Revert on error
+      void loadData();
+    } finally { 
+      setBusy(false); 
+    }
   }
 
   async function handleCheckout() {
@@ -581,8 +605,7 @@ function VisitPanel({
   const mins = minutesSince(member.checked_in_at!);
   const remaining = autoCheckoutMin - mins;
 
-  const selectedFlavourIngredientIds = new Set(flavourSelections.map(f => f.ingredient_id));
-  const selectionCount = flavourSelections.length;
+  const selectionCount = selections.length;
 
   if (loading) {
     return (
@@ -622,93 +645,77 @@ function VisitPanel({
 
       {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">{error}</p>}
 
-      {/* Items — compact list */}
-      {flavourOptions.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No items configured for this center yet.</p>
-      ) : (() => {
-        const grouped: Record<string, FlavourOption[]> = {};
-        for (const opt of flavourOptions) {
-          const key = opt.category_name ?? opt.name;
-          if (!grouped[key]) grouped[key] = [];
-          grouped[key].push(opt);
-        }
-        const entries = Object.entries(grouped);
-        return (
-          <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/60">
-            {entries.map(([groupName, opts]) => {
-              const isSingle = opts.length === 1;
-              const selectedOpt = opts.find(o => selectedFlavourIngredientIds.has(o.id));
-              const isAutoSelected = isSingle && selectedFlavourIngredientIds.has(opts[0].id);
+      {/* Items — compact list matching log.tsx */}
+      {menuCategories.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No check-in categories available at this center.</p>
+      ) : (
+        <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/60">
+          {menuCategories.map(cat => {
+            const isSingle = cat.ingredients.length === 1;
+            const sel = selections.find(s => s.category_id === cat.id);
+            const selectedIng = sel ? cat.ingredients.find(i => i.ingredient_id === sel.ingredient_id) : null;
 
-              return (
-                <div key={groupName} className="flex items-center gap-2 px-3 py-2 min-h-[40px]">
-                  {/* Category label */}
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 w-16 shrink-0 leading-tight truncate">{groupName}</span>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    {isSingle ? (
-                      isAutoSelected ? (
-                        <span className="text-xs font-medium text-foreground">
-                          {opts[0].name}
-                          {opts[0].flavour && opts[0].flavour !== opts[0].name && (
-                            <span className="text-muted-foreground font-normal"> · {opts[0].flavour}</span>
-                          )}
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => void toggleFlavour(opts[0])}
-                          disabled={busy}
-                          className="text-xs text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 underline-offset-2 hover:underline"
-                        >
-                          {opts[0].name} · Tap to select
-                        </button>
-                      )
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {opts.map(opt => {
-                          const sel = selectedFlavourIngredientIds.has(opt.id);
-                          return (
-                            <button
-                              key={opt.id}
-                              onClick={() => void toggleFlavour(opt)}
-                              disabled={busy}
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all disabled:cursor-not-allowed ${
-                                sel
-                                  ? "bg-violet-100 text-violet-800 border-violet-300"
-                                  : "bg-muted/50 text-muted-foreground border-border hover:border-violet-400 hover:text-violet-700"
-                              }`}
-                            >
-                              {opt.flavour}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Right action */}
-                  <div className="shrink-0 flex items-center gap-1.5">
-                    {isSingle && isAutoSelected && (
-                      <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Auto</span>
-                    )}
-                    {(isAutoSelected || (!isSingle && selectedOpt)) && (
-                      <button
-                        onClick={() => void toggleFlavour(isAutoSelected ? opts[0] : selectedOpt!)}
-                        disabled={busy}
-                        className="w-4 h-4 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
-                        title="Remove"
-                      >
-                        <XCircle className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+            return (
+              <div key={cat.id} className="flex items-center gap-2 px-3 py-2 min-h-[40px]">
+                {/* Category label */}
+                <div className="w-20 shrink-0">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 leading-tight line-clamp-2">{cat.name}</span>
+                  {cat.is_mandatory && <span className="block text-[8px] text-amber-600 font-semibold">Required</span>}
                 </div>
-              );
-            })}
-          </div>
-        );
-      })()}
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  {isSingle ? (
+                    <span className="text-xs font-medium text-foreground">
+                      {cat.ingredients[0].name}
+                      {cat.ingredients[0].flavour && cat.ingredients[0].flavour !== cat.ingredients[0].name && (
+                        <span className="text-muted-foreground font-normal"> · {cat.ingredients[0].flavour}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {cat.ingredients.map(ing => {
+                        const isSelected = isIngredientSelected(cat.id, ing.ingredient_id);
+                        return (
+                          <button
+                            key={ing.ingredient_id}
+                            disabled={busy}
+                            onClick={() => handleIngredientSelect(cat.id, ing.ingredient_id, cat.is_mandatory)}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all disabled:opacity-50 ${
+                              isSelected
+                                ? "bg-violet-100 text-violet-800 border-violet-300"
+                                : "bg-muted/50 text-muted-foreground border-border hover:border-violet-400 hover:text-violet-700"
+                            }`}
+                          >
+                            {ing.flavour ?? ing.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right badge / action */}
+                <div className="shrink-0 flex items-center gap-1.5">
+                  {isSingle && (
+                    <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Auto</span>
+                  )}
+                  {!isSingle && selectedIng && (
+                    <button
+                      onClick={() => handleIngredientSelect(cat.id, selectedIng.ingredient_id, cat.is_mandatory)}
+                      disabled={busy}
+                      className="w-4 h-4 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                      title="Remove"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Checkout footer */}
 
