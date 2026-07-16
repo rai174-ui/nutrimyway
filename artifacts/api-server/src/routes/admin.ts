@@ -2693,40 +2693,45 @@ router.get("/admin/checkins/:checkinId/menu", requireAdmin, async (req, res) => 
 
 // POST /api/admin/checkins/:checkinId/selections — update member selections from center admin
 router.post("/admin/checkins/:checkinId/selections", requireAdmin, async (req, res) => {
-  const { checkinId } = req.params;
-  const adminReq = req as AdminRequest;
-  
-  const { rows: ciRows } = await pool.query(
-    `SELECT center_id FROM member_check_ins WHERE id = $1 AND checked_out_at IS NULL`,
-    [Number(checkinId)]
-  );
-  if (!ciRows[0]) { res.status(409).json({ error: "No active check-in" }); return; }
-  if ((ciRows[0] as { center_id: string }).center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
-
-  const { items } = req.body as { items?: { category_id?: number; ingredient_id: number }[] };
-  
-  if (!Array.isArray(items)) { res.status(400).json({ error: "items array required" }); return; }
-
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    await client.query(`DELETE FROM visit_ingredient_selections WHERE checkin_id = $1`, [Number(checkinId)]);
-    for (const item of items) {
-      if (item.ingredient_id) {
-        await client.query(
-          `INSERT INTO visit_ingredient_selections (checkin_id, category_id, ingredient_id) VALUES ($1, $2, $3)`,
-          [Number(checkinId), item.category_id ?? null, item.ingredient_id]
-        );
+    const { checkinId } = req.params;
+    const adminReq = req as AdminRequest;
+    
+    const { rows: ciRows } = await pool.query(
+      `SELECT center_id FROM member_check_ins WHERE id = $1 AND checked_out_at IS NULL`,
+      [Number(checkinId)]
+    );
+    if (!ciRows[0]) { res.status(409).json({ error: "No active check-in" }); return; }
+    if ((ciRows[0] as { center_id: string }).center_id !== adminReq.adminCenterId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const { items } = req.body as { items?: { category_id?: number; ingredient_id: number }[] };
+    
+    if (!Array.isArray(items)) { res.status(400).json({ error: "items array required" }); return; }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM visit_ingredient_selections WHERE checkin_id = $1`, [Number(checkinId)]);
+      for (const item of items) {
+        if (item.ingredient_id) {
+          await client.query(
+            `INSERT INTO visit_ingredient_selections (checkin_id, category_id, ingredient_id) VALUES ($1, $2, $3)`,
+            [Number(checkinId), item.category_id ?? null, item.ingredient_id]
+          );
+        }
       }
+      await client.query("COMMIT");
+      res.json({ success: true, count: items.length });
+    } catch (e) {
+      console.error("Error in POST /admin/checkins/:checkinId/selections:", e);
+      await client.query("ROLLBACK").catch(() => {});
+      res.status(500).json({ error: "Failed to save selections: " + (e as Error).message });
+    } finally {
+      client.release();
     }
-    await client.query("COMMIT");
-    res.json({ success: true, count: items.length });
-  } catch (e) {
-    console.error("Error in POST /admin/checkins/:checkinId/selections:", e);
-    await client.query("ROLLBACK");
-    res.status(500).json({ error: "Failed to save selections" });
-  } finally {
-    client.release();
+  } catch (globalErr) {
+    console.error("Global Error in POST selections:", globalErr);
+    res.status(500).json({ error: "Unexpected error: " + (globalErr as Error).message });
   }
 });
 
