@@ -632,10 +632,10 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
        ) ci ON TRUE
        WHERE mcm.center_id = $1
          AND (
-           (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days')
-           OR ($2 - COALESCE(ci.used, 0)) <= 7
+           (m.valid_until IS NOT NULL AND DATE(m.valid_until) <= CURRENT_DATE + INTERVAL '10 days')
+           OR COALESCE(ci.used, 0) >= (CASE WHEN m.member_type = 'trial_3day' THEN $3 ELSE $2 END)
          )`,
-      [centerId, checkinCap]
+      [centerId, checkinCap, trialSettings.checkinCap]
     ),
     pool.query(
       `SELECT TO_CHAR(checked_in_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS day,
@@ -1256,14 +1256,14 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
        ON ci.member_id = m.id AND ci.center_id = $1 AND ci.checked_out_at IS NULL
      WHERE mcm.center_id = $1
        ${expiringSoon ? `AND (
-         (m.valid_until IS NOT NULL AND DATE(m.valid_until) BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days')
+         (m.valid_until IS NOT NULL AND DATE(m.valid_until) <= CURRENT_DATE + INTERVAL '10 days')
          OR (
            (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.cancelled = FALSE AND mci4.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz))
              >= (CASE WHEN m.member_type = 'trial_3day' THEN $3 ELSE $2 END)
          )
        )` : ""}
      ORDER BY m.valid_until ASC NULLS LAST, m.name`,
-    expiringSoon ? [centerId, checkinCap - 7, trialSettings.checkinCap - 7] : [centerId]
+    expiringSoon ? [centerId, checkinCap, trialSettings.checkinCap] : [centerId]
   );
   // Trial 3-Day members always use the fixed override, regardless of this
   // center's configured checkin_cap/renewal_days — surface the value that
