@@ -200,6 +200,7 @@ export interface Dashboard {
   menu_item_count: number;
   today_calories: number;
   today_active_members: number;
+  currently_checked_in_count: number;
   expiring_soon_count: number;
   monthly_checkins: { day: string; count: number }[];
 }

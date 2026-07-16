@@ -491,308 +491,6 @@ function AddMemberForm({ centerId, onAdded }: { centerId: string; onAdded: () =>
   );
 }
 
-// ── Checked-In Visit Panel ──────────────────────────────────────────────────
-
-function VisitPanel({
-  member, centerId, autoCheckoutMin, onCheckout,
-}: {
-  member: CenterMember;
-  centerId: string;
-  autoCheckoutMin: number;
-  onCheckout: () => void;
-}) {
-  const checkinId = member.checkin_id!;
-  const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
-  const [selections, setSelections] = useState<IngredientSelection[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [checkingOut, setCheckingOut] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<"checkout" | "cancel" | null>(null);
-  const [, forceUpdate] = useState(0);
-
-  // Refresh time display every minute
-  useEffect(() => {
-    const t = setInterval(() => forceUpdate(n => n + 1), 60000);
-    return () => clearInterval(t);
-  }, []);
-
-  const loadData = useCallback(async () => {
-    try {
-      const data = await apiGet<{ categories: MenuCategory[], selections: IngredientSelection[] }>(`/admin/checkins/${checkinId}/menu`);
-      
-      const cats = data.categories;
-      let sels = data.selections;
-
-      // Auto-select single-item groups not already selected
-      let needsSave = false;
-      for (const cat of cats) {
-        if (cat.ingredients.length === 1) {
-          const ingId = cat.ingredients[0].ingredient_id;
-          if (!sels.some(s => s.category_id === cat.id && s.ingredient_id === ingId)) {
-            // Remove any other selection in this category just in case
-            sels = sels.filter(s => s.category_id !== cat.id);
-            sels.push({ category_id: cat.id, ingredient_id: ingId });
-            needsSave = true;
-          }
-        }
-      }
-
-      setMenuCategories(cats);
-      setSelections(sels);
-      
-      if (needsSave) {
-        // Save the auto-selections silently in the background
-        apiPost(`/admin/checkins/${checkinId}/selections`, { items: sels }).catch(() => {});
-      }
-    } catch (e) { setError((e as Error).message); }
-    finally { setLoading(false); }
-  }, [centerId, checkinId]);
-
-  useEffect(() => { void loadData(); }, [loadData]);
-
-  function isIngredientSelected(categoryId: number, ingredientId: number) {
-    return selections.some(s => s.category_id === categoryId && s.ingredient_id === ingredientId);
-  }
-
-  async function handleIngredientSelect(categoryId: number, ingredientId: number, isMandatory: boolean) {
-    setBusy(true); setError(null);
-    let newSels = [...selections];
-    
-    if (isIngredientSelected(categoryId, ingredientId)) {
-      if (!isMandatory) {
-        newSels = newSels.filter(s => !(s.category_id === categoryId && s.ingredient_id === ingredientId));
-      } else {
-        setBusy(false);
-        return; // mandatory category, can't deselect the only option
-      }
-    } else {
-      const filtered = newSels.filter(s => s.category_id !== categoryId);
-      newSels = [...filtered, { category_id: categoryId, ingredient_id: ingredientId }];
-    }
-    
-    setSelections(newSels);
-
-    try {
-      await apiPost(`/admin/checkins/${checkinId}/selections`, { items: newSels });
-    } catch (e) { 
-      setError((e as Error).message);
-      // Revert on error
-      void loadData();
-    } finally { 
-      setBusy(false); 
-    }
-  }
-
-  async function handleCheckout() {
-    setCheckingOut(true); setError(null);
-    try {
-      await apiPost(`/admin/centers/${centerId}/members/${member.id}/checkout`, {});
-      onCheckout();
-    } catch (e) { setError((e as Error).message); }
-    finally { setCheckingOut(false); }
-  }
-
-  async function handleCancelCheckin() {
-    setCheckingOut(true); setError(null);
-    try {
-      await apiPost(`/admin/centers/${centerId}/members/${member.id}/cancel-checkin`, {});
-      onCheckout();
-    } catch (e) { setError((e as Error).message); }
-    finally { setCheckingOut(false); }
-  }
-
-  const mins = minutesSince(member.checked_in_at!);
-  const remaining = autoCheckoutMin - mins;
-
-  const selectionCount = selections.length;
-
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 px-5 py-3 text-xs text-muted-foreground">
-        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading visit options…
-      </div>
-    );
-  }
-
-  return (
-    <div className="border-t border-border/50 bg-muted/20 px-5 py-4 space-y-4">
-      {/* Already-consumed-today notice */}
-      {member.already_consumed_today && (
-        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-800">
-            <span className="font-semibold">Repeat visit today.</span> This member has already visited today — items can still be selected and logged below.
-          </p>
-        </div>
-      )}
-      {/* Time bar */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 bg-border rounded-full h-1.5 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${mins >= autoCheckoutMin ? "bg-red-500" : mins >= autoCheckoutMin * 0.83 ? "bg-amber-400" : "bg-emerald-400"}`}
-            style={{ width: `${Math.min(100, (mins / autoCheckoutMin) * 100)}%` }}
-          />
-        </div>
-        <span className={`text-xs font-medium tabular-nums flex-shrink-0 ${remaining <= 0 ? "text-red-500" : remaining <= 30 ? "text-amber-600" : "text-muted-foreground"}`}>
-          {remaining <= 0
-            ? "Auto-checkout overdue"
-            : remaining <= 30
-            ? `Auto-checkout in ${remaining} min`
-            : `${mins} min of ${autoCheckoutMin} min`}
-        </span>
-      </div>
-
-      {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">{error}</p>}
-
-      {/* Items — compact list matching log.tsx */}
-      {menuCategories.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No check-in categories available at this center.</p>
-      ) : (
-        <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/60">
-          {menuCategories.map(cat => {
-            const isSingle = cat.ingredients.length === 1;
-            const sel = selections.find(s => s.category_id === cat.id);
-            const selectedIng = sel ? cat.ingredients.find(i => i.ingredient_id === sel.ingredient_id) : null;
-
-            return (
-              <div key={cat.id} className="flex items-center gap-2 px-3 py-2 min-h-[40px]">
-                {/* Category label */}
-                <div className="w-20 shrink-0">
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 leading-tight line-clamp-2">{cat.name}</span>
-                  {cat.is_mandatory && <span className="block text-[8px] text-amber-600 font-semibold">Required</span>}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  {isSingle ? (
-                    <span className="text-xs font-medium text-foreground">
-                      {cat.ingredients[0].name}
-                      {cat.ingredients[0].flavour && cat.ingredients[0].flavour !== cat.ingredients[0].name && (
-                        <span className="text-muted-foreground font-normal"> · {cat.ingredients[0].flavour}</span>
-                      )}
-                    </span>
-                  ) : (
-                    <div className="flex flex-wrap gap-1">
-                      {cat.ingredients.map(ing => {
-                        const isSelected = isIngredientSelected(cat.id, ing.ingredient_id);
-                        return (
-                          <button
-                            key={ing.ingredient_id}
-                            disabled={busy}
-                            onClick={() => handleIngredientSelect(cat.id, ing.ingredient_id, cat.is_mandatory)}
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all disabled:opacity-50 ${
-                              isSelected
-                                ? "bg-violet-100 text-violet-800 border-violet-300"
-                                : "bg-muted/50 text-muted-foreground border-border hover:border-violet-400 hover:text-violet-700"
-                            }`}
-                          >
-                            {ing.flavour ?? ing.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Right badge / action */}
-                <div className="shrink-0 flex items-center gap-1.5">
-                  {isSingle && (
-                    <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Auto</span>
-                  )}
-                  {!isSingle && selectedIng && (
-                    <button
-                      onClick={() => handleIngredientSelect(cat.id, selectedIng.ingredient_id, cat.is_mandatory)}
-                      disabled={busy}
-                      className="w-4 h-4 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
-                      title="Remove"
-                    >
-                      <XCircle className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Checkout footer */}
-
-      <div className="pt-2 border-t border-border/50 space-y-2">
-        {/* Confirmation prompt */}
-        {pendingAction && (
-          <div className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border ${
-            pendingAction === "cancel"
-              ? "bg-red-50 border-red-200"
-              : "bg-amber-50 border-amber-200"
-          }`}>
-            <p className={`text-xs font-medium flex-1 ${pendingAction === "cancel" ? "text-red-800" : "text-amber-800"}`}>
-              {pendingAction === "cancel"
-                ? `Cancel ${member.name}'s check-in? No consumption will be recorded.`
-                : selectionCount > 0
-                  ? `Check out ${member.name} and log ${selectionCount} item${selectionCount !== 1 ? "s" : ""}?`
-                  : `Check out ${member.name}? No items are selected — nothing will be logged.`}
-            </p>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => setPendingAction(null)}
-                disabled={checkingOut}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-              >
-                Go back
-              </button>
-              <button
-                onClick={() => {
-                  if (pendingAction === "cancel") void handleCancelCheckin();
-                  else void handleCheckout();
-                  setPendingAction(null);
-                }}
-                disabled={checkingOut}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50 transition-colors ${
-                  pendingAction === "cancel"
-                    ? "bg-red-500 hover:bg-red-600"
-                    : "bg-amber-500 hover:bg-amber-600"
-                }`}
-              >
-                {checkingOut ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                {pendingAction === "cancel" ? "Yes, cancel" : "Yes, check out"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs text-muted-foreground flex-1">
-            {selectionCount > 0
-              ? `${selectionCount} item${selectionCount !== 1 ? "s" : ""} will be logged at checkout`
-              : "No items selected — consumption will not be logged"}
-          </p>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => setPendingAction("cancel")}
-              disabled={checkingOut || pendingAction === "cancel"}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/5 disabled:opacity-50 transition-colors"
-              title="Cancel this check-in without recording any consumption"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              Cancel Check-in
-            </button>
-            <button
-              onClick={() => setPendingAction("checkout")}
-              disabled={checkingOut || pendingAction === "checkout"}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
-            >
-              {checkingOut ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
-              Check Out & Book
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Health Panel ─────────────────────────────────────────────────────────────
 
 function HealthPanel({ memberId, centerId, onClose }: {
@@ -1010,12 +708,10 @@ function validityBadge(valid_until: string | null) {
   );
 }
 
-function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
-  member: CenterMember; centerId: string; autoCheckoutMin: number; onRefresh: () => void;
+function MemberRow({ member, centerId, onRefresh }: {
+  member: CenterMember; centerId: string; onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [showWeightForm, setShowWeightForm] = useState(false);
-  const [weightKg, setWeightKg] = useState("");
   const [showHealthPanel, setShowHealthPanel] = useState(false);
   const [showEditPanel, setShowEditPanel] = useState(false);
   // edit fields
@@ -1050,9 +746,6 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
   const [showHistory, setShowHistory]         = useState(false);
   const [history, setHistory] = useState<MemberRenewal[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-
-  const isCheckedIn = !!member.checkin_id;
-  const mins = isCheckedIn ? minutesSince(member.checked_in_at!) : 0;
 
   function openEdit() {
     const [dobDay = "", dobMonth = ""] = (member.dob ?? "").split(" ");
@@ -1175,23 +868,10 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
     }
   }
 
-  async function handleCheckin() {
-    const w = Number(weightKg);
-    if (!w || w <= 0) return;
-    setBusy(true);
-    try {
-      await apiPost(`/admin/centers/${centerId}/members/${member.id}/checkin`, { weight_kg: w });
-      setShowWeightForm(false);
-      setWeightKg("");
-      onRefresh();
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed"); }
-    finally { setBusy(false); }
-  }
-
   return (
-    <div className={`border-b border-border last:border-0 ${isCheckedIn ? "bg-green-50/30" : ""} ${!member.is_active ? "opacity-55 bg-muted/20" : ""}`}>
+    <div className={`border-b border-border last:border-0 ${!member.is_active ? "opacity-55 bg-muted/20" : ""}`}>
       <div className="flex flex-col gap-3 px-5 py-4">
-        {/* Top Row: Avatar, Name, In-Status, and Action Buttons */}
+        {/* Top Row: Avatar, Name, and Action Buttons */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="w-9 h-9 rounded-full bg-teal-pale flex items-center justify-center flex-shrink-0">
@@ -1201,54 +881,10 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
             </div>
             <div className="flex items-center gap-2 truncate">
               <p className="font-medium text-sm text-foreground truncate">{member.name}</p>
-              {isCheckedIn && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide bg-green-100 text-green-700 rounded-full px-2 py-0.5 whitespace-nowrap">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  In
-                </span>
-              )}
             </div>
           </div>
           
           <div className="flex flex-wrap justify-end items-center gap-1.5 flex-shrink-0">
-            {!isCheckedIn && !showWeightForm && (
-              <button
-                onClick={() => setShowWeightForm(true)}
-                disabled={busy}
-                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                Check In
-              </button>
-            )}
-            {!isCheckedIn && showWeightForm && (
-              <>
-                <input
-                  type="number"
-                  value={weightKg}
-                  onChange={e => setWeightKg(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && void handleCheckin()}
-                  placeholder="kg"
-                  min="20" max="300" step="0.1"
-                  autoFocus
-                  className="w-20 h-7 px-2 text-sm rounded-lg border border-green-300 bg-white focus:outline-none focus:ring-1 focus:ring-green-400"
-                />
-                <button
-                  onClick={() => void handleCheckin()}
-                  disabled={!weightKg || Number(weightKg) <= 0 || busy}
-                  className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-40"
-                >
-                  {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <LogIn className="w-3 h-3" />}
-                  Check In
-                </button>
-                <button
-                  onClick={() => { setShowWeightForm(false); setWeightKg(""); }}
-                  className="p-1 rounded-lg text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </>
-            )}
             {showRenew && (() => {
               const effectiveRenewalDays = isTrial3Day ? 5 : 30;
               return (
@@ -1356,24 +992,8 @@ function MemberRow({ member, centerId, autoCheckoutMin, onRefresh }: {
           <span className={`inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5 border ${checkinsUsed >= effectiveCheckinCap ? "text-red-700 bg-red-50 border-red-300" : checkinsUsed >= effectiveCheckinCap - 7 ? "text-amber-700 bg-amber-50 border-amber-300" : "text-muted-foreground bg-muted/40 border-border"}`}>
             {checkinsUsed}/{effectiveCheckinCap} check-ins{isTrial3Day ? " (trial cap)" : ""}
           </span>
-          {isCheckedIn && member.checked_in_at && (
-            <p className={`text-xs flex items-center gap-1 ${mins >= 150 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
-              <Clock className="w-3 h-3" />
-              Since {formatTime(member.checked_in_at)} · {mins} min
-            </p>
-          )}
-          {!isCheckedIn && !showWeightForm && (
-            <p className="text-xs text-muted-foreground">Not checked in</p>
-          )}
-          {!isCheckedIn && showWeightForm && (
-            <p className="text-xs text-amber-700 font-medium">Enter today&apos;s weight to check in</p>
-          )}
         </div>
       </div>
-      {/* Expanded visit panel for checked-in members */}
-      {isCheckedIn && (
-        <VisitPanel member={member} centerId={centerId} autoCheckoutMin={autoCheckoutMin} onCheckout={onRefresh} />
-      )}
       {showEditPanel && (
         <div className="border-t border-violet-100 bg-violet-50/40 px-5 py-4">
           <div className="flex items-center justify-between mb-3">
@@ -1945,7 +1565,6 @@ function HealthReportModal({ centerId, members, onClose }: {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set(members.map(m => m.id)));
   const [records, setRecords] = useState<HealthReportRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [nameFilter, setNameFilter] = useState("");
   const [viewType, setViewType] = useState<"details" | "summary">("details");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -2144,8 +1763,6 @@ function RenewalHistoryModal({ centerId, onClose }: {
   const [to, setTo] = useState(todayISO);
   const [records, setRecords] = useState<MemberRenewalReportRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [nameFilter, setNameFilter] = useState("");
-  const [viewType, setViewType] = useState<"details" | "summary">("details");
 
   useEffect(() => {
     if (!from || !to) return;
@@ -2530,7 +2147,6 @@ function ProductReturnDialog({ centerId, memberId, onSuccess, onClose }: { cente
 export default function MembersPage() {
   const center = getAdminCenter();
   const [members, setMembers] = useState<CenterMember[]>([]);
-  const [autoCheckoutMin, setAutoCheckoutMin] = useState(180);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showHealthReport, setShowHealthReport] = useState(false);
@@ -2550,13 +2166,6 @@ export default function MembersPage() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => {
-    if (!center) return;
-    apiGet<CenterSettings>(`/admin/centers/${center.id}/settings`)
-      .then(s => setAutoCheckoutMin(s.auto_checkout_min))
-      .catch(() => { /* keep default 180 */ });
-  }, [center?.id]);
-
   useEffect(() => { load(); }, [center?.id, expiringSoon]);
 
   const q = search.trim().toLowerCase();
@@ -2569,21 +2178,17 @@ export default function MembersPage() {
       )
     : members;
 
-  const checkedIn    = filtered.filter(m => m.checkin_id);
-  const notCheckedIn = filtered.filter(m => !m.checkin_id);
-
   return (
     <div className="min-h-screen bg-background">
       <Nav />
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Members</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              {members.length} member{members.length !== 1 ? "s" : ""} · {members.filter(m => m.checkin_id).length} checked in
-            </p>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">Members</h1>
+            <p className="text-sm text-muted-foreground mt-1">Manage and view your center's members.</p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
             {members.length > 0 && (
               <>
                 <button
@@ -2704,35 +2309,11 @@ export default function MembersPage() {
             <p className="text-sm text-muted-foreground">No members match "<span className="font-medium text-foreground">{search}</span>"</p>
           </div>
         ) : (
-          <>
-            {checkedIn.length > 0 && (
-              <div className="bg-card border border-border rounded-2xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-border bg-green-50">
-                  <h2 className="text-sm font-semibold text-green-700 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    Currently Checked In ({checkedIn.length})
-                    <span className="ml-auto text-[10px] font-normal text-green-600 normal-case">
-                      Auto-checkout at {autoCheckoutMin} min · select items below each member
-                    </span>
-                  </h2>
-                </div>
-                {checkedIn.map(m => (
-                  <MemberRow key={m.id} member={m} centerId={center!.id} autoCheckoutMin={autoCheckoutMin} onRefresh={load} />
-                ))}
-              </div>
-            )}
-
-            {notCheckedIn.length > 0 && (
-              <div className="bg-card border border-border rounded-2xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-border">
-                  <h2 className="text-sm font-semibold text-muted-foreground">Not Checked In ({notCheckedIn.length})</h2>
-                </div>
-                {notCheckedIn.map(m => (
-                  <MemberRow key={m.id} member={m} centerId={center!.id} autoCheckoutMin={autoCheckoutMin} onRefresh={load} />
-                ))}
-              </div>
-            )}
-          </>
+          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+            {filtered.map(m => (
+              <MemberRow key={m.id} member={m} centerId={center!.id} onRefresh={load} />
+            ))}
+          </div>
         )}
       </main>
     </div>

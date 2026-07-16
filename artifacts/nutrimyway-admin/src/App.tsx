@@ -8,6 +8,7 @@ import ConsumptionPage from "@/pages/consumption";
 import SettingsPage from "@/pages/settings";
 import SuperPage from "@/pages/super";
 import MembersPage from "@/pages/members";
+import CheckinsPage from "@/pages/checkins";
 import LogsPage from "@/pages/logs";
 import InventoryPage from "@/pages/inventory";
 import { isAuthenticated, needsTermsAcceptance, clearAuth } from "@/lib/api";
@@ -81,6 +82,9 @@ function Router() {
       </Route>
       <Route path="/members">
         <AuthGuard><MembersPage /></AuthGuard>
+      </Route>
+      <Route path="/checkins">
+        <AuthGuard><CheckinsPage /></AuthGuard>
       </Route>
       <Route path="/logs">
         <AuthGuard><LogsPage /></AuthGuard>

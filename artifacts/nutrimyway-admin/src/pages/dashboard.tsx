@@ -431,15 +431,16 @@ export default function DashboardPage() {
 
         {/* ── Stat cards ── */}
         {loading ? (
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
-            {[...Array(5)].map((_, i) => (
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+            {[...Array(6)].map((_, i) => (
               <div key={i} className="bg-card rounded-xl border border-border p-4 h-16 animate-pulse" />
             ))}
           </div>
         ) : data ? (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
               <StatCard icon={Users} label="Total Members" value={data.member_count} color="bg-teal-base" onClick={() => navigate("/members")} />
+              <StatCard icon={CheckCircle2} label="Checked In" value={data.currently_checked_in_count} color="bg-emerald-500" onClick={() => navigate("/checkins")} />
               <StatCard icon={Activity} label="Active Today" value={data.today_active_members} color="bg-teal-dark" onClick={() => navigate("/members")} />
               <StatCard icon={Flame} label="kcal Today" value={Math.round(data.today_calories).toLocaleString()} color="bg-amber-500" onClick={() => navigate("/consumption")} />
               <StatCard

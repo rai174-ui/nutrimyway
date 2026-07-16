@@ -604,7 +604,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
     getTrialSettings(),
   ]);
 
-  const [memberRes, menuRes, kcalRes, activeRes, expiringRes, weeklyRes] = await Promise.all([
+  const [memberRes, menuRes, kcalRes, activeRes, currentlyCheckedInRes, expiringRes, weeklyRes] = await Promise.all([
     pool.query("SELECT COUNT(*) as count FROM member_center_mapping WHERE center_id = $1", [centerId]),
     pool.query("SELECT COUNT(*) as count FROM menu_items WHERE center_id = $1", [centerId]),
     pool.query(
@@ -624,6 +624,12 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
        FROM member_check_ins
        WHERE center_id = $1 AND cancelled = FALSE AND DATE(checked_in_at AT TIME ZONE 'Asia/Kolkata') = $2`,
       [centerId, today]
+    ),
+    pool.query(
+      `SELECT COUNT(DISTINCT member_id) AS count
+       FROM member_check_ins
+       WHERE center_id = $1 AND cancelled = FALSE AND checked_out_at IS NULL`,
+      [centerId]
     ),
     pool.query(
       `SELECT COUNT(*) AS count
@@ -658,6 +664,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
     menu_item_count:       Number(menuRes.rows[0].count),
     today_calories:        Number(kcalRes.rows[0].total_calories),
     today_active_members:  Number(activeRes.rows[0].count),
+    currently_checked_in_count: Number(currentlyCheckedInRes.rows[0].count),
     expiring_soon_count:   Number(expiringRes.rows[0].count),
     monthly_checkins:      weeklyRes.rows as Array<{ day: string; count: number }>,
   });
