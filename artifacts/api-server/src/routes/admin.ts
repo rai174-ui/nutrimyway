@@ -599,7 +599,10 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
   if (adminReq.adminCenterId !== centerId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
-  const { checkinCap } = await getCenterLimits(centerId);
+  const [{ checkinCap }, trialSettings] = await Promise.all([
+    getCenterLimits(centerId),
+    getTrialSettings(),
+  ]);
 
   const [memberRes, menuRes, kcalRes, activeRes, expiringRes, weeklyRes] = await Promise.all([
     pool.query("SELECT COUNT(*) as count FROM member_center_mapping WHERE center_id = $1", [centerId]),
