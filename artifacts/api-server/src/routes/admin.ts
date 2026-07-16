@@ -636,7 +636,7 @@ router.get("/admin/centers/:centerId/dashboard", requireAdmin, async (req, res) 
        WHERE mcm.center_id = $1
          AND (
            (m.valid_until IS NOT NULL AND DATE(m.valid_until) <= CURRENT_DATE + INTERVAL '10 days')
-           OR COALESCE(ci.used, 0) >= (CASE WHEN m.member_type = 'trial_3day' THEN $3 ELSE $2 END)
+           OR COALESCE(ci.used, 0) >= (CASE WHEN m.member_type = 'trial_3day' THEN $3::int ELSE $2::int END)
          )`,
       [centerId, checkinCap, trialSettings.checkinCap]
     ),
@@ -1262,7 +1262,7 @@ router.get("/admin/centers/:centerId/members", requireAdmin, async (req, res) =>
          (m.valid_until IS NOT NULL AND DATE(m.valid_until) <= CURRENT_DATE + INTERVAL '10 days')
          OR (
            (SELECT COUNT(*) FROM member_check_ins mci4 WHERE mci4.member_id = m.id AND mci4.cancelled = FALSE AND mci4.checked_in_at >= COALESCE(m.cycle_started_at, NULLIF(m.date_of_joining, '')::timestamptz, '-infinity'::timestamptz))
-             >= (CASE WHEN m.member_type = 'trial_3day' THEN $3 ELSE $2 END)
+             >= (CASE WHEN m.member_type = 'trial_3day' THEN $3::int ELSE $2::int END)
          )
        )` : ""}
      ORDER BY m.valid_until ASC NULLS LAST, m.name`,
