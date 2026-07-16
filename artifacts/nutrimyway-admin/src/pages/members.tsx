@@ -1841,9 +1841,9 @@ function MemberMealsModal({ centerId, onClose }: { centerId: string; onClose: ()
                           <div className="flex items-center gap-2">
                             <span>{e.food_item}</span>
                             {e.checkin_id != null ? (
-                              <span className="text-[9px] uppercase tracking-wider font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm shrink-0">Center</span>
+                              <span className="text-[9px] uppercase tracking-wider font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm shrink-0">Center Meal</span>
                             ) : (
-                              <span className="text-[9px] uppercase tracking-wider font-bold bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded-sm shrink-0">Outside</span>
+                              <span className="text-[9px] uppercase tracking-wider font-bold bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded-sm shrink-0">Outside Meal</span>
                             )}
                             {e.photo_url && (
                               <a
