@@ -1328,7 +1328,9 @@ function MemberMealsModal({ centerId, onClose }: { centerId: string; onClose: ()
       "Protein (g)": l.protein_g ? Math.round(l.protein_g) : "",
       "Fiber (g)": l.fiber_g ? Math.round(l.fiber_g) : "",
       Date: new Date(l.logged_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
-      Time: new Date(l.logged_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+      Time: new Date(l.logged_at).getUTCHours() === 0 && new Date(l.logged_at).getUTCMinutes() === 0 
+        ? "" 
+        : new Date(l.logged_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -1497,7 +1499,11 @@ function MemberMealsModal({ centerId, onClose }: { centerId: string; onClose: ()
                         <td className="px-4 py-2 text-xs text-right text-muted-foreground">
                           {new Date(e.logged_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                           {" "}
-                          <span className="text-muted-foreground/60">{new Date(e.logged_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+                          <span className="text-muted-foreground/60">
+                            {new Date(e.logged_at).getUTCHours() === 0 && new Date(e.logged_at).getUTCMinutes() === 0 
+                              ? "" 
+                              : new Date(e.logged_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
                         </td>
                       </tr>
                     ))}

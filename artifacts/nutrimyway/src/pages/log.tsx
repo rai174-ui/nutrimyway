@@ -364,7 +364,14 @@ export function Log() {
           carbs_g: null,
           fat_g: null,
           photo_url: photoUrl,
-          logged_at: todayLocal(),
+          logged_at: selectedDate === todayLocal() 
+            ? new Date().toISOString() 
+            : new Date(`${selectedDate}T${
+                activeSlot === 'Breakfast' ? '09:00:00' :
+                activeSlot === 'Lunch' ? '13:00:00' :
+                activeSlot === 'Snack' ? '17:00:00' :
+                '20:00:00'
+              }+05:30`).toISOString(),
         }
       },
       {
