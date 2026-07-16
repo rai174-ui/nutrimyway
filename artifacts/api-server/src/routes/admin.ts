@@ -2707,22 +2707,26 @@ router.post("/admin/checkins/:checkinId/selections", requireAdmin, async (req, r
   
   if (!Array.isArray(items)) { res.status(400).json({ error: "items array required" }); return; }
 
-  await pool.query("BEGIN");
+  const client = await pool.connect();
   try {
-    await pool.query(`DELETE FROM visit_ingredient_selections WHERE checkin_id = $1`, [Number(checkinId)]);
+    await client.query("BEGIN");
+    await client.query(`DELETE FROM visit_ingredient_selections WHERE checkin_id = $1`, [Number(checkinId)]);
     for (const item of items) {
       if (item.ingredient_id) {
-        await pool.query(
+        await client.query(
           `INSERT INTO visit_ingredient_selections (checkin_id, category_id, ingredient_id) VALUES ($1, $2, $3)`,
           [Number(checkinId), item.category_id ?? null, item.ingredient_id]
         );
       }
     }
-    await pool.query("COMMIT");
+    await client.query("COMMIT");
     res.json({ success: true, count: items.length });
   } catch (e) {
-    await pool.query("ROLLBACK");
+    console.error("Error in POST /admin/checkins/:checkinId/selections:", e);
+    await client.query("ROLLBACK");
     res.status(500).json({ error: "Failed to save selections" });
+  } finally {
+    client.release();
   }
 });
 
