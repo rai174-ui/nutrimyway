@@ -991,49 +991,53 @@ function ItemMaster() {
       )}
 
       {adding && (
-        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-3">
-                    <div className="flex items-center gap-2 mb-1 px-1">
-            <label className="flex-1 min-w-[200px] text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
-            <label className="w-36 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
-            <label className="w-32 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              className="flex-1 min-w-[200px] h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="Item name *"
-              onKeyDown={e => e.key === "Enter" && void addIngredient()}
-              autoFocus
-            />
-            <select
-              value={newCategory}
-              onChange={e => {
-                const val = e.target.value;
-                setNewCategory(val);
-                if (val) {
-                  const cat = categories.find(c => String(c.id) === val);
-                  if (cat) {
-                    setNewServingQty(cat.serving_qty != null ? String(cat.serving_qty) : "1");
-                    setNewKcalPerServing(cat.kcal_per_serve != null ? String(cat.kcal_per_serve) : "");
-                    setNewProteinPerServing(cat.protein_per_serve_g != null ? String(cat.protein_per_serve_g) : "");
-                    setNewFiberPerServing(cat.fiber_per_serve_g != null ? String(cat.fiber_per_serve_g) : "");
+        <div className="px-5 py-4 border-b border-dashed border-border bg-muted/30 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
+              <input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Item name *"
+                onKeyDown={e => e.key === "Enter" && void addIngredient()}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
+              <select
+                value={newCategory}
+                onChange={e => {
+                  const val = e.target.value;
+                  setNewCategory(val);
+                  if (val) {
+                    const cat = categories.find(c => String(c.id) === val);
+                    if (cat) {
+                      setNewServingQty(cat.serving_qty != null ? String(cat.serving_qty) : "1");
+                      setNewKcalPerServing(cat.kcal_per_serve != null ? String(cat.kcal_per_serve) : "");
+                      setNewProteinPerServing(cat.protein_per_serve_g != null ? String(cat.protein_per_serve_g) : "");
+                      setNewFiberPerServing(cat.fiber_per_serve_g != null ? String(cat.fiber_per_serve_g) : "");
+                    }
                   }
-                }
-              }}
-              className="w-36 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">— Category —</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <select
-              value={newFlavour}
-              onChange={e => setNewFlavour(e.target.value)}
-              className="w-32 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">— Flavour —</option>
-              {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
-            </select>
+                }}
+                className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">— Category —</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
+              <select
+                value={newFlavour}
+                onChange={e => setNewFlavour(e.target.value)}
+                className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">— Flavour —</option>
+                {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
+              </select>
+            </div>
           </div>
 
           <div className="space-y-2 border-l-2 border-primary/20 pl-3 ml-1">
@@ -1084,60 +1088,65 @@ function ItemMaster() {
             </button>
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap pt-2">
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs text-muted-foreground whitespace-nowrap">Serving qty</label>
-              <input
-                type="number" min="0.1" step="0.1"
-                value={newServingQty}
-                onChange={e => setNewServingQty(e.target.value)}
-                className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              />
+          <div className="pt-2 border-t border-border/50">
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Serving Info</label>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Serving qty</label>
+                <input
+                  type="number" min="0.1" step="0.1"
+                  value={newServingQty}
+                  onChange={e => setNewServingQty(e.target.value)}
+                  className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">kcal/serve</label>
+                <input
+                  type="number" min="0" step="1"
+                  value={newKcalPerServing}
+                  onChange={e => setNewKcalPerServing(e.target.value)}
+                  placeholder="—"
+                  className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Protein/serve (g)</label>
+                <input
+                  type="number" min="0" step="0.1"
+                  value={newProteinPerServing}
+                  onChange={e => setNewProteinPerServing(e.target.value)}
+                  placeholder="—"
+                  className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Fiber/serve (g)</label>
+                <input
+                  type="number" min="0" step="0.1"
+                  value={newFiberPerServing}
+                  onChange={e => setNewFiberPerServing(e.target.value)}
+                  placeholder="—"
+                  className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div className="flex items-center gap-3 h-9">
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer flex-1">
+                  <input type="checkbox" checked={newTrialEligible} onChange={e => setNewTrialEligible(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
+                  Trial-eligible
+                </label>
+                <button
+                  onClick={() => void addIngredient()}
+                  disabled={!newName.trim() || saving}
+                  className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+                >
+                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add"}
+                </button>
+                <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs text-muted-foreground whitespace-nowrap">kcal/serve</label>
-              <input
-                type="number" min="0" step="1"
-                value={newKcalPerServing}
-                onChange={e => setNewKcalPerServing(e.target.value)}
-                placeholder="—"
-                className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs text-muted-foreground whitespace-nowrap">Protein/serve (g)</label>
-              <input
-                type="number" min="0" step="0.1"
-                value={newProteinPerServing}
-                onChange={e => setNewProteinPerServing(e.target.value)}
-                placeholder="—"
-                className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs text-muted-foreground whitespace-nowrap">Fiber/serve (g)</label>
-              <input
-                type="number" min="0" step="0.1"
-                value={newFiberPerServing}
-                onChange={e => setNewFiberPerServing(e.target.value)}
-                placeholder="—"
-                className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
-              <input type="checkbox" checked={newTrialEligible} onChange={e => setNewTrialEligible(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
-              Trial-eligible
-            </label>
-            <button
-              onClick={() => void addIngredient()}
-              disabled={!newName.trim() || saving}
-              className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-            >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add Item"}
-            </button>
-            <button onClick={() => setAdding(false)} className="text-muted-foreground hover:text-foreground">
-              <X className="w-4 h-4" />
-            </button>
           </div>
         </div>
       )}
@@ -1166,48 +1175,52 @@ function ItemMaster() {
             {ingredients.map(ing => (
               <tr key={ing.id} className="hover:bg-muted/30 transition-colors">
                 {editId === ing.id ? (
-                  <td colSpan={6} className="px-5 py-4 bg-muted/10">
-                    <div className="space-y-3">
-                                            <div className="flex items-center gap-2 mb-1 px-1">
-                        <label className="flex-1 min-w-[200px] text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
-                        <label className="w-40 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
-                        <label className="w-40 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          value={editName}
-                          onChange={e => setEditName(e.target.value)}
-                          className="flex-1 min-w-[200px] h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                          placeholder="Item name *"
-                        />
-                        <select
-                          value={editCategory}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setEditCategory(val);
-                            if (val) {
-                              const cat = categories.find(c => String(c.id) === val);
-                              if (cat) {
-                                setEditServingQty(cat.serving_qty != null ? String(cat.serving_qty) : "1");
-                                setEditKcalPerServing(cat.kcal_per_serve != null ? String(cat.kcal_per_serve) : "");
-                                setEditProteinPerServing(cat.protein_per_serve_g != null ? String(cat.protein_per_serve_g) : "");
-                                setEditFiberPerServing(cat.fiber_per_serve_g != null ? String(cat.fiber_per_serve_g) : "");
+                  <td colSpan={6} className="px-5 py-4 bg-muted/10 border-b border-border/50">
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Name</label>
+                          <input
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                            placeholder="Item name *"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</label>
+                          <select
+                            value={editCategory}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditCategory(val);
+                              if (val) {
+                                const cat = categories.find(c => String(c.id) === val);
+                                if (cat) {
+                                  setEditServingQty(cat.serving_qty != null ? String(cat.serving_qty) : "1");
+                                  setEditKcalPerServing(cat.kcal_per_serve != null ? String(cat.kcal_per_serve) : "");
+                                  setEditProteinPerServing(cat.protein_per_serve_g != null ? String(cat.protein_per_serve_g) : "");
+                                  setEditFiberPerServing(cat.fiber_per_serve_g != null ? String(cat.fiber_per_serve_g) : "");
+                                }
                               }
-                            }
-                          }}
-                          className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                        >
-                          <option value="">— Category —</option>
-                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <select
-                          value={editFlavour}
-                          onChange={e => setEditFlavour(e.target.value)}
-                          className="w-40 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                        >
-                          <option value="">— Flavour —</option>
-                          {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
-                        </select>
+                            }}
+                            className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          >
+                            <option value="">— Category —</option>
+                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flavour</label>
+                          <select
+                            value={editFlavour}
+                            onChange={e => setEditFlavour(e.target.value)}
+                            className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          >
+                            <option value="">— Flavour —</option>
+                            {flavours.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
+                          </select>
+                        </div>
                       </div>
 
                       <div className="space-y-2 border-l-2 border-primary/20 pl-3 ml-1">
@@ -1258,56 +1271,61 @@ function ItemMaster() {
                         </button>
                       </div>
 
-                      <div className="flex items-center gap-3 flex-wrap pt-2">
-                        <div className="flex items-center gap-1.5">
-                          <label className="text-xs text-muted-foreground whitespace-nowrap">Serving qty</label>
-                          <input
-                            type="number" min="0.1" step="0.1"
-                            value={editServingQty}
-                            onChange={e => setEditServingQty(e.target.value)}
-                            className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                          />
+                      <div className="pt-2 border-t border-border/50">
+                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Serving Info</label>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-muted-foreground">Serving qty</label>
+                            <input
+                              type="number" min="0.1" step="0.1"
+                              value={editServingQty}
+                              onChange={e => setEditServingQty(e.target.value)}
+                              className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-muted-foreground">kcal/serve</label>
+                            <input
+                              type="number" min="0" step="1"
+                              value={editKcalPerServing}
+                              onChange={e => setEditKcalPerServing(e.target.value)}
+                              placeholder="—"
+                              className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-muted-foreground">Protein/serve (g)</label>
+                            <input
+                              type="number" min="0" step="0.1"
+                              value={editProteinPerServing}
+                              onChange={e => setEditProteinPerServing(e.target.value)}
+                              placeholder="—"
+                              className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-muted-foreground">Fiber/serve (g)</label>
+                            <input
+                              type="number" min="0" step="0.1"
+                              value={editFiberPerServing}
+                              onChange={e => setEditFiberPerServing(e.target.value)}
+                              placeholder="—"
+                              className="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                          </div>
+                          <div className="flex items-center gap-3 h-9">
+                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer flex-1">
+                              <input type="checkbox" checked={editTrialEligible} onChange={e => setEditTrialEligible(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
+                              Trial-eligible
+                            </label>
+                            <button onClick={() => void saveEdit(ing.id)} disabled={saving} className="h-9 px-3 rounded text-primary hover:bg-primary/10 disabled:opacity-40 font-medium text-xs flex items-center justify-center">
+                              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                            </button>
+                            <button onClick={() => setEditId(null)} className="h-9 w-9 rounded flex items-center justify-center text-muted-foreground hover:bg-muted">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <label className="text-xs text-muted-foreground whitespace-nowrap">kcal/serve</label>
-                          <input
-                            type="number" min="0" step="1"
-                            value={editKcalPerServing}
-                            onChange={e => setEditKcalPerServing(e.target.value)}
-                            placeholder="—"
-                            className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                          />
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <label className="text-xs text-muted-foreground whitespace-nowrap">Protein/serve (g)</label>
-                          <input
-                            type="number" min="0" step="0.1"
-                            value={editProteinPerServing}
-                            onChange={e => setEditProteinPerServing(e.target.value)}
-                            placeholder="—"
-                            className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                          />
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <label className="text-xs text-muted-foreground whitespace-nowrap">Fiber/serve (g)</label>
-                          <input
-                            type="number" min="0" step="0.1"
-                            value={editFiberPerServing}
-                            onChange={e => setEditFiberPerServing(e.target.value)}
-                            placeholder="—"
-                            className="w-20 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                          />
-                        </div>
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
-                          <input type="checkbox" checked={editTrialEligible} onChange={e => setEditTrialEligible(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
-                          Trial-eligible
-                        </label>
-                        <button onClick={() => void saveEdit(ing.id)} disabled={saving} className="text-primary hover:text-primary/80 disabled:opacity-40">
-                          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                        </button>
-                        <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground">
-                          <X className="w-4 h-4" />
-                        </button>
                       </div>
                     </div>
                   </td>
@@ -1333,29 +1351,29 @@ function ItemMaster() {
                       )}
                     </td>
                     <td className="py-3 px-3 align-top">
-                      <div className="flex flex-col gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
                         {(ing.skus || []).map(s => (
-                          <div key={s.id ?? s.material_code} className="flex items-center gap-2">
+                          <div key={s.id ?? s.material_code} className="flex items-center gap-1">
                             <span className="text-[11px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded border">{s.material_code}</span>
-                            <span className="text-xs text-foreground font-medium">{s.pack_size} {s.pack_unit}</span>
+                            <span className="text-xs text-foreground font-medium whitespace-nowrap">{s.pack_size} {s.pack_unit}</span>
                           </div>
                         ))}
                       </div>
                     </td>
-                    <td className="py-3 px-3 align-top">
-                      <div className="flex flex-col gap-1.5 items-start">
-                        <span className="text-xs bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">{ing.serving_qty} /serve</span>
+                    <td className="py-3 px-3 align-top max-w-[200px]">
+                      <div className="flex flex-wrap gap-1.5 items-start">
+                        <span className="text-[11px] bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">{ing.serving_qty} /serve</span>
                         {ing.kcal_per_serving != null && (
-                          <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">{ing.kcal_per_serving} kcal</span>
+                          <span className="text-[11px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">{ing.kcal_per_serving} kcal</span>
                         )}
                         {ing.protein_per_serving != null && (
-                          <span className="text-xs bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full">{ing.protein_per_serving}g prot</span>
+                          <span className="text-[11px] bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full">{ing.protein_per_serving}g prot</span>
                         )}
                         {ing.fiber_per_serving != null && (
-                          <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">{ing.fiber_per_serving}g fiber</span>
+                          <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">{ing.fiber_per_serving}g fiber</span>
                         )}
                         {ing.trial_eligible && (
-                          <span className="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">Trial-eligible</span>
+                          <span className="text-[11px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full">Trial-eligible</span>
                         )}
                       </div>
                     </td>
