@@ -222,7 +222,7 @@ router.post("/auth/forgot-password", async (req, res) => {
   );
 
   const appUrl = process.env.APP_URL || "http://localhost:8080";
-  const resetLink = \`\${appUrl}/reset-password?token=\${resetToken}\`;
+  const resetLink = `${appUrl}/reset-password?token=${resetToken}`;
   
   if (process.env.NODE_ENV === "development") {
     logger.info({ email, resetLink }, "DEV MODE: Reset link generated");
