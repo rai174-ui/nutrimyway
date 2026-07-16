@@ -3235,14 +3235,21 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
       centerNameMap.set(String(r.name).trim().toLowerCase(), String(r.id).trim());
     }
 
-    const { rows: existingNamesRows } = await client.query("SELECT center_id, name FROM ingredients");
-    const existingNames = new Set<string>(existingNamesRows.map((r: { center_id: string, name: string }) => `${r.center_id}:${r.name.toLowerCase()}`));
+    const { rows: existingNamesRows } = await client.query("SELECT id, center_id, name FROM ingredients");
+    const existingNamesMap = new Map<string, number>();
+    for (const r of existingNamesRows as { id: number; center_id: string; name: string }[]) {
+      existingNamesMap.set(`${r.center_id}:${r.name.toLowerCase()}`, r.id);
+    }
     
-    const { rows: existingCodesRows } = await client.query("SELECT material_code FROM ingredient_skus");
+    const { rows: existingCodesRows } = await client.query(`
+      SELECT i.center_id, s.material_code 
+      FROM ingredient_skus s
+      JOIN ingredients i ON s.ingredient_id = i.id
+    `);
     const existingCodes = new Set<string>(
       existingCodesRows
         .filter((r: { material_code: string | null }) => r.material_code)
-        .map((r: { material_code: string }) => r.material_code.toLowerCase())
+        .map((r: { center_id: string; material_code: string }) => `${r.center_id}:${r.material_code.toLowerCase()}`)
     );
 
     for (let i = 0; i < rows.length; i++) {
@@ -3265,7 +3272,7 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
         results.errors.push(`Row ${rowNum}: Unknown center "${centerRaw}"`); continue;
       }
 
-      if (existingNames.has(`${centerId}:${name.toLowerCase()}`) || existingCodes.has(materialCode.toLowerCase())) {
+      if (existingCodes.has(`${centerId}:${materialCode.toLowerCase()}`)) {
         results.skipped++;
         continue;
       }
@@ -3281,13 +3288,20 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
       const trialEligibleRaw = String(row.trial_eligible ?? "").trim().toLowerCase();
       const trialEligible = trialEligibleRaw === "yes" || trialEligibleRaw === "true";
 
-      const { rows: insertedRows } = await client.query(
-        `INSERT INTO ingredients (center_id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-        [centerId, name, packSize, packUnit, materialCode, description, flavour, servingQty, kcalPerServing, proteinPerServing, fiberPerServing, trialEligible]
-      );
-      
-      const ingredientId = insertedRows[0].id;
+      const nameKey = `${centerId}:${name.toLowerCase()}`;
+      let ingredientId: number;
+
+      if (existingNamesMap.has(nameKey)) {
+        ingredientId = existingNamesMap.get(nameKey)!;
+      } else {
+        const { rows: insertedRows } = await client.query(
+          `INSERT INTO ingredients (center_id, name, pack_size, pack_unit, material_code, description, flavour, serving_qty, kcal_per_serving, protein_per_serving, fiber_per_serving, trial_eligible)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+          [centerId, name, packSize, packUnit, materialCode, description, flavour, servingQty, kcalPerServing, proteinPerServing, fiberPerServing, trialEligible]
+        );
+        ingredientId = insertedRows[0].id;
+        existingNamesMap.set(nameKey, ingredientId);
+      }
       
       await client.query(
         `INSERT INTO ingredient_skus (ingredient_id, material_code, pack_size, pack_unit)
@@ -3295,8 +3309,7 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
         [ingredientId, materialCode, packSize, packUnit]
       );
 
-      existingNames.add(`${centerId}:${name.toLowerCase()}`);
-      existingCodes.add(materialCode.toLowerCase());
+      existingCodes.add(`${centerId}:${materialCode.toLowerCase()}`);
       results.created++;
     }
 
