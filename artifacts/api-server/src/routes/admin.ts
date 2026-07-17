@@ -2725,13 +2725,13 @@ router.post("/admin/checkins/:checkinId/selections", requireAdmin, async (req, r
     } catch (e) {
       console.error("Error in POST /admin/checkins/:checkinId/selections:", e);
       await client.query("ROLLBACK").catch(() => {});
-      res.status(500).json({ error: "Failed to save selections: " + (e as Error).message });
+      res.status(400).json({ error: "Failed to save selections: " + (e as Error).message });
     } finally {
       client.release();
     }
   } catch (globalErr) {
     console.error("Global Error in POST selections:", globalErr);
-    res.status(500).json({ error: "Unexpected error: " + (globalErr as Error).message });
+    res.status(400).json({ error: "Unexpected error: " + (globalErr as Error).message });
   }
 });
 

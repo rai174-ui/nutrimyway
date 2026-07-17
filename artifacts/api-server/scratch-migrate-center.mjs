@@ -8,9 +8,7 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: (process.env.DATABASE_URL.includes("supabase") || process.env.DATABASE_URL.includes("railway")) 
-    ? { rejectUnauthorized: false } 
-    : undefined
+  ssl: false
 });
 
 const oldId = "CI-1";
@@ -22,17 +20,15 @@ async function run() {
     await client.query("BEGIN");
     
     console.log(`Cloning center ${oldId} to ${newId}...`);
-    // Insert DWK-1 copying data from CI-1 (ignoring id column)
+    // Insert DWK-1 copying data from CI-1 using a temporary table
     const centerRes = await client.query(`SELECT * FROM centers WHERE id = $1`, [oldId]);
     if (centerRes.rows.length === 0) {
       console.log(`Center ${oldId} not found! Maybe already migrated?`);
     } else {
-      const c = centerRes.rows[0];
-      await client.query(
-        `INSERT INTO centers (id, name, is_active, daily_checkin_cap, current_version) 
-         VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`,
-        [newId, c.name || `Center ${newId}`, c.is_active, c.daily_checkin_cap, c.current_version]
-      );
+      await client.query(`CREATE TEMPORARY TABLE tmp_center AS SELECT * FROM centers WHERE id = $1`, [oldId]);
+      await client.query(`UPDATE tmp_center SET id = $1`, [newId]);
+      await client.query(`INSERT INTO centers SELECT * FROM tmp_center ON CONFLICT DO NOTHING`);
+      await client.query(`DROP TABLE tmp_center`);
       console.log("Center cloned.");
       
       const tables = [
@@ -56,12 +52,14 @@ async function run() {
 
       for (const table of tables) {
         try {
+          await client.query(`SAVEPOINT sp_${table}`);
           const res = await client.query(`UPDATE ${table} SET center_id = $1 WHERE center_id = $2`, [newId, oldId]);
           if (res.rowCount > 0) {
             console.log(`Updated ${res.rowCount} rows in ${table}`);
           }
+          await client.query(`RELEASE SAVEPOINT sp_${table}`);
         } catch (err) {
-          // Some tables might not exist or might not have center_id, that's fine
+          await client.query(`ROLLBACK TO SAVEPOINT sp_${table}`);
           if (err.message.includes('does not exist')) {
             // Ignore
           } else {

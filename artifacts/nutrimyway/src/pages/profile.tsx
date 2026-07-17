@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Package, Calendar, LogOut, Info, AlertTriangle, Ticket } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Link } from "wouter";
+import { getProgressColorClass } from "./dashboard";
 
 function safeFormat(value: string | null | undefined, fmt: string, fallback = "--"): string {
   if (!value) return fallback;
@@ -105,37 +106,37 @@ export function Profile() {
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="font-medium">Calories</span>
-              <span className="font-bold">{Math.round(consumedCal)} / {Math.round(targetCal)} kcal</span>
+              <span className={`font-bold ${getProgressColorClass(consumedCal, targetCal, "")}`}>{Math.round(consumedCal)} / {Math.round(targetCal)} kcal</span>
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-primary rounded-full transition-all duration-1000 ease-out" style={{ width: `${calPercent}%` }} />
+              <div className={`h-full rounded-full transition-all duration-1000 ease-out ${getProgressColorClass(consumedCal, targetCal, "bg-primary")}`} style={{ width: `${calPercent}%` }} />
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="font-medium">Protein Goal</span>
-              <span className="font-bold">{Math.round(consumedProtein)} / {Math.round(targetProtein)}g</span>
+              <span className={`font-bold ${getProgressColorClass(consumedProtein, targetProtein, "")}`}>{Math.round(consumedProtein)} / {Math.round(targetProtein)}g</span>
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-[#0F6E56] rounded-full transition-all duration-1000 ease-out" style={{ width: `${proteinPercent}%` }} />
+              <div className={`h-full rounded-full transition-all duration-1000 ease-out ${getProgressColorClass(consumedProtein, targetProtein, "bg-[#0F6E56]")}`} style={{ width: `${proteinPercent}%` }} />
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="font-medium">Fiber Goal</span>
-              <span className="font-bold">{Math.round(consumedFiber)} / {Math.round(targetFiber)}g</span>
+              <span className={`font-bold ${getProgressColorClass(consumedFiber, targetFiber, "")}`}>{Math.round(consumedFiber)} / {Math.round(targetFiber)}g</span>
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000 ease-out" style={{ width: `${fiberPercent}%` }} />
+              <div className={`h-full rounded-full transition-all duration-1000 ease-out ${getProgressColorClass(consumedFiber, targetFiber, "bg-emerald-500")}`} style={{ width: `${fiberPercent}%` }} />
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="font-medium">Water Goal</span>
-              <span className="font-bold">{consumedWater} / {Math.round(targetWater)}ml</span>
+              <span className={`font-bold ${getProgressColorClass(consumedWater, targetWater, "")}`}>{consumedWater} / {Math.round(targetWater)}ml</span>
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-sky-500 rounded-full transition-all duration-1000 ease-out" style={{ width: `${waterPercent}%` }} />
+              <div className={`h-full rounded-full transition-all duration-1000 ease-out ${getProgressColorClass(consumedWater, targetWater, "bg-sky-500")}`} style={{ width: `${waterPercent}%` }} />
             </div>
           </div>
         </div>

@@ -18,6 +18,14 @@ function safeFormat(value: string | null | undefined, fmt: string, fallback = "-
   return isValid(d) ? format(d, fmt) : fallback;
 }
 
+export function getProgressColorClass(current: number, target: number, defaultClass: string): string {
+  if (target <= 0) return defaultClass;
+  const ratio = current / target;
+  if (ratio >= 1.0) return "text-red-500 bg-red-500";
+  if (ratio >= 0.85) return "text-orange-500 bg-orange-500";
+  return defaultClass;
+}
+
 function todayLocal() { return new Date().toLocaleDateString("en-CA"); }
 const TODAY = todayLocal();
 
@@ -348,9 +356,12 @@ function CheckInCard({ memberId, checkin, onRefresh }: {
 function WaterTracker({ memberId, totalWater }: { memberId: number, totalWater: number }) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
+  const isRequesting = useRef(false);
 
   async function addWater(amount: number) {
     if (amount <= 0 && totalWater === 0) return;
+    if (isRequesting.current) return;
+    isRequesting.current = true;
     const newTotal = Math.max(0, totalWater + amount);
     setLoading(true);
     try {
@@ -364,6 +375,7 @@ function WaterTracker({ memberId, totalWater }: { memberId: number, totalWater: 
       console.error("Failed to log water", e);
     } finally {
       setLoading(false);
+      isRequesting.current = false;
     }
   }
 
@@ -492,10 +504,10 @@ export function Dashboard() {
             <circle cx="38" cy="38" r="30" stroke="currentColor" strokeWidth="5" fill="transparent"
               strokeDasharray={2 * Math.PI * 30}
               strokeDashoffset={2 * Math.PI * 30 * (1 - (consumedCal / (targetCal || 1)))}
-              className="text-primary transition-all duration-1000 ease-out" />
+              className={`${getProgressColorClass(consumedCal, targetCal, "text-primary")} transition-all duration-1000 ease-out`} />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-base font-bold text-foreground leading-none">{consumedCal.toFixed(0)}</span>
+            <span className={`text-base font-bold leading-none ${getProgressColorClass(consumedCal, targetCal, "text-foreground")}`}>{consumedCal.toFixed(0)}</span>
             <span className="text-[8px] text-muted-foreground uppercase tracking-wide mt-0.5">/ {targetCal} kcal</span>
           </div>
         </div>
@@ -504,21 +516,21 @@ export function Dashboard() {
         <div className="flex-1 space-y-1.5">
           <div className="flex justify-between items-center">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Protein</span>
-            <span className="text-xs font-bold">
+            <span className={`text-xs font-bold ${getProgressColorClass(summary?.total_protein ?? 0, (summary as any)?.protein_target_g ?? 0, "")}`}>
               {Math.round(summary?.total_protein ?? 0)}
               {(summary as any)?.protein_target_g ? <span className="text-[10px] font-normal text-muted-foreground">/{Math.round((summary as any).protein_target_g)}g</span> : "g"}
             </span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Fiber</span>
-            <span className="text-xs font-bold">
+            <span className={`text-xs font-bold ${getProgressColorClass(summary?.total_fiber ?? 0, (summary as any)?.fiber_target_g ?? 0, "")}`}>
               {Math.round(summary?.total_fiber ?? 0)}
               {(summary as any)?.fiber_target_g ? <span className="text-[10px] font-normal text-muted-foreground">/{Math.round((summary as any).fiber_target_g)}g</span> : "g"}
             </span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Water</span>
-            <span className="text-xs font-bold">
+            <span className={`text-xs font-bold ${getProgressColorClass(summary?.total_water ?? 0, (summary as any)?.water_target_ml ?? 0, "")}`}>
               {(summary as any)?.total_water ?? 0}
               {(summary as any)?.water_target_ml ? <span className="text-[10px] font-normal text-muted-foreground">/{Math.round((summary as any).water_target_ml)}ml</span> : "ml"}
             </span>

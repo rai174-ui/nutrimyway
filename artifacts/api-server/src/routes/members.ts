@@ -221,6 +221,21 @@ router.post("/members/:id/consumption", async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
+// DELETE /api/members/:id/consumption/:logId
+router.delete("/members/:id/consumption/:logId", async (req, res) => {
+  const memberId = Number(req.params.id);
+  const logId = Number(req.params.logId);
+  const { rowCount } = await pool.query(
+    "DELETE FROM consumption_logs WHERE id = $1 AND member_id = $2",
+    [logId, memberId]
+  );
+  if (rowCount === 0) {
+    res.status(404).json({ error: "Log not found or does not belong to member" });
+    return;
+  }
+  res.json({ success: true });
+});
+
 function todayIST() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 }

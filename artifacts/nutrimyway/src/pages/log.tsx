@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, Sparkles, Search, UtensilsCrossed, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sunrise, Sun, Apple, Moon, MapPin, Check, Loader2, X, Camera, Sparkles, Search, UtensilsCrossed, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { useCreateConsumptionLog, getGetDailySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -80,6 +80,7 @@ function MealHistory({ memberId }: { memberId: number }) {
   const [logs, setLogs] = useState<MealLog[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
 
   const fetchLogs = useCallback(async (date: string) => {
     setLoading(true);
@@ -99,6 +100,19 @@ function MealHistory({ memberId }: { memberId: number }) {
       setLoading(false);
     }
   }, [memberId]);
+
+  async function deleteLog(logId: number) {
+    if (!window.confirm("Are you sure you want to delete this meal?")) return;
+    try {
+      const res = await apiFetch(`/members/${memberId}/consumption/${logId}`, { method: "DELETE" });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(memberId, { date: selectedDate }) });
+        await fetchLogs(selectedDate);
+      }
+    } catch (e) {
+      console.error("Failed to delete log", e);
+    }
+  }
 
   useEffect(() => { void fetchLogs(selectedDate); }, [selectedDate, fetchLogs]);
 
@@ -238,16 +252,23 @@ function MealHistory({ memberId }: { memberId: number }) {
                         {log.selected_flavour && <span className="ml-1 text-primary/70">· {log.selected_flavour}</span>}
                       </p>
                     </div>
-                    <div className="text-right shrink-0">
-                      {log.calories_kcal != null && (
-                        <p className="text-xs font-semibold text-foreground">{Math.round(log.calories_kcal)} kcal</p>
-                      )}
-                      {(log.protein_g != null || log.fiber_g != null) && (
-                        <p className="text-[10px] text-muted-foreground">
-                          {log.protein_g != null ? `${log.protein_g.toFixed(1)}g Pro` : ''}
-                          {log.protein_g != null && log.fiber_g != null ? ' · ' : ''}
-                          {log.fiber_g != null ? `${log.fiber_g.toFixed(1)}g Fib` : ''}
-                        </p>
+                    <div className="text-right shrink-0 flex items-center gap-3">
+                      <div className="text-right">
+                        {log.calories_kcal != null && (
+                          <p className="text-xs font-semibold text-foreground">{Math.round(log.calories_kcal)} kcal</p>
+                        )}
+                        {(log.protein_g != null || log.fiber_g != null) && (
+                          <p className="text-[10px] text-muted-foreground">
+                            {log.protein_g != null ? `${log.protein_g.toFixed(1)}g Pro` : ''}
+                            {log.protein_g != null && log.fiber_g != null ? ' · ' : ''}
+                            {log.fiber_g != null ? `${log.fiber_g.toFixed(1)}g Fib` : ''}
+                          </p>
+                        )}
+                      </div>
+                      <button onClick={() => deleteLog(log.id)} className="text-muted-foreground hover:text-red-500 transition-colors p-1" aria-label="Delete log">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                       )}
                     </div>
                   </div>
@@ -272,6 +293,7 @@ export function Log() {
   const [customProtein, setCustomProtein] = useState("");
   const [customFiber, setCustomFiber] = useState("");
   const [aiEstimated, setAiEstimated] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [checkinMenu, setCheckinMenu] = useState<CheckinMenuResponse | null>(null);
   const [selections, setSelections] = useState<{ category_id: number; ingredient_id: number }[]>([]);
@@ -330,7 +352,9 @@ export function Log() {
 
   const handleSave = async () => {
     if (!foodItem.trim()) return;
-    const kcal = customKcal !== "" ? Number(customKcal) : null;
+    setIsSaving(true);
+    try {
+      const kcal = customKcal !== "" ? Number(customKcal) : null;
     const protein = customProtein !== "" ? Number(customProtein) : null;
     const fiber = customFiber !== "" ? Number(customFiber) : null;
     let photoUrl: string | null = null;
@@ -385,13 +409,19 @@ export function Log() {
           setAiEstimated(false);
           setPendingPhoto(null);
           if (photoPreviewUrl) { URL.revokeObjectURL(photoPreviewUrl); setPhotoPreviewUrl(null); }
+          setIsSaving(false);
         },
         onError: () => {
           setPendingPhoto(null);
           if (photoPreviewUrl) { URL.revokeObjectURL(photoPreviewUrl); setPhotoPreviewUrl(null); }
+          setIsSaving(false);
         }
       }
     );
+    } catch (e) {
+      setIsSaving(false);
+      console.error(e);
+    }
   };
 
   function isIngredientSelected(categoryId: number, ingredientId: number) {
@@ -807,10 +837,10 @@ export function Log() {
 
               <button
                 onClick={handleSave}
-                disabled={!foodItem.trim() || createLog.isPending}
+                disabled={!foodItem.trim() || createLog.isPending || isSaving || aiLoading}
                 className="w-full bg-primary text-primary-foreground font-medium py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {createLog.isPending ? "Saving..." : "Save Meal"}
+                {createLog.isPending || isSaving ? "Saving..." : "Save Meal"}
               </button>
             </div>
           </section>
