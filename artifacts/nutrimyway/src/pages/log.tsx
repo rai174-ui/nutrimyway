@@ -349,10 +349,9 @@ export function Log() {
   const createLog = useCreateConsumptionLog();
 
   const handleSave = async () => {
-    if (!foodItem.trim()) return;
+    if (!foodItem.trim() || !MEMBER_ID) return;
     setIsSaving(true);
-    try {
-      const kcal = customKcal !== "" ? Number(customKcal) : null;
+    const kcal = customKcal !== "" ? Number(customKcal) : null;
     const protein = customProtein !== "" ? Number(customProtein) : null;
     const fiber = customFiber !== "" ? Number(customFiber) : null;
     let photoUrl: string | null = null;
@@ -366,14 +365,20 @@ export function Log() {
         if (urlRes.ok) {
           const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-            const putRes = await fetch(uploadURL, { 
-              method: "PUT", 
-              body: pendingPhoto, 
-              headers: { "Content-Type": pendingPhoto.type },
-              signal: controller.signal
-            });
-            clearTimeout(timeoutId);
+            const putRes = await Promise.race([
+              fetch(uploadURL, { 
+                method: "PUT", 
+                body: pendingPhoto, 
+                headers: { "Content-Type": pendingPhoto.type },
+                signal: controller.signal
+              }),
+              new Promise<Response>((_, reject) => 
+                setTimeout(() => {
+                  controller.abort();
+                  reject(new Error("Photo upload timed out"));
+                }, 10000)
+              )
+            ]);
             if (putRes.ok) {
             photoUrl = objectPath;
           }
@@ -382,28 +387,24 @@ export function Log() {
         // non-blocking: log without photo if upload fails
       }
     }
-    createLog.mutate(
-      {
-        memberId: MEMBER_ID!,
-        data: {
-          meal_slot: activeSlot,
-          food_item: foodItem,
-          calories_kcal: kcal,
-          protein_g: protein,
-          fiber_g: fiber,
-          carbs_g: null,
-          fat_g: null,
-          photo_url: photoUrl,
-          logged_at: selectedDate === todayLocal() 
-            ? new Date().toISOString() 
-            : new Date(`${selectedDate}T${
-                activeSlot === 'Breakfast' ? '09:00:00' :
-                activeSlot === 'Lunch' ? '13:00:00' :
-                activeSlot === 'Snack' ? '17:00:00' :
-                '20:00:00'
-              }+05:30`).toISOString(),
-        }
-      },
+    let loggedAtStr = new Date().toISOString();
+
+    try {
+      createLog.mutate(
+        {
+          memberId: MEMBER_ID!,
+          data: {
+            meal_slot: activeSlot,
+            food_item: foodItem,
+            calories_kcal: kcal,
+            protein_g: protein,
+            fiber_g: fiber,
+            carbs_g: null,
+            fat_g: null,
+            photo_url: photoUrl,
+            logged_at: loggedAtStr,
+          }
+        },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetDailySummaryQueryKey(MEMBER_ID!, { date: todayLocal() }) });

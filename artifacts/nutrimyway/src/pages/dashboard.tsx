@@ -531,7 +531,7 @@ export function Dashboard() {
           </div>
           <div className="flex justify-between items-center">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Water</span>
-            <span className={`text-xs font-bold ${getProgressColorClass(summary?.total_water ?? 0, (summary as any)?.water_target_ml ?? 0, "")}`}>
+            <span className={`text-xs font-bold ${getProgressColorClass((summary as any)?.total_water ?? 0, (summary as any)?.water_target_ml ?? 0, "")}`}>
               {(summary as any)?.total_water ?? 0}
               {(summary as any)?.water_target_ml ? <span className="text-[10px] font-normal text-muted-foreground">/{Math.round((summary as any).water_target_ml)}ml</span> : "ml"}
             </span>
