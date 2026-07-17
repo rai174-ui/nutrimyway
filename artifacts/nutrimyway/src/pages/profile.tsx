@@ -4,7 +4,15 @@ import { motion } from "framer-motion";
 import { Package, Calendar, LogOut, Info, AlertTriangle, Ticket } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Link } from "wouter";
-import { getProgressColorClass } from "./dashboard";
+
+export function getProgressColorClass(current: number, target: number, defaultClass: string): string {
+  if (target <= 0) return defaultClass;
+  const ratio = current / target;
+  const isBg = defaultClass.includes('bg-');
+  if (ratio >= 1.0) return isBg ? "bg-red-500" : "text-red-500";
+  if (ratio >= 0.8) return isBg ? "bg-orange-500" : "text-orange-500";
+  return defaultClass;
+}
 
 function safeFormat(value: string | null | undefined, fmt: string, fallback = "--"): string {
   if (!value) return fallback;

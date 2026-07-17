@@ -21,8 +21,9 @@ function safeFormat(value: string | null | undefined, fmt: string, fallback = "-
 export function getProgressColorClass(current: number, target: number, defaultClass: string): string {
   if (target <= 0) return defaultClass;
   const ratio = current / target;
-  if (ratio >= 1.0) return "text-red-500 bg-red-500";
-  if (ratio >= 0.85) return "text-orange-500 bg-orange-500";
+  const isBg = defaultClass.includes('bg-');
+  if (ratio >= 1.0) return isBg ? "bg-red-500" : "text-red-500";
+  if (ratio >= 0.8) return isBg ? "bg-orange-500" : "text-orange-500";
   return defaultClass;
 }
 
@@ -403,7 +404,7 @@ function WaterTracker({ memberId, totalWater }: { memberId: number, totalWater: 
           disabled={loading}
           className="h-8 px-3 rounded-full bg-sky-500 text-white font-semibold text-xs disabled:opacity-50 hover:bg-sky-600 transition-colors shadow-sm"
         >
-          + Glass
+          {loading ? "..." : "+250ml"}
         </button>
       </div>
     </div>

@@ -365,8 +365,16 @@ export function Log() {
         });
         if (urlRes.ok) {
           const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
-          const putRes = await fetch(uploadURL, { method: "PUT", body: pendingPhoto, headers: { "Content-Type": pendingPhoto.type } });
-          if (putRes.ok) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            const putRes = await fetch(uploadURL, { 
+              method: "PUT", 
+              body: pendingPhoto, 
+              headers: { "Content-Type": pendingPhoto.type },
+              signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (putRes.ok) {
             photoUrl = objectPath;
           }
         }
