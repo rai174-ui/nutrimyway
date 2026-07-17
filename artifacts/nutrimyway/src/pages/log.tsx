@@ -268,9 +268,6 @@ function MealHistory({ memberId }: { memberId: number }) {
                       <button onClick={() => deleteLog(log.id)} className="text-muted-foreground hover:text-red-500 transition-colors p-1" aria-label="Delete log">
                         <Trash2 className="w-4 h-4" />
                       </button>
-                    </div>
-                      )}
-                    </div>
                   </div>
                 ))}
               </div>
