@@ -39,6 +39,8 @@ router.post("/contact", async (req: Request, res: Response) => {
   const to = process.env.INQUIRY_TO_EMAIL || "support@nutrimyway.com";
 
   let sent = false;
+  let smtpError: any = null;
+  let resendError: any = null;
 
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     try {
@@ -62,7 +64,8 @@ router.post("/contact", async (req: Request, res: Response) => {
         html: htmlContent,
       });
       sent = true;
-    } catch (err) {
+    } catch (err: any) {
+      smtpError = err?.message || String(err);
       logger.error({ err }, "Error sending inquiry email via SMTP");
     }
   }
@@ -77,18 +80,25 @@ router.post("/contact", async (req: Request, res: Response) => {
         html: htmlContent,
       });
       if (error) {
+        resendError = error.message || String(error);
         logger.warn({ to, error }, "Resend API error");
       } else {
         sent = true;
       }
-    } catch (err) {
+    } catch (err: any) {
+      resendError = err?.message || String(err);
       logger.error({ err }, "Error sending inquiry email via Resend");
     }
   }
 
   if (!sent) {
-    logger.warn({ to, subject }, "No email provider configured or failed — inquiry email skipped. Details: " + message);
-    res.status(500).json({ error: "Failed to send email. Please check server logs for SMTP/Resend configuration issues." });
+    const errorDetails = [
+      smtpError ? `SMTP Error: ${smtpError}` : null,
+      resendError ? `Resend Error: ${resendError}` : null
+    ].filter(Boolean).join(" | ");
+    
+    logger.warn({ to, subject, smtpError, resendError }, "No email provider configured or failed — inquiry email skipped.");
+    res.status(500).json({ error: `Failed to send email. ${errorDetails || "No valid email configuration found."}` });
     return;
   }
 
