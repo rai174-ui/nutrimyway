@@ -64,6 +64,7 @@ router.post("/contact", async (req: Request, res: Response) => {
         html: htmlContent,
       });
       sent = true;
+      logger.info({ to, subject }, "Email successfully accepted by SMTP provider.");
     } catch (err: any) {
       smtpError = err?.message || String(err);
       logger.error({ err }, "Error sending inquiry email via SMTP");
@@ -84,6 +85,7 @@ router.post("/contact", async (req: Request, res: Response) => {
         logger.warn({ to, error }, "Resend API error");
       } else {
         sent = true;
+        logger.info({ to, subject }, "Email successfully accepted by Resend API.");
       }
     } catch (err: any) {
       resendError = err?.message || String(err);
