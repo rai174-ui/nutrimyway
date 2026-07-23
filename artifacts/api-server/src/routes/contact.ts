@@ -77,6 +77,8 @@ router.post("/contact", async (req: Request, res: Response) => {
 
   if (!sent) {
     logger.warn({ to, subject }, "No email provider configured or failed — inquiry email skipped. Details: " + message);
+    res.status(500).json({ error: "Failed to send email. Please check server logs for SMTP/Resend configuration issues." });
+    return;
   }
 
   res.json({ success: true });
