@@ -135,14 +135,7 @@ export function Home() {
           >
             Health, Nutrition & Wellness
           </Link>
-          <Button
-            variant="default"
-            size="sm"
-            className="hidden lg:flex"
-            onClick={() => window.open("https://HealthLogix.nutrimyway.in", "_blank")}
-          >
-            Personnel HealthLogix
-          </Button>
+
           <a
             href="/login"
             className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -343,6 +336,15 @@ export function Home() {
           </div>
         </div>
       </footer>
+
+      {/* Floating HealthLogix Button */}
+      <Button
+        onClick={() => window.open("https://HealthLogix.nutrimyway.in", "_blank")}
+        className="fixed bottom-6 right-6 z-50 shadow-xl rounded-full px-6 h-12 bg-[#000080] hover:bg-[#000060] text-white flex items-center gap-2 hover:scale-105 transition-all duration-300"
+      >
+        <HeartPulse className="w-5 h-5" />
+        <span className="font-semibold tracking-wide">Personalised Health Tracking</span>
+      </Button>
     </div>
   );
 }

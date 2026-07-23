@@ -84,13 +84,15 @@ export async function fetchFeeds() {
     }
   }
 
-  // Auto-cleanup: Remove articles older than 30 days to keep the database small and fresh
+  // Auto-cleanup: Restrict number of articles to 200, deleting the oldest ones
   try {
     const { rowCount: deletedCount } = await pool.query(
-      `DELETE FROM wellness_articles WHERE pub_date < NOW() - INTERVAL '30 days'`
+      `DELETE FROM wellness_articles WHERE id NOT IN (
+        SELECT id FROM wellness_articles ORDER BY pub_date DESC LIMIT 200
+      )`
     );
     if (deletedCount && deletedCount > 0) {
-      logger.info({ deletedCount }, "Cleaned up old wellness articles");
+      logger.info({ deletedCount }, "Cleaned up old wellness articles beyond the 200 limit");
     }
   } catch (err) {
     logger.error({ err }, "Failed to cleanup old wellness articles");
