@@ -36,7 +36,7 @@ router.post("/contact", async (req: Request, res: Response) => {
         </blockquote>
       </div>`;
 
-  const to = "support@nutrimyway.com";
+  const to = process.env.INQUIRY_TO_EMAIL || "support@nutrimyway.com";
 
   let sent = false;
 
