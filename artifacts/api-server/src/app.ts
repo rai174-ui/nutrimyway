@@ -39,7 +39,7 @@ const ALLOWED_ORIGINS = [
   "capacitor://localhost",
   "ionic://localhost",
   "https://nutrimyway.in",
-  "https://nutrimyway-production.up.railway.app",
+  "https://nutrimyway.in",
 ];
 
 app.use(

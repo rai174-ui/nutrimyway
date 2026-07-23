@@ -40,6 +40,11 @@ export function Privacy() {
             <h2 className="text-xl font-semibold text-foreground mb-2">6. Contact Us</h2>
             <p>If you have any questions or concerns about this policy or your data, please contact your center administrator or email support.</p>
           </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-foreground mb-2">7. Children's Privacy</h2>
+            <p>NutriMyWay is designed for users who are 16 years of age and older. We do not knowingly collect personal information from children under 16.</p>
+          </section>
         </div>
       </div>
     </div>

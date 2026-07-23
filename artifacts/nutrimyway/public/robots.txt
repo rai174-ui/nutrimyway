@@ -1,2 +1,13 @@
 User-agent: *
 Allow: /
+Allow: /privacy
+Disallow: /dashboard
+Disallow: /log
+Disallow: /center
+Disallow: /profile
+Disallow: /admin
+Disallow: /login
+Disallow: /forgot-password
+Disallow: /reset-password
+
+Sitemap: https://nutrimyway.com/sitemap.xml

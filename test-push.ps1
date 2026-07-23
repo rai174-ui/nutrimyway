@@ -1,4 +1,4 @@
-$BASE = "https://nutrimyway-production.up.railway.app/api"
+$BASE = "https://nutrimyway.in/api"
 $CENTER_ID = "center_dwarka_club"   # <-- change if different
 
 # Step 1: Login to get a token

@@ -1,11 +1,13 @@
 import { Link, useLocation } from "wouter";
 import { ArrowRight, Leaf, Shield, UserCheck } from "lucide-react";
+import { SEO } from "@/components/SEO";
 
 export function Home() {
   const [, navigate] = useLocation();
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <SEO />
       <header className="px-6 py-6 flex justify-between items-center max-w-5xl mx-auto w-full">
         <div className="flex items-center gap-2">
           <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm p-1">
@@ -31,10 +33,10 @@ export function Home() {
 
       <main className="flex-1 flex flex-col items-center justify-center px-6 text-center w-full max-w-3xl mx-auto py-12">
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-foreground mb-6 leading-tight">
-          Your Personal Journey to <span className="text-primary">Better Health</span>
+          Application Provider for <span className="text-primary">Center Management & HealthLogix</span>
         </h1>
         <p className="text-lg text-muted-foreground mb-10 max-w-xl mx-auto">
-          NutriMyWay helps you track your meals, analyze your nutrition, and stay connected with your wellness center. Take control of your habits today.
+          NutriMyWay provides robust solutions for Center Management and HealthLogix, tailored for individual health enthusiasts. Take control of your journey today.
         </p>
 
         <button
