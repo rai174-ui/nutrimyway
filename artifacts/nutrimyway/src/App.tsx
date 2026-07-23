@@ -15,10 +15,11 @@ import { Home } from "@/pages/home";
 import { Privacy } from "@/pages/privacy";
 import { ForgotPassword } from "@/pages/forgot-password";
 import { ResetPassword } from "@/pages/reset-password";
+import WellnessTrends from "./pages/wellness-trends";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ConsentModal } from "@/components/consent-modal";
 import { initApiBase } from "@/lib/api-base";
-import { Component, useEffect, type ErrorInfo, type ReactNode } from "react";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 
 initApiBase();
 
@@ -110,6 +111,7 @@ function MainRouter() {
   return (
     <Switch>
       <Route path="/" component={() => (isAuthenticated ? <Redirect to="/dashboard" /> : <Home />)} />
+      <Route path="/wellness-trends" component={WellnessTrends} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/login" component={() => (isAuthenticated ? <Redirect to="/dashboard" /> : <Login />)} />
       <Route path="/forgot-password" component={() => (isAuthenticated ? <Redirect to="/dashboard" /> : <ForgotPassword />)} />

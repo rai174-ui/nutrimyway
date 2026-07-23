@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { ArrowRight, Users, Package, ClipboardCheck, Megaphone, Smartphone, Target, Mail, SearchCheck, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Users, Package, ClipboardCheck, Megaphone, Smartphone, Target, Mail, SearchCheck, CheckCircle2, HeartPulse } from "lucide-react";
 import { SEO } from "@/components/SEO";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,6 +15,21 @@ export function Home() {
   const [contactForm, setContactForm] = useState({ name: "", email: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const { data: latestArticles } = useQuery({
+    queryKey: ["latest-wellness-articles"],
+    queryFn: async () => {
+      const res = await fetch("/api/wellness-articles?limit=3");
+      if (!res.ok) throw new Error("Failed to fetch articles");
+      return res.json() as Promise<Array<{
+        id: number;
+        title: string;
+        link: string;
+        source: string;
+        image_url: string;
+      }>>;
+    }
+  });
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +129,12 @@ export function Home() {
             </DialogContent>
           </Dialog>
 
+          <Link
+            href="/wellness-trends"
+            className="hidden lg:block text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Health, Nutrition & Wellness
+          </Link>
           <a
             href="/login"
             className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -229,8 +251,74 @@ export function Home() {
         </div>
       </section>
 
+      {/* Latest Wellness Trends Preview */}
+      <section className="w-full bg-background py-16 border-y border-border/40">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
+            <div>
+              <h2 className="text-xs font-bold tracking-widest text-primary uppercase mb-2 flex items-center gap-2">
+                <HeartPulse className="w-4 h-4" /> Wellness Trends
+              </h2>
+              <h3 className="text-2xl md:text-3xl font-bold tracking-tight">Stay Informed & Healthy</h3>
+            </div>
+            <Link href="/wellness-trends">
+              <Button variant="outline" className="rounded-xl flex items-center gap-2">
+                View all articles <ArrowRight className="w-4 h-4" />
+              </Button>
+            </Link>
+          </div>
+
+          {!latestArticles || latestArticles.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-pulse">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex flex-col gap-3">
+                  <div className="w-full aspect-video bg-muted rounded-xl" />
+                  <div className="h-6 w-3/4 bg-muted rounded mt-2" />
+                  <div className="h-4 w-1/4 bg-muted rounded" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {latestArticles.map(article => (
+                <a 
+                  key={article.id} 
+                  href={article.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex flex-col rounded-xl overflow-hidden border bg-card text-card-foreground shadow-sm hover:shadow-md transition-all hover:border-primary/50"
+                >
+                  {article.image_url ? (
+                    <div className="w-full aspect-video overflow-hidden bg-muted relative">
+                      <img 
+                        src={article.image_url} 
+                        alt={article.title}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full aspect-video bg-primary/5 group-hover:bg-primary/10 transition-colors flex items-center justify-center text-primary/40">
+                      <HeartPulse className="w-8 h-8" />
+                    </div>
+                  )}
+                  <div className="p-5 flex flex-col flex-grow">
+                    <span className="text-xs font-medium text-primary bg-primary/10 w-fit px-2 py-1 rounded-md mb-3">
+                      {article.source}
+                    </span>
+                    <h4 className="font-bold leading-tight line-clamp-2 group-hover:text-primary transition-colors">
+                      {article.title}
+                    </h4>
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer className="py-6 bg-background border-t border-border mt-auto">
+      <footer className="py-6 bg-background mt-auto">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
             <img src="logo.png" alt="NutriMyWay" className="w-5 h-5 object-contain" />

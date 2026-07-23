@@ -9,6 +9,8 @@ import { pool } from "./lib/sqlite";
 import { ObjectStorageService } from "./lib/objectStorage";
 import { ObjectNotFoundError } from "./lib/objectStorage";
 import { sendPushNotification } from "./lib/push";
+import contactRouter from "./routes/contact";
+import wellnessRouter from "./routes/wellness";
 
 const app: Express = express();
 
@@ -70,6 +72,8 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 app.use("/api", router);
+app.use("/api", contactRouter);
+app.use("/api", wellnessRouter);
 
 // ── Static frontend serving ──────────────────────────────────────────────
 // Railway runs this as a single service on one domain — there is no

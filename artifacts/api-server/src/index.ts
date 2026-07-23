@@ -2,6 +2,7 @@ import app, { startBroadcastScheduler, startPhotoCleanupScheduler } from "./app"
 import { logger } from "./lib/logger";
 import { initDb } from "./lib/sqlite";
 import { setDbReady } from "./routes/health";
+import { initRssSyncJob } from "./jobs/rss-sync";
 
 const rawPort = process.env["PORT"];
 
@@ -48,6 +49,7 @@ initDb()
     setDbReady(true);
     startBroadcastScheduler();
     startPhotoCleanupScheduler();
+    initRssSyncJob();
     logger.info("Database initialized, schedulers started");
   })
   .catch((err) => {

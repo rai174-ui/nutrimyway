@@ -764,6 +764,7 @@ export async function initDb(): Promise<void> {
     await migrateAdminTables48();
     await migrateAdminTables49();
     await migrateAdminTables50();
+    await migrateAdminTables51();
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
@@ -807,6 +808,21 @@ async function migrateAdminTables50(): Promise<void> {
       name TEXT NOT NULL,
       email TEXT NOT NULL,
       message TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+async function migrateAdminTables51(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS wellness_articles (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      link TEXT NOT NULL UNIQUE,
+      source TEXT NOT NULL,
+      pub_date TIMESTAMPTZ NOT NULL,
+      image_url TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
