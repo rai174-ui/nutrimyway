@@ -83,6 +83,18 @@ export async function fetchFeeds() {
     }
   }
 
+  // Auto-cleanup: Remove articles older than 30 days to keep the database small and fresh
+  try {
+    const { rowCount: deletedCount } = await pool.query(
+      `DELETE FROM wellness_articles WHERE pub_date < NOW() - INTERVAL '30 days'`
+    );
+    if (deletedCount && deletedCount > 0) {
+      logger.info({ deletedCount }, "Cleaned up old wellness articles");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to cleanup old wellness articles");
+  }
+
   logger.info({ newArticlesCount }, "Completed RSS feed sync.");
 }
 
