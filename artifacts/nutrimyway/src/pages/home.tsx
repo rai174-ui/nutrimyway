@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { ArrowRight, Activity, Users, Package, ClipboardCheck, Smartphone, Target, Mail, MapPin, SearchCheck, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Users, Package, ClipboardCheck, Megaphone, Smartphone, Target, Mail, SearchCheck, CheckCircle2 } from "lucide-react";
 import { SEO } from "@/components/SEO";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -114,36 +114,37 @@ export function Home() {
           </Dialog>
 
           <a
-            href="/admin"
+            href="/login"
             className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
           >
-            Center Login
+            Member Login
           </a>
           <button
-            onClick={() => navigate("/login")}
+            onClick={() => navigate("/admin")}
             className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
           >
-            Member Login
+            Center Login
           </button>
         </div>
       </header>
 
-      {/* Primary Section / Hero */}
+      {/* Primary Section / Hero (Focusing on Center Management) */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 text-center w-full max-w-4xl mx-auto py-12 md:py-16">
+        <h2 className="text-xs font-bold tracking-widest text-primary uppercase mb-3">Application Provider for Centers</h2>
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-foreground mb-4 leading-tight">
-          Your Personal <span className="text-primary bg-primary/10 px-2 rounded-lg inline-block mt-1">Health Companion</span>
+          Empowering Your <span className="text-primary bg-primary/10 px-2 rounded-lg inline-block mt-1">Wellness Center</span>
         </h1>
         <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
-          The NutriMyWay Member App puts your nutritional journey in the palm of your hand. Log meals, track macros, and stay connected with your wellness center.
+          Gain unparalleled visibility into your members' nutritional journeys. Instantly track meal logs, seamlessly broadcast announcements, and effortlessly manage subscriptions all from one powerful, centralized dashboard.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
             size="lg"
-            onClick={() => navigate("/login")}
+            onClick={() => navigate("/admin")}
             className="h-12 px-8 rounded-xl text-base font-semibold shadow-md hover:shadow-lg active:scale-[0.98] transition-all flex items-center gap-2"
           >
-            Member Login <ArrowRight className="w-4 h-4" />
+            Access Center Console <ArrowRight className="w-4 h-4" />
           </Button>
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -160,86 +161,76 @@ export function Home() {
         </div>
       </main>
 
-      {/* Member App Features Section */}
+      {/* Center Console Features Section */}
       <section className="w-full bg-muted/30 py-12 border-t border-border/40">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <FeatureCard 
-              icon={<Activity className="w-5 h-5" />}
-              title="Daily Meal Logging"
-              description="Log your breakfast, lunch, and dinner effortlessly. Track your exact macros."
+              icon={<SearchCheck className="w-5 h-5" />}
+              title="Member Meal Visibility"
+              description="Review daily meal logs of your members in real-time, tracking their calorie and macronutrient intake."
             />
             <FeatureCard 
-              icon={<Target className="w-5 h-5" />}
-              title="Goal Tracking"
-              description="Set personal health targets and visualize your progress daily."
+              icon={<Megaphone className="w-5 h-5" />}
+              title="Instant Broadcasts"
+              description="Easily send center-wide announcements, menu updates, and motivational messages straight to members."
             />
             <FeatureCard 
-              icon={<Smartphone className="w-5 h-5" />}
-              title="Center Sync"
-              description="Stay directly connected to your wellness center and personalized plans."
+              icon={<Users className="w-5 h-5" />}
+              title="Subscription Management"
+              description="Seamlessly onboard new members, track active subscriptions, and manage individual user profiles."
             />
             <FeatureCard 
-              icon={<CheckCircle2 className="w-5 h-5" />}
-              title="Subscriptions"
-              description="Manage active subscriptions, update profile details, and control data."
+              icon={<ClipboardCheck className="w-5 h-5" />}
+              title="Inventory & Batches"
+              description="Monitor ingredient inventory and organize food preparation batches efficiently for optimal quality."
             />
           </div>
         </div>
       </section>
 
-      {/* Center Console / Application Provider Section (Bottom) */}
+      {/* Member App / Companion Section (Bottom) */}
       <section className="w-full bg-primary/5 py-12 border-y border-border/40">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-10">
-            <h2 className="text-xs font-bold tracking-widest text-primary uppercase mb-2">Application Provider</h2>
-            <h3 className="text-2xl md:text-3xl font-bold tracking-tight mb-3">Empowering Wellness Centers</h3>
-            <p className="text-muted-foreground max-w-2xl mx-auto text-base">Comprehensive tools designed to streamline operations and enhance member experiences for health and wellness centers.</p>
+            <h2 className="text-xs font-bold tracking-widest text-primary uppercase mb-2">For Your Members</h2>
+            <h3 className="text-2xl md:text-3xl font-bold tracking-tight mb-3">Their Personal Health Companion</h3>
+            <p className="text-muted-foreground max-w-2xl mx-auto text-base">We provide a dedicated mobile application for your members to interact directly with your wellness center's services.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             <FeatureCard 
-              icon={<Users className="w-5 h-5" />}
-              title="Member Management"
-              description="Easily onboard new members, track subscriptions, and manage profiles."
+              icon={<Target className="w-5 h-5" />}
+              title="Daily Meal Logging"
+              description="Members can easily log their breakfast, lunch, and dinner to track exact macros and calories."
             />
             <FeatureCard 
-              icon={<SearchCheck className="w-5 h-5" />}
-              title="Meal Log Monitoring"
-              description="Review daily meal logs of your members in real-time."
+              icon={<Smartphone className="w-5 h-5" />}
+              title="Center Sync & Announcements"
+              description="Members stay connected by receiving your broadcasted menus, alerts, and personalized nutrition plans."
             />
             <FeatureCard 
-              icon={<Package className="w-5 h-5" />}
-              title="Inventory"
-              description="Manage ingredient inventory and track daily consumption seamlessly."
-            />
-            <FeatureCard 
-              icon={<ClipboardCheck className="w-5 h-5" />}
-              title="Batch Management"
-              description="Organize and monitor food preparation batches efficiently."
-            />
-            <FeatureCard 
-              icon={<MapPin className="w-5 h-5" />}
-              title="Attendance"
-              description="Track member attendance and daily check-ins to monitor engagement."
+              icon={<CheckCircle2 className="w-5 h-5" />}
+              title="Goal Tracking"
+              description="Members can set personal health targets and visualize their progress directly on their dashboard."
             />
           </div>
           
           <div className="flex justify-center mt-4">
             <Button
-              onClick={() => navigate("/admin")}
-              variant="default"
+              onClick={() => navigate("/login")}
+              variant="outline"
               size="lg"
-              className="h-12 px-8 rounded-xl text-base font-semibold shadow-md hover:shadow-lg active:scale-[0.98] transition-all"
+              className="h-12 px-8 rounded-xl text-base font-semibold shadow-sm hover:bg-muted active:scale-[0.98] transition-all bg-background border-primary/20 hover:border-primary/40"
             >
-              Access Center Console
+              Preview Member Dashboard
             </Button>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-6 bg-background border-t border-border">
+      <footer className="py-6 bg-background border-t border-border mt-auto">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
             <img src="logo.png" alt="NutriMyWay" className="w-5 h-5 object-contain" />
