@@ -19,7 +19,10 @@ const parser = new Parser({
 const RSS_FEEDS = [
   { name: "NutritionFacts", url: "https://nutritionfacts.org/feed/" },
   { name: "ScienceDaily", url: "https://www.sciencedaily.com/rss/health_medicine/nutrition.xml" },
-  { name: "NYT Health", url: "https://rss.nytimes.com/services/xml/rss/nyt/Health.xml" }
+  { name: "NYT Health", url: "https://rss.nytimes.com/services/xml/rss/nyt/Health.xml" },
+  { name: "Nutrabay (India)", url: "https://nutrabay.com/magazine/category/nutrition/feed/" },
+  { name: "Medical Dialogues", url: "https://medicaldialogues.in/diet-nutrition/feed" },
+  { name: "GAIN Health (Europe)", url: "https://www.gainhealth.org/rss/news.xml" }
 ];
 
 export async function fetchFeeds() {
