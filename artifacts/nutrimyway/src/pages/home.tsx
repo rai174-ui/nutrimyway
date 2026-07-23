@@ -56,12 +56,6 @@ export function Home() {
         </div>
         <div className="flex items-center gap-6">
           <a
-            href="#features"
-            className="hidden md:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Features
-          </a>
-          <a
             href="#contact"
             className="hidden md:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -71,7 +65,7 @@ export function Home() {
             href="/admin"
             className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
           >
-            Admin Login
+            Center Login
           </a>
           <button
             onClick={() => navigate("/login")}
@@ -82,13 +76,13 @@ export function Home() {
         </div>
       </header>
 
-      {/* Hero Section */}
+      {/* Primary Section / Hero (Focusing on the Member App/Personal Health) */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 text-center w-full max-w-4xl mx-auto py-20 md:py-32">
         <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-foreground mb-6 leading-tight">
-          Application Provider for <span className="text-primary bg-primary/10 px-2 rounded-lg inline-block mt-2">Center Management & HealthLogix</span>
+          Your Personal <span className="text-primary bg-primary/10 px-2 rounded-lg inline-block mt-2">Health Companion</span>
         </h1>
         <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
-          NutriMyWay provides robust solutions for comprehensive Center Management and HealthLogix, tailored for individual health enthusiasts. Take control of your wellness journey today.
+          The NutriMyWay Member App puts your nutritional journey in the palm of your hand. Log meals, track macros, and stay connected with your wellness center.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -97,63 +91,24 @@ export function Home() {
             onClick={() => navigate("/login")}
             className="h-14 px-8 rounded-2xl text-lg font-semibold shadow-md hover:shadow-lg active:scale-[0.98] transition-all flex items-center gap-2"
           >
-            Get Started <ArrowRight className="w-5 h-5" />
+            Member Login <ArrowRight className="w-5 h-5" />
           </Button>
           <Button
             variant="outline"
             size="lg"
             onClick={() => {
-              document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+              document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="h-14 px-8 rounded-2xl text-lg font-semibold shadow-sm hover:bg-muted active:scale-[0.98] transition-all"
+            className="h-14 px-8 rounded-2xl text-lg font-semibold shadow-sm hover:bg-muted active:scale-[0.98] transition-all flex items-center gap-2 text-foreground"
           >
-            Learn More
+            <Mail className="w-5 h-5 text-muted-foreground" /> Send Inquiry
           </Button>
         </div>
       </main>
 
-      {/* Features Section */}
-      <section id="features" className="w-full bg-muted/30 py-20 border-y border-border/40">
+      {/* Member App Features Section */}
+      <section className="w-full bg-muted/30 py-20 border-t border-border/40">
         <div className="max-w-7xl mx-auto px-6">
-          
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Empowering Wellness Centers</h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto text-lg">Comprehensive tools designed to streamline operations and enhance member experiences for health and wellness centers.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-24">
-            <FeatureCard 
-              icon={<Users className="w-6 h-6" />}
-              title="Member Management"
-              description="Easily onboard new members, track subscriptions, and manage profiles from a centralized admin dashboard."
-            />
-            <FeatureCard 
-              icon={<SearchCheck className="w-6 h-6" />}
-              title="Meal Log Monitoring"
-              description="Review daily meal logs of your members in real-time, tracking their calorie and macronutrient intake accurately."
-            />
-            <FeatureCard 
-              icon={<Package className="w-6 h-6" />}
-              title="Inventory & Consumption"
-              description="Manage ingredient inventory, track daily consumption, and seamlessly organize material packs for food preparation."
-            />
-            <FeatureCard 
-              icon={<ClipboardCheck className="w-6 h-6" />}
-              title="Batch Management"
-              description="Organize and monitor food preparation batches efficiently, ensuring quality and exact macronutrient tracking."
-            />
-            <FeatureCard 
-              icon={<MapPin className="w-6 h-6" />}
-              title="Check-ins & Attendance"
-              description="Track member attendance and daily check-ins to monitor center engagement and consistency."
-            />
-          </div>
-
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Your Personal Health Companion</h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto text-lg">The NutriMyWay Member App puts your nutritional journey in the palm of your hand.</p>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             <FeatureCard 
               icon={<Activity className="w-6 h-6" />}
@@ -240,8 +195,58 @@ export function Home() {
         </div>
       </section>
 
+      {/* Center Console / Application Provider Section (Bottom) */}
+      <section className="w-full bg-primary/5 py-24 border-y border-border/40 mt-auto">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-sm font-bold tracking-widest text-primary uppercase mb-3">Application Provider</h2>
+            <h3 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Empowering Wellness Centers</h3>
+            <p className="text-muted-foreground max-w-2xl mx-auto text-lg">Comprehensive tools designed to streamline operations and enhance member experiences for health and wellness centers.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-10">
+            <FeatureCard 
+              icon={<Users className="w-6 h-6" />}
+              title="Member Management"
+              description="Easily onboard new members, track subscriptions, and manage profiles from a centralized admin dashboard."
+            />
+            <FeatureCard 
+              icon={<SearchCheck className="w-6 h-6" />}
+              title="Meal Log Monitoring"
+              description="Review daily meal logs of your members in real-time, tracking their calorie and macronutrient intake accurately."
+            />
+            <FeatureCard 
+              icon={<Package className="w-6 h-6" />}
+              title="Inventory & Consumption"
+              description="Manage ingredient inventory, track daily consumption, and seamlessly organize material packs for food preparation."
+            />
+            <FeatureCard 
+              icon={<ClipboardCheck className="w-6 h-6" />}
+              title="Batch Management"
+              description="Organize and monitor food preparation batches efficiently, ensuring quality and exact macronutrient tracking."
+            />
+            <FeatureCard 
+              icon={<MapPin className="w-6 h-6" />}
+              title="Check-ins & Attendance"
+              description="Track member attendance and daily check-ins to monitor center engagement and consistency."
+            />
+          </div>
+          
+          <div className="flex justify-center mt-6">
+            <Button
+              onClick={() => navigate("/admin")}
+              variant="default"
+              size="lg"
+              className="h-14 px-8 rounded-2xl text-lg font-semibold shadow-md hover:shadow-lg active:scale-[0.98] transition-all"
+            >
+              Access Center Console
+            </Button>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer className="py-10 bg-muted/50 border-t border-border mt-auto">
+      <footer className="py-10 bg-background border-t border-border">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
             <img src="logo.png" alt="NutriMyWay" className="w-6 h-6 object-contain" />
@@ -261,7 +266,7 @@ export function Home() {
 
 function FeatureCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
   return (
-    <div className="flex flex-col gap-4 p-6 rounded-3xl bg-card border border-border/60 shadow-sm hover:shadow-md transition-all hover:border-primary/20 group">
+    <div className="flex flex-col gap-4 p-6 rounded-3xl bg-card border border-border/60 shadow-sm hover:shadow-md transition-all hover:border-primary/20 group h-full">
       <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
         {icon}
       </div>
