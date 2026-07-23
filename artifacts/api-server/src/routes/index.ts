@@ -8,6 +8,7 @@ import centersRouter from "./centers";
 import adminRouter from "./admin";
 import storageRouter from "./storage";
 import { router as imagesRouter } from "./images";
+import contactRouter from "./contact";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(bomRouter);
 router.use(packsRouter);
 router.use(adminRouter);
 router.use(imagesRouter);
+router.use(contactRouter);
 
 export default router;

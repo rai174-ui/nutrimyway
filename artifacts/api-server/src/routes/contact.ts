@@ -1,0 +1,82 @@
+import { Router, type Request, type Response } from "express";
+import { Resend } from "resend";
+import nodemailer from "nodemailer";
+import { logger } from "../lib/logger";
+
+const router = Router();
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+router.post("/contact", async (req: Request, res: Response) => {
+  const { name, email, message } = req.body;
+
+  if (!name || !email || !message) {
+    res.status(400).json({ error: "Name, email, and message are required." });
+    return;
+  }
+
+  const subject = `New Inquiry from ${name}`;
+  const htmlContent = `<div style="font-family:sans-serif;max-width:600px;margin:auto">
+        <h2 style="color:#0d9488">New Website Inquiry</h2>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Message:</strong></p>
+        <blockquote style="border-left: 4px solid #0d9488; padding-left: 16px; color: #4b5563;">
+          ${message.replace(/\n/g, "<br>")}
+        </blockquote>
+      </div>`;
+
+  const to = "support@nutrimyway.com";
+
+  let sent = false;
+
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || "587", 10),
+        secure: process.env.SMTP_PORT === "465",
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+      await transporter.sendMail({
+        from: `"${process.env.SMTP_FROM_NAME || "NutriMyWay"}" <${process.env.SMTP_USER}>`,
+        replyTo: email,
+        to,
+        subject,
+        html: htmlContent,
+      });
+      sent = true;
+    } catch (err) {
+      logger.error({ err }, "Error sending inquiry email via SMTP");
+    }
+  }
+
+  if (!sent && process.env.RESEND_API_KEY) {
+    try {
+      const { error } = await resend.emails.send({
+        from: "NutriMyWay <onboarding@resend.dev>",
+        replyTo: email,
+        to: [to],
+        subject,
+        html: htmlContent,
+      });
+      if (error) {
+        logger.warn({ to, error }, "Resend API error");
+      } else {
+        sent = true;
+      }
+    } catch (err) {
+      logger.error({ err }, "Error sending inquiry email via Resend");
+    }
+  }
+
+  if (!sent) {
+    logger.warn({ to, subject }, "No email provider configured or failed — inquiry email skipped. Details: " + message);
+  }
+
+  res.json({ success: true });
+});
+
+export default router;
