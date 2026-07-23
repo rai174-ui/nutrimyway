@@ -763,6 +763,7 @@ export async function initDb(): Promise<void> {
     await migrateAdminTables47();
     await migrateAdminTables48();
     await migrateAdminTables49();
+    await migrateAdminTables50();
     await seedCenterPasswords();
     await seedSuperAdmin();
   } catch (e) {
@@ -796,6 +797,18 @@ async function migrateAdminTables41(): Promise<void> {
     UPDATE ingredient_batches ib
     SET sku_id = (SELECT id FROM ingredient_skus s WHERE s.ingredient_id = ib.ingredient_id LIMIT 1)
     WHERE sku_id IS NULL
+  `);
+}
+
+async function migrateAdminTables50(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS inquiries (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
   `);
 }
 

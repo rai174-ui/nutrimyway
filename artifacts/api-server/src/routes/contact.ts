@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { logger } from "../lib/logger";
+import { pool } from "../lib/sqlite";
 
 const router = Router();
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -12,6 +13,16 @@ router.post("/contact", async (req: Request, res: Response) => {
   if (!name || !email || !message) {
     res.status(400).json({ error: "Name, email, and message are required." });
     return;
+  }
+
+  // Save to database first so we never lose a lead
+  try {
+    await pool.query(
+      "INSERT INTO inquiries (name, email, message) VALUES ($1, $2, $3)",
+      [name, email, message]
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to save inquiry to database");
   }
 
   const subject = `New Inquiry from ${name}`;
