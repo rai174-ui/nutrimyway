@@ -3397,7 +3397,7 @@ router.post("/admin/super/upload/items", requireSuperAdmin, async (req, res) => 
             [centerId, categoryName, false, 0]
           );
           categoryId = catInsert[0].id;
-          categoryMap.set(catKey, categoryId);
+          categoryMap.set(catKey, categoryId as number);
         }
       }
 
