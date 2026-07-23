@@ -119,12 +119,12 @@ export function Home() {
           >
             Member Login
           </a>
-          <button
-            onClick={() => navigate("/admin")}
+          <a
+            href="/admin"
             className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
           >
             Center Login
-          </button>
+          </a>
         </div>
       </header>
 
@@ -141,7 +141,7 @@ export function Home() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
             size="lg"
-            onClick={() => navigate("/admin")}
+            onClick={() => { window.location.href = "/admin"; }}
             className="h-12 px-8 rounded-xl text-base font-semibold shadow-md hover:shadow-lg active:scale-[0.98] transition-all flex items-center gap-2"
           >
             Access Center Console <ArrowRight className="w-4 h-4" />
