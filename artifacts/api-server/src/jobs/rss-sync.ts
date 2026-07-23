@@ -16,12 +16,10 @@ const parser = new Parser({
   }
 });
 
-// List of reputable health and wellness RSS feeds
 const RSS_FEEDS = [
-  { name: "Medical News Today - Nutrition", url: "https://www.medicalnewstoday.com/feed/nutrition" },
-  { name: "Medical News Today - Fitness", url: "https://www.medicalnewstoday.com/feed/sports-medicine" },
-  { name: "Healthline - Nutrition", url: "https://www.healthline.com/rss/nutrition" },
-  { name: "WebMD", url: "https://rssfeeds.webmd.com/rss/rss.aspx?RSSSource=RSS_PUBLIC" },
+  { name: "NutritionFacts", url: "https://nutritionfacts.org/feed/" },
+  { name: "ScienceDaily", url: "https://www.sciencedaily.com/rss/health_medicine/nutrition.xml" },
+  { name: "NYT Health", url: "https://rss.nytimes.com/services/xml/rss/nyt/Health.xml" }
 ];
 
 export async function fetchFeeds() {
