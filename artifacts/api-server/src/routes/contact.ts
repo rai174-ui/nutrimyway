@@ -1,11 +1,9 @@
 import { Router, type Request, type Response } from "express";
-import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { logger } from "../lib/logger";
 import { pool } from "../lib/sqlite";
 
 const router = Router();
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 router.post("/contact", async (req: Request, res: Response) => {
   const { name, email, message } = req.body;
@@ -40,7 +38,6 @@ router.post("/contact", async (req: Request, res: Response) => {
 
   let sent = false;
   let smtpError: any = null;
-  let resendError: any = null;
 
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     try {
@@ -71,35 +68,10 @@ router.post("/contact", async (req: Request, res: Response) => {
     }
   }
 
-  if (!sent && process.env.RESEND_API_KEY) {
-    try {
-      const { error } = await resend.emails.send({
-        from: "NutriMyWay <onboarding@resend.dev>",
-        replyTo: email,
-        to: [to],
-        subject,
-        html: htmlContent,
-      });
-      if (error) {
-        resendError = error.message || String(error);
-        logger.warn({ to, error }, "Resend API error");
-      } else {
-        sent = true;
-        logger.info({ to, subject }, "Email successfully accepted by Resend API.");
-      }
-    } catch (err: any) {
-      resendError = err?.message || String(err);
-      logger.error({ err }, "Error sending inquiry email via Resend");
-    }
-  }
-
   if (!sent) {
-    const errorDetails = [
-      smtpError ? `SMTP Error: ${smtpError}` : null,
-      resendError ? `Resend Error: ${resendError}` : null
-    ].filter(Boolean).join(" | ");
+    const errorDetails = smtpError ? `SMTP Error: ${smtpError}` : null;
     
-    logger.warn({ to, subject, smtpError, resendError }, "No email provider configured or failed — inquiry email skipped.");
+    logger.warn({ to, subject, smtpError }, "No email provider configured or failed — inquiry email skipped.");
     res.status(500).json({ error: `Failed to send email. ${errorDetails || "No valid email configuration found."}` });
     return;
   }

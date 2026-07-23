@@ -1,6 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
@@ -11,9 +10,6 @@ const router = Router();
 
 const JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
 const OTP_TTL_MIN = 10;
-
-// Initialize Resend using the environment variable
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -87,26 +83,7 @@ async function sendResetEmail(to: string, resetLink: string): Promise<boolean> {
     }
   }
 
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const { error } = await resend.emails.send({
-        from: "NutriMyWay <onboarding@resend.dev>",
-        to: [to],
-        subject,
-        html: htmlContent,
-      });
-      if (error) {
-        logger.warn({ to, error }, "Resend API error");
-        return false;
-      }
-      return true;
-    } catch (err) {
-      logger.error({ err }, "Error sending reset email via Resend");
-      return false;
-    }
-  }
-  
-  logger.warn({ to, resetLink }, "No email provider configured — reset email skipped. Preview link provided in logs.");
+  logger.warn({ to, resetLink }, "No email provider configured or SMTP failed — reset email skipped. Preview link provided in logs.");
   return false;
 }
 
