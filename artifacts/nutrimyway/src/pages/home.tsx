@@ -136,6 +136,14 @@ export function Home() {
             Health, Nutrition & Wellness
           </Link>
           <a
+            href="https://HealthLogix.nutrimyway.in"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden lg:block text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Personnel Health & Wellness
+          </a>
+          <a
             href="/login"
             className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
           >
